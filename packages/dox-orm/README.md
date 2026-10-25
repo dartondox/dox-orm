@@ -3,10 +3,10 @@
 Models, relations and a query builder for Postgres, MySQL, MariaDB and SQLite.
 
 [![pub package](https://img.shields.io/pub/v/dox_orm.svg)](https://pub.dev/packages/dox_orm)
-[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/dartondox/dox/blob/main/LICENSE)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/dartondox/dox-orm/blob/main/LICENSE)
 
-Part of [Dox](https://dartondox.dev), a web backend framework for Dart, like Laravel.
-Source code: [github.com/dartondox/dox](https://github.com/dartondox/dox).
+Part of [Dox](https://dartondox.dev), a web backend framework for Dart.
+Source code: [github.com/dartondox/dox-orm](https://github.com/dartondox/dox-orm).
 
 ## Install
 
@@ -88,4 +88,4 @@ In a Dox app, start the ORM in a `DoxService`, so each isolate gets its own pool
 
 ## License
 
-MIT. See [LICENSE](https://github.com/dartondox/dox/blob/main/LICENSE).
+MIT. See [LICENSE](https://github.com/dartondox/dox-orm/blob/main/LICENSE).

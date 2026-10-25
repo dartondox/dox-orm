@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+      # Pub workspace: one `dart pub get` at the root links all packages.
+      - run: dart pub get
+      - run: dart format --output=none --set-exit-if-changed .
+      - run: dart analyze --fatal-infos packages
+      - name: Publish order
+        run: ci/publish-order.sh
+      - name: Check that all package versions match the root version
+        run: ci/check-versions.sh
+      - name: Dry run publish
+        run: ci/publish-dry-run.sh
+
+  # The entries are in ci/test-matrix.json. Each entry has:
+  # - packages: folders under packages/ to run `dart test` in.
+  # - vars: env vars for `dart test`.
+  # - locks: what the entry can not share with another entry at the same
+  #   time, like one database. See ci/run-group.py.
+  # The Postgres and MySQL drivers are native (dox_postgres_native and
+  # dox_mysql_native). Their build hooks download ready-built libraries.
+  # sqlite3 bundles SQLite with a build hook. No system library needed.
+  # The migration tests run on postgres, mysql and sqlite in one run.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Start the containers first. They boot while the next steps run.
+      - name: Start services
+        run: ci/start-services.sh postgres mariadb mysql84
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+      - run: dart pub get
+      - name: Wait for services
+        run: ci/wait-services.sh postgres mariadb mysql84
+      - name: Run tests
+        run: ENTRIES="$(cat ci/test-matrix.json)" ci/run-group.py
