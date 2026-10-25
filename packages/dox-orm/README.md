@@ -67,7 +67,7 @@ Blog? one = await Blog().find(1);
 List<Map<String, dynamic>> rows = await QueryBuilder.table('blogs').where('id', '>', 10).get();
 ```
 
-In a Dox app, start the ORM in a `DoxService`, so each isolate gets its own pool.
+In a Dox app, start the ORM in a `DoxProvider`, so each isolate gets its own pool.
 
 ## Features
 
