@@ -1,6 +1,11 @@
+import 'dart:io';
+
 import 'package:dox_orm/dox_orm.dart';
 import 'package:dox_orm/src/drivers/sqlite_driver.dart';
 import 'package:sqlite3/sqlite3.dart' as sqlite;
+
+/// SQLITE_BUSY: the database file is locked by another connection.
+const int _sqliteBusy = 5;
 
 class ConnectionConfig {
   /// Database driver
@@ -237,14 +242,32 @@ class ConnectionConfig {
     sqlite.Database db = database == ':memory:'
         ? sqlite.sqlite3.openInMemory()
         : sqlite.sqlite3.open(database);
-    // busy_timeout first: switching to WAL needs a lock, and many isolates
-    // open the file at the same time on start.
-    db.execute('PRAGMA busy_timeout = ${extra['busyTimeout'] as int? ?? 5000}');
+    int busyTimeout = extra['busyTimeout'] as int? ?? 5000;
+    db.execute('PRAGMA busy_timeout = $busyTimeout');
     if (database != ':memory:') {
-      db.execute('PRAGMA journal_mode = WAL');
+      _switchToWal(db, busyTimeout);
       db.execute('PRAGMA synchronous = NORMAL');
     }
     db.execute('PRAGMA foreign_keys = ON');
     return db;
+  }
+
+  /// switching a new file to WAL fails right away with SQLITE_BUSY when
+  /// another isolate does the same at that moment: sqlite does not use
+  /// busy_timeout here. So retry until [busyTimeout] ms have passed.
+  void _switchToWal(sqlite.Database db, int busyTimeout) {
+    Stopwatch watch = Stopwatch()..start();
+    while (true) {
+      try {
+        db.execute('PRAGMA journal_mode = WAL');
+        return;
+      } on sqlite.SqliteException catch (e) {
+        if (e.resultCode != _sqliteBusy ||
+            watch.elapsedMilliseconds >= busyTimeout) {
+          rethrow;
+        }
+        sleep(const Duration(milliseconds: 10));
+      }
+    }
   }
 }
