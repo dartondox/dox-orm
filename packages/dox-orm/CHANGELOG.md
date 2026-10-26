@@ -1,3 +1,7 @@
+## Unreleased
+
+- Fix: when many isolates open a new SQLite file at the same time (the first server start), some failed with `SqliteException(5): database is locked` on `PRAGMA journal_mode = WAL`. SQLite does not use `busy_timeout` for this step. Now it retries until `busyTimeout` (5 seconds by default) has passed.
+
 ## 3.0.0-alpha.13
 
 - Fix: `whereHas()`, `whereDoesntHave()`, `has()` and `withCount()` now work on a relation to the same table, like the parent or the children of a category. Before, the subquery compared each row with itself, so the result was wrong. Now the subquery gives its table its own name.
