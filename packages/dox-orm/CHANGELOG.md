@@ -1,3 +1,7 @@
+## 3.0.0
+
+- The first stable release.
+
 ## 3.0.0-rc.1
 
 - Fix: `create()` of a model now works like `save()` on a new model. Before, a model without hooks wrote the raw map. So `beforeSave` and the casts did not run, and `created_at` and `updated_at` were not set. Now `create()` fills a new model from the map and saves it. It fires the model events (saving, creating, created, saved), and a hook can cancel it. It sets `created_at` and `updated_at`, unless the model has `timestamps: false`. A value for them in the map is kept. Only `@Column` fields are saved. `insert()`, `firstOrCreate()` and `updateOrCreate()` of a model use it too. `QueryBuilder.table().create()` and `insert()` still write the map as it is.
