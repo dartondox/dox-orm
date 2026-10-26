@@ -66,7 +66,7 @@ Blog? one = await Blog().find(1);
 // no model: a list of maps
 List<Map<String, dynamic>> rows = await QueryBuilder.table('blogs').where('id', '>', 10).get();
 
-// filter by a relation, without loading it
+// filter by a relation, without loading it (User has a `@HasMany(Post) posts` field)
 List<User> writers = await User().whereHas('posts', (QueryBuilder<dynamic> q) {
   q.where('published', true);
 }).get();
