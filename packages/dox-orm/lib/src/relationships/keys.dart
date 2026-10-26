@@ -17,10 +17,19 @@ List<dynamic> relationKeys(List<Model<dynamic>> list, String key) {
 
 bool _notNull(dynamic value) => value != null;
 
-/// true while withCount() makes a relation query. the relation query
-/// then matches the parent row with a column compare (not with the ids
-/// of loaded models), so it can run as a subquery.
+/// true while withCount() or whereHas() makes a relation query. the
+/// relation query then matches the parent row with a column compare (not
+/// with the ids of loaded models), so it can run as a subquery.
 bool relationSubquery = false;
+
+/// the param key prefix of the relation query made while
+/// [relationSubquery] is true. it is set before `onQuery` runs, so the
+/// keys of `onQuery` do not clash with the keys of the parent query.
+String subqueryKeyPrefix = '';
+
+/// true while withCount() makes a relation query. withCount() does not
+/// work with belongsTo, whereHas() does.
+bool aggregateSubquery = false;
 
 /// the condition `child.foreignKey = parent.localKey` of a subquery
 String subqueryMatch(

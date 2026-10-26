@@ -15,7 +15,7 @@ M? belongsTo<T, M>(
   dynamic onQuery,
 }) {
   if (list.isEmpty) return null;
-  if (relationSubquery) {
+  if (relationSubquery && aggregateSubquery) {
     throw UnsupportedError(
       'withCount() works with hasOne, hasMany and manyToMany relations.',
     );
@@ -27,11 +27,19 @@ M? belongsTo<T, M>(
   localKey = localKey ?? owner.primaryKey;
   foreignKey = foreignKey ?? owner.foreignKeyName;
 
-  /// each owner once: no join to the children, so an owner with many
-  /// children is one row, not one row per child
-  List<dynamic> ids = relationKeys(list, foreignKey);
-
-  owner.whereIn('${owner.tableName}.$localKey', ids);
+  if (relationSubquery) {
+    owner.helper.keyPrefix = subqueryKeyPrefix;
+    owner.whereRaw(
+      subqueryMatch(owner, '${owner.tableName}.$localKey', foreign, foreignKey),
+    );
+  } else {
+    /// each owner once: no join to the children, so an owner with many
+    /// children is one row, not one row per child
+    owner.whereIn(
+      '${owner.tableName}.$localKey',
+      relationKeys(list, foreignKey),
+    );
+  }
 
   if (onQuery != null) {
     owner = onQuery(owner);
