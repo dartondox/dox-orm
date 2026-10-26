@@ -188,51 +188,56 @@ class Model<T> extends QueryBuilder<T> {
     return a == b;
   }
 
-  /// delete this record (soft delete when the model use SoftDeletes)
+  /// delete this record (soft delete when the model use SoftDeletes).
+  /// It returns how many rows it deleted: 1, or 0 when the row was not
+  /// there or a hook throws [CancelModelEvent].
   ///
   /// ```
   /// Blog? blog = await Blog().find(1);
-  /// await blog?.delete();
+  /// int count = await blog!.delete();
   /// ```
   ///
   /// It fires deleting and deleted. A query delete like
-  /// `Blog().where('id', 1).delete()` fires no events.
+  /// `Blog().where('id', 1).delete()` fires no events, and returns how
+  /// many rows it deleted.
   @override
-  Future<bool> delete() async {
+  Future<int> delete() async {
     /// a query delete: Blog().where('id', 1).delete()
     if (tempIdValue == null) {
       if (isSoftDeletes) {
         /// super.update(): deleted_at is not checked against fillable
-        await super.update(<String, dynamic>{'deleted_at': now()});
-      } else {
-        await super.delete();
+        return await super.update(<String, dynamic>{'deleted_at': now()});
       }
-      return true;
+      return await super.delete();
     }
     bool events = _eventsOn;
     if (events) {
       try {
         await _fire(ModelEvent.deleting);
       } on CancelModelEvent {
-        return false;
+        return 0;
       }
     }
-    if (isSoftDeletes) {
-      await _thisRecord().update(<String, dynamic>{'deleted_at': now()});
-    } else {
-      await _thisRecord().forceDelete();
-    }
+    int count = isSoftDeletes
+        ? await _thisRecord().update(<String, dynamic>{'deleted_at': now()})
+        : await _thisRecord().forceDelete();
     if (events) await _fire(ModelEvent.deleted);
-    return true;
+    return count;
   }
 
   /// delete this record from the table, also when soft deleted.
+  /// It returns how many rows it deleted: 1, or 0 when the row was not
+  /// there or a hook throws [CancelModelEvent].
   /// It fires forceDeleting, deleting, deleted, then forceDeleted.
+  ///
+  /// ```
+  /// Blog? blog = await Blog().withTrash().find(1);
+  /// int count = await blog!.forceDelete();
+  /// ```
   @override
-  Future<bool> forceDelete() async {
+  Future<int> forceDelete() async {
     if (tempIdValue == null) {
-      await super.forceDelete();
-      return true;
+      return await super.forceDelete();
     }
     bool events = _eventsOn;
     if (events) {
@@ -240,15 +245,76 @@ class Model<T> extends QueryBuilder<T> {
         await _fire(ModelEvent.forceDeleting);
         await _fire(ModelEvent.deleting);
       } on CancelModelEvent {
-        return false;
+        return 0;
       }
     }
-    await _thisRecord().forceDelete();
+    int count = await _thisRecord().forceDelete();
     if (events) {
       await _fire(ModelEvent.deleted);
       await _fire(ModelEvent.forceDeleted);
     }
-    return true;
+    return count;
+  }
+
+  /// add [amount] to [column] in one query, and set the [extra] columns
+  /// too. It returns how many rows changed.
+  ///
+  /// ```
+  /// await Blog().where('status', 'hot').increment('views');
+  ///
+  /// Blog? blog = await Blog().find(1);
+  /// await blog!.increment('views', 2);
+  /// ```
+  ///
+  /// On a model from the table it changes only that row. Keys of [extra]
+  /// that [fillable] and [guarded] do not allow are dropped. It fires no
+  /// model events and does not set updated_at.
+  ///
+  /// ponytail: the Dart field of the model is not changed, because a
+  /// model has no setter by column name. Read the model again to see the
+  /// new value. save() does not send the old value back, because the
+  /// field did not change.
+  @override
+  Future<int> increment(
+    String column, [
+    num amount = 1,
+    Map<String, dynamic> extra = const <String, dynamic>{},
+  ]) {
+    return _step(column, amount, extra, true);
+  }
+
+  /// take [amount] from [column] in one query, like [increment]
+  ///
+  /// ```
+  /// Product? product = await Product().find(1);
+  /// await product!.decrement('stock');
+  /// ```
+  @override
+  Future<int> decrement(
+    String column, [
+    num amount = 1,
+    Map<String, dynamic> extra = const <String, dynamic>{},
+  ]) {
+    return _step(column, amount, extra, false);
+  }
+
+  /// the query form, or this row only when the model is from the table
+  Future<int> _step(
+    String column,
+    num amount,
+    Map<String, dynamic> extra,
+    bool up,
+  ) {
+    extra = _onlyFillable(extra);
+    if (tempIdValue != null) {
+      QueryBuilder<T> row = _thisRecord();
+      return up
+          ? row.increment(column, amount, extra)
+          : row.decrement(column, amount, extra);
+    }
+    return up
+        ? super.increment(column, amount, extra)
+        : super.decrement(column, amount, extra);
   }
 
   /// a new query on this row only, so the query state of this model
@@ -603,16 +669,101 @@ class Model<T> extends QueryBuilder<T> {
   ///
   /// When the model has events, create() fills a new model from [data]
   /// and calls save(), so the hooks run. Only @Column fields are saved
-  /// then. When a hook cancels, it returns the unsaved model.
+  /// then. When a hook cancels, it returns the unsaved model (its id is
+  /// null).
+  ///
+  /// It never gives a map. When the new row can not be read (MySQL, no
+  /// auto increment and no id in [data]), it gives a model made from
+  /// [data], see [insert].
   @override
   Future<T> create(Map<String, dynamic> data) async {
     data = _onlyFillable(data);
     if (!_eventsOn) return await super.insert(data);
+    Model<T> model = _newModel(data);
+    if (!await model.save()) return model as T;
+    return await _readBack(model);
+  }
+
+  /// a new model, not saved yet, made from [data]
+  Model<T> _newModel(Map<String, dynamic> data) {
     Model<T> model = fromMap(_dateTimesToString(data)) as Model<T>;
     model.debug(_debug);
     model.connection = connection;
-    if (!await model.save()) return model as T;
-    return (await super.find(model.tempIdValue)) as T;
+    return model;
+  }
+
+  /// [model] as it is in the table now, read on a new query (no where,
+  /// no global scopes) with the relations of this model. [model] itself
+  /// when the row can not be read.
+  Future<T> _readBack(Model<T> model) async {
+    dynamic id = model.tempIdValue;
+    if (id == null) return model as T;
+    T? row = await _newQuery<T>(this).find(id);
+    if (row == null) return model as T;
+    if (getPreload().isNotEmpty) await initPreload(<Model<T>>[row as Model<T>]);
+    return row;
+  }
+
+  /// the first row that matches all [where] pairs, or a new model made
+  /// from [where] and [values] that is not saved yet. Keys that
+  /// [fillable] and [guarded] do not allow are not set on the new model.
+  ///
+  /// ```
+  /// User user = await User().firstOrNew({'email': 'ann@example.com'});
+  /// if (!user.exists) await user.save();
+  /// ```
+  @override
+  Future<T> firstOrNew(
+    Map<String, dynamic> where, [
+    Map<String, dynamic> values = const <String, dynamic>{},
+  ]) async {
+    T found = await super.firstOrNew(where, values);
+    if ((found as Model<T>).exists) return found;
+    return _newModel(_onlyFillable(<String, dynamic>{...where, ...values}))
+        as T;
+  }
+
+  /// update the first row that matches all [where] pairs with [values],
+  /// or create one from [where] and [values]. It returns the model as it
+  /// is in the table.
+  ///
+  /// ```
+  /// User user = await User().updateOrCreate(
+  ///   {'email': 'ann@example.com'},
+  ///   {'name': 'Ann'},
+  /// );
+  /// ```
+  ///
+  /// Both ways go through save(), so the model events fire (saving,
+  /// creating or updating, ...). An update sends only the columns that
+  /// changed. Keys that [fillable] and [guarded] do not allow are
+  /// dropped. When a hook cancels an update, it returns the model as it
+  /// is in the table. When a hook cancels a create, it returns the
+  /// unsaved model (its id is null).
+  @override
+  Future<T> updateOrCreate(
+    Map<String, dynamic> where,
+    Map<String, dynamic> values,
+  ) async {
+    for (MapEntry<String, dynamic> e in where.entries) {
+      this.where(e.key, e.value);
+    }
+    T? found = await getFirst();
+    if (found == null) {
+      resetSubstitutionValues();
+      return await create(<String, dynamic>{...where, ...values});
+    }
+    Model<T> old = found as Model<T>;
+
+    /// a model with the row and the new values, that knows the old row,
+    /// so save() updates it and sends only what changed
+    Model<T> model = _newModel(<String, dynamic>{
+      ...old.originalMap,
+      ..._onlyFillable(values),
+    });
+    model.originalMap = old.originalMap;
+    if (!await model.save()) return found;
+    return await _readBack(model);
   }
 
   /// fromMap() reads dates as strings, like rows from the database
@@ -637,16 +788,64 @@ class Model<T> extends QueryBuilder<T> {
     return await create(data);
   }
 
-  /// update the rows of this query. keys that [fillable] and [guarded]
-  /// do not allow are dropped. nothing runs when no key is left.
+  /// update the rows of this query and return how many rows changed.
+  /// keys that [fillable] and [guarded] do not allow are dropped.
+  /// nothing runs when no key is left, and it returns 0.
   /// ```
-  /// await User().where('id', 1).update(req.body);
+  /// int count = await User().where('id', 1).update(req.body);
   /// ```
   @override
-  Future<void> update(Map<String, dynamic> data) async {
+  Future<int> update(Map<String, dynamic> data) async {
     data = _onlyFillable(data);
-    if (data.isEmpty) return;
-    await super.update(data);
+    if (data.isEmpty) return 0;
+    return await super.update(data);
+  }
+
+  /// insert or update many rows in one query, see [QueryBuilder.upsert].
+  /// keys that [fillable] and [guarded] do not allow are dropped from
+  /// each row. created_at and updated_at are set when a row has no value
+  /// for them, and an update sets updated_at (not created_at).
+  ///
+  /// ```
+  /// await Flight().upsert(
+  ///   [
+  ///     {'from': 'Oakland', 'to': 'San Diego', 'price': 99},
+  ///   ],
+  ///   ['from', 'to'],
+  /// );
+  /// ```
+  ///
+  /// It fires no model events.
+  @override
+  Future<int> upsert(
+    List<Map<String, dynamic>> rows,
+    List<String> uniqueBy, [
+    List<String>? updateColumns,
+  ]) {
+    String? createdAtColumn = timestampsColumn['created_at'];
+    String? updatedAtColumn = timestampsColumn['updated_at'];
+    DateTime currentTime = now();
+    List<Map<String, dynamic>> list = <Map<String, dynamic>>[
+      for (Map<String, dynamic> row in rows)
+        <String, dynamic>{
+          ?createdAtColumn: currentTime,
+          ?updatedAtColumn: currentTime,
+          ..._onlyFillable(row),
+        },
+    ];
+    List<String>? update = updateColumns;
+    if (update == null && list.isNotEmpty) {
+      update = <String>[
+        for (String column in list.first.keys)
+          if (!uniqueBy.contains(column) && column != createdAtColumn) column,
+      ];
+    } else if (update != null &&
+        update.isNotEmpty &&
+        updatedAtColumn != null &&
+        !update.contains(updatedAtColumn)) {
+      update = <String>[...update, updatedAtColumn];
+    }
+    return super.upsert(list, uniqueBy, update);
   }
 
   /// insert many rows. keys that [fillable] and [guarded] do not allow

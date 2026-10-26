@@ -111,7 +111,7 @@ void main() async {
       EventPost.cancelOn = null;
       await post.save();
       EventPost.cancelOn = 'deleting';
-      expect(await post.delete(), false);
+      expect(await post.delete(), 0);
       expect(await EventPost().count(), 1);
     });
 

@@ -1,38 +1,40 @@
 import 'package:dox_orm/dox_orm.dart';
 
 import 'shared_mixin.dart';
+import 'update.dart';
 
 mixin Delete<T> implements SharedMixin<T> {
-  /// delete a record
+  /// delete the rows of this query and return how many rows it deleted
   ///
   /// if SoftDeletes is used in model it will act as soft delete,
-  /// otherwise it will delete completely from record
+  /// otherwise it will delete completely from record.
+  /// a soft delete skips rows that are already soft deleted.
   ///
   /// ```
-  /// await Blog().where('id', 1).delete();
+  /// int count = await Blog().where('id', 1).delete();
   /// ```
-  Future<void> delete() async {
+  Future<int> delete() async {
     if (isSoftDeletes) {
-      await queryBuilder.update(<String, dynamic>{'deleted_at': now()});
-    } else {
-      await forceDelete();
+      return await queryBuilder.update(<String, dynamic>{'deleted_at': now()});
     }
+    return await forceDelete();
   }
 
-  /// force delete a record
+  /// force delete the rows of this query and return how many rows it
+  /// deleted
   ///
   /// if SoftDeletes is used in model and if you would like to delete
   /// completely from the record, use forceDelete()
   ///
   /// ```
-  /// await Blog().where('id', 1).forceDelete();
-  /// `
-  Future<void> forceDelete() async {
+  /// int count = await Blog().where('id', 1).forceDelete();
+  /// ```
+  Future<int> forceDelete() async {
     /// also delete rows that are already soft deleted
     withTrashed = true;
     String q;
     q = "DELETE FROM ${helper.wrap(tableName)}";
     q += helper.getCommonQuery();
-    await helper.runQuery(q);
+    return await runAffectingQuery(queryBuilder, q);
   }
 }

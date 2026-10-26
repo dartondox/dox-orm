@@ -18,7 +18,7 @@ enum ModelEvent {
 
 /// Throw this in a "before" hook (saving, creating, updating, deleting,
 /// restoring, forceDeleting) to stop the operation.
-/// save(), delete(), restore() and forceDelete() then return false.
+/// save() and restore() then return false, delete() and forceDelete() 0.
 ///
 /// ```
 /// @override

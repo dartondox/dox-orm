@@ -31,6 +31,34 @@ abstract class DBDriver {
     Map<String, dynamic>? substitutionValues,
   });
 
+  /// run [query] (an UPDATE, DELETE or INSERT) and return the number of
+  /// rows it changed.
+  ///
+  /// ```
+  /// int count = await driver.affectingStatement(
+  ///   'UPDATE blog SET status = @status WHERE id = @id',
+  ///   substitutionValues: <String, dynamic>{'status': 'done', 'id': 1},
+  /// );
+  /// ```
+  ///
+  /// - Postgres and SQLite count every row the query matched.
+  /// - MySQL and MariaDB count only the rows that really changed. An
+  ///   UPDATE that sets a row to the values it already has counts 0 (the
+  ///   pool does not set CLIENT_FOUND_ROWS). An upsert counts 1 for each
+  ///   new row and 2 for each updated row.
+  ///
+  /// A custom driver must override it to use update(), delete(),
+  /// increment() and upsert().
+  Future<int> affectingStatement(
+    String query, {
+    Map<String, dynamic>? substitutionValues,
+  }) async {
+    throw UnsupportedError(
+      '$runtimeType can not give the number of changed rows. '
+      'Override affectingStatement().',
+    );
+  }
+
   /// run [callback] in one database transaction.
   /// commit when it ends, rollback when it throws.
   /// all queries inside [callback] (models too) use the transaction.
