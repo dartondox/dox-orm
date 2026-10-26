@@ -13,6 +13,7 @@ void main() async {
         table.id();
         table.string('name');
         table.softDeletes();
+        table.timestamps();
       });
     });
 

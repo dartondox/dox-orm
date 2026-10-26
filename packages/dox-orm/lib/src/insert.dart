@@ -52,9 +52,12 @@ mixin Insert<T> implements SharedMixin<T> {
       }
       return _fromData(data);
     }
-    List<Map<String, dynamic>> result = await insertMultiple(
-      <Map<String, dynamic>>[data],
-    );
+
+    /// _insert and not insertMultiple: a model overrides insertMultiple
+    /// to drop keys, and [data] is ready to insert here
+    List<Map<String, dynamic>> result = await _insert(<Map<String, dynamic>>[
+      data,
+    ], helper.wrap(primaryKey));
 
     /// id can be any type (int, uuid string...).
     /// mysql only returns auto increment ids, so use the given id if any.
