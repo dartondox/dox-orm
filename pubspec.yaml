@@ -12,4 +12,3 @@ environment:
 workspace:
   - packages/dox-migration
   - packages/dox-orm
-  - packages/dox-query-builder
