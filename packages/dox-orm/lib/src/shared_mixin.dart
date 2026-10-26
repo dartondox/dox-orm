@@ -13,6 +13,7 @@ abstract class SharedMixin<T> {
   String primaryKey = 'id';
   bool shouldDebug = false;
   String tableName = '';
+  String? tableAlias;
   bool isSoftDeletes = false;
   bool withTrashed = false;
   String? connection;

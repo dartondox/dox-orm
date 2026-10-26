@@ -21,12 +21,12 @@ M? manyToMany<T, M>(
   Model<T> local = list.first;
   Model<M> related = model();
   related.connection ??= local.connection;
-  if (relationSubquery) related.helper.keyPrefix = subqueryKeyPrefix;
+  if (relationSubquery) startSubquery(related, local);
 
   localKey = localKey ?? local.primaryKey;
   relatedKey = relatedKey ?? related.primaryKey;
 
-  String relatedTable = related.tableName;
+  String relatedTable = tableRef(related);
 
   /// the defaults use the model names, like Laravel:
   /// Artist and Song give artist_song, artist_id and song_id

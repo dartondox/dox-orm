@@ -31,6 +31,27 @@ String subqueryKeyPrefix = '';
 /// work with belongsTo, whereHas() does.
 bool aggregateSubquery = false;
 
+/// starts the subquery of [child]. it sets the param key prefix, and
+/// an alias when [child] and [parent] use the same table (like a parent
+/// category), so the subquery rows and the parent rows have their own
+/// names.
+void startSubquery(Model<dynamic> child, Model<dynamic> parent) {
+  child.helper.keyPrefix = subqueryKeyPrefix;
+  if (child.tableName == parent.tableName) {
+    child.tableAlias = '${subqueryKeyPrefix}t';
+  }
+}
+
+/// the name of the table of [q] in the sql: its alias or its table name
+String tableRef(QueryBuilder<dynamic> q) => q.tableAlias ?? q.tableName;
+
+/// the table of [q] for `FROM`, like `"category" AS "dox_has0_t"`
+String fromTable(QueryBuilder<dynamic> q) {
+  String table = q.helper.wrap(q.tableName);
+  String? alias = q.tableAlias;
+  return alias == null ? table : '$table AS ${q.helper.wrap(alias)}';
+}
+
 /// the condition `child.foreignKey = parent.localKey` of a subquery
 String subqueryMatch(
   Model<dynamic> child,
@@ -39,5 +60,5 @@ String subqueryMatch(
   String parentColumn,
 ) {
   return '${child.helper.wrap(childColumn)} = '
-      '${child.helper.wrap('${parent.tableName}.$parentColumn')}';
+      '${child.helper.wrap('${tableRef(parent)}.$parentColumn')}';
 }

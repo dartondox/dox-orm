@@ -399,3 +399,122 @@ class RemarkGenerator extends Model<Remark> {
     return map;
   }
 }
+
+// ignore_for_file: always_specify_types
+
+class SectionGenerator extends Model<Section> with SoftDeletes<Section> {
+  @override
+  String get primaryKey => 'id';
+
+  @override
+  Map<String, dynamic> get timestampsColumn => const <String, dynamic>{
+    'created_at': null,
+    'updated_at': null,
+  };
+
+  @override
+  String get tableName => 'sections';
+
+  int? get id => tempIdValue as int?;
+
+  set id(int? val) => tempIdValue = val;
+
+  Section query() => Section();
+
+  @override
+  bool get readsRowDates => true;
+
+  @override
+  List<String> get tableColumns => const <String>[
+    'id',
+    'name',
+    'parent_id',
+    'deleted_at',
+  ];
+
+  @override
+  List<String> get preloadList => const <String>[];
+
+  @override
+  Map<String, Function> get relationsResultMatcher => const <String, Function>{
+    'parent': getParent,
+    'children': getChildren,
+  };
+
+  @override
+  Map<String, Function> get relationsQueryMatcher => const <String, Function>{
+    'parent': queryParent,
+    'children': queryChildren,
+  };
+
+  static Future<void> getParent(List<Model<Section>> list) async {
+    var result = await getBelongsTo<Section, Section>(queryParent(list), list);
+    for (dynamic i in list) {
+      if (result[i.tempIdValue.toString()] != null) {
+        i.parent = result[i.tempIdValue.toString()]!;
+      }
+    }
+  }
+
+  static Section? queryParent(List<Model<Section>> list) {
+    return belongsTo<Section, Section>(
+      list,
+      () => Section(),
+      foreignKey: 'parent_id',
+    );
+  }
+
+  static Future<void> getChildren(List<Model<Section>> list) async {
+    var result = await getHasMany<Section, Section>(queryChildren(list), list);
+    for (dynamic i in list) {
+      if (result[i.tempIdValue.toString()] != null) {
+        i.children = result[i.tempIdValue.toString()]!;
+      }
+    }
+  }
+
+  static Section? queryChildren(List<Model<Section>> list) {
+    return hasMany<Section, Section>(
+      list,
+      () => Section(),
+      foreignKey: 'parent_id',
+    );
+  }
+
+  @override
+  Section fromMap(Map<String, dynamic> m) => Section()
+    ..id = m['id'] as int?
+    ..name = m['name'] as String?
+    ..parentId = m['parent_id'] as int?
+    ..deletedAt = m['deleted_at'] is DateTime?
+        ? m['deleted_at'] as DateTime?
+        : DateTime.parse(m['deleted_at'] as String);
+  @override
+  Map<String, dynamic> columnsToMap() {
+    Section instance = this as Section;
+    Map<String, dynamic> map = <String, dynamic>{
+      'id': instance.id,
+      'name': instance.name,
+      'parent_id': instance.parentId,
+      'deleted_at': instance.deletedAt?.toIso8601String(),
+    };
+
+    return map;
+  }
+
+  @override
+  Map<String, dynamic> convertToMap(dynamic i) {
+    Section instance = i as Section;
+    Map<String, dynamic> map = instance.columnsToMap();
+
+    List<String> preload = getPreload();
+    if (preload.contains('parent')) {
+      map['parent'] = toMap(instance.parent);
+    }
+    if (preload.contains('children')) {
+      map['children'] = toMap(instance.children);
+    }
+
+    return map;
+  }
+}

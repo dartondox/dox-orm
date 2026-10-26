@@ -121,11 +121,11 @@ mixin WithCount<T> implements SharedMixin<T> {
       String column = a.column == '*'
           ? '*'
           : q.helper.wrap(
-              a.column.contains('.') ? a.column : '${q.tableName}.${a.column}',
+              a.column.contains('.') ? a.column : '${tableRef(q)}.${a.column}',
             );
       String inner =
           'SELECT ${a.function.toUpperCase()}($column) '
-          'FROM ${q.helper.wrap(q.tableName)}'
+          'FROM ${fromTable(q)}'
           '${q.helper.getCommonQuery(isCountQuery: true)}';
       substitutionValues.addAll(q.substitutionValues);
       sql += ', ($inner) AS ${helper.wrap(a.key)}';
@@ -261,8 +261,6 @@ mixin WithCount<T> implements SharedMixin<T> {
 
   /// adds `EXISTS (SELECT 1 FROM ...)`, `NOT EXISTS (...)` or
   /// `(SELECT COUNT(*) FROM ...) >= @key` to the where of this query.
-  /// ponytail: the subquery matches the parent by table name, so a
-  /// relation to the same table (like a parent category) does not work.
   QueryBuilder<T> _addHas(
     String type,
     String relation,
@@ -302,7 +300,7 @@ mixin WithCount<T> implements SharedMixin<T> {
     }
 
     String from =
-        'FROM ${q.helper.wrap(q.tableName)}'
+        'FROM ${fromTable(q)}'
         '${q.helper.getCommonQuery(isCountQuery: true)}';
     Map<String, dynamic> params = q.substitutionValues;
     String sql;
