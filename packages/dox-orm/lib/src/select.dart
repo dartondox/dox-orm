@@ -4,8 +4,33 @@ import 'shared_mixin.dart';
 mixin Select<T> implements SharedMixin<T> {
   String _select = '*';
 
+  bool _distinct = false;
+
+  /// true when distinct() was called
+  bool get isDistinct => _distinct;
+
+  /// the select part, with `DISTINCT` in front after distinct()
   String getSelectQuery() {
-    return _select;
+    return _distinct ? 'DISTINCT $_select' : _select;
+  }
+
+  /// select only rows that are not the same (`SELECT DISTINCT`).
+  /// it works with select(). count() then counts the distinct rows,
+  /// and sum() and avg() add up the distinct values.
+  ///
+  /// ```
+  /// List<Map<String, dynamic>> rows = await QueryBuilder.table('blog')
+  ///     .select('status')
+  ///     .distinct()
+  ///     .get();
+  /// int statuses = await QueryBuilder.table('blog')
+  ///     .select('status')
+  ///     .distinct()
+  ///     .count();
+  /// ```
+  QueryBuilder<T> distinct([bool distinct = true]) {
+    _distinct = distinct;
+    return queryBuilder;
   }
 
   /// Select query
