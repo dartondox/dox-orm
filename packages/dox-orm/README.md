@@ -65,6 +65,30 @@ Blog? one = await Blog().find(1);
 
 // no model: a list of maps
 List<Map<String, dynamic>> rows = await QueryBuilder.table('blogs').where('id', '>', 10).get();
+
+// filter by a relation, without loading it
+List<User> writers = await User().whereHas('posts', (QueryBuilder<dynamic> q) {
+  q.where('published', true);
+}).get();
+
+// conditions in brackets
+List<Blog> blogs = await Blog()
+    .where('status', 'active')
+    .whereGroup((QueryBuilder<Blog> q) {
+      q.where('views', '>', 100).orWhere('pinned', true);
+    })
+    .get();
+
+// write methods return the number of changed rows
+int changed = await Blog().where('status', 'draft').update(<String, dynamic>{'status': 'active'});
+int deleted = await Blog().where('status', 'spam').delete();
+
+// lock a row in a transaction
+await QueryBuilder.transaction(() async {
+  Blog blog = await Blog().lockForUpdate().findOrFail(1);
+  blog.status = 'archived';
+  await blog.save();
+});
 ```
 
 In a Dox app, start the ORM in a `DoxProvider`, so each isolate gets its own pool.
@@ -75,15 +99,19 @@ In a Dox app, start the ORM in a `DoxProvider`, so each isolate gets its own poo
 - Postgres and MySQL use the native Rust drivers (`dox_postgres_native`, `dox_mysql_native`). When the native library does not load, the app stops with an error that says why and how to fix it.
 - Models with `@Column`, timestamps, soft deletes, events and `hidden` fields.
 - Relations: `@HasOne`, `@HasMany`, `@BelongsTo`, `@ManyToMany`, with eager loading.
-- Query builder: `where`, `whereIn`, `join`, `groupBy`, `paginate`, raw SQL with bound values.
-- Transactions with `QueryBuilder.transaction()`.
+- Filter by relations: `whereHas`, `orWhereHas`, `whereDoesntHave`, `orWhereDoesntHave` and `has('posts', '>=', 3)`. Nested names like `posts.comments` work.
+- Query builder: `where` (a `null` value is `IS NULL` or `IS NOT NULL`), `whereIn`, `whereBetween`, `whereColumn`, `whereLike`, `whereExists`, `whereGroup`, `whereNot`, `when`, `join`, `groupBy`, `having`, `distinct`, `latest`, `paginate`, raw SQL with bound values.
+- Read helpers: `firstOrFail` and `findOrFail` (throw `ModelNotFoundException`), `hasRows`, `pluck`, `pluckMap`, `valueOf`, `chunk` and `chunkById`.
+- Aggregates: `count`, `sum`, `avg`, `min`, `max`, and `withCount`, `withSum`, `withMax` for relations.
+- Writes: `create` and `insert` return the new model or map. `update`, `delete`, `increment`, `decrement` and `upsert` return the number of changed rows. `firstOrCreate`, `firstOrNew` and `updateOrCreate`.
+- Transactions with `QueryBuilder.transaction()`, nested with savepoints, and row locks with `lockForUpdate()` and `sharedLock()`.
 - Schema builder for migrations (used by `dox_migration`).
 - DTO rules `@Unique` and `@Exists` that check the database.
 
 ## Documentation
 
 - [Database setup](https://dartondox.dev/latest/database/)
-- [Query builder](https://dartondox.dev/latest/database/query-builder/), [Models](https://dartondox.dev/latest/database/model/), [Transactions](https://dartondox.dev/latest/database/transactions/)
+- [Query builder](https://dartondox.dev/latest/database/query-builder/), [Models](https://dartondox.dev/latest/database/model/), [Query by relations](https://dartondox.dev/latest/database/model/relation-queries/), [Transactions](https://dartondox.dev/latest/database/transactions/)
 - [API reference](https://pub.dev/documentation/dox_orm/latest/)
 
 ## License

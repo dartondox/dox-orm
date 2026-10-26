@@ -1,3 +1,30 @@
+## 3.0.0-alpha.12
+
+- Breaking: `update()`, `delete()` and `forceDelete()` of a query return `Future<int>`: the number of changed rows. Postgres and SQLite count every row the where matched. MySQL and MariaDB count only the rows that really changed, so a row that already has the new values counts 0.
+- Breaking: `delete()` and `forceDelete()` of a model return `Future<int>`, not `Future<bool>`. It is 1 when the row was deleted, and 0 when the row was not there or a hook throws `CancelModelEvent`.
+- Breaking: `create()` and `insert()` return `Future<T>`: a model for a model query, a map for `QueryBuilder.table()`. Before, they returned `dynamic`, and `{}` when the new row could not be read. On MySQL, a table with no auto increment and no id in the data now gives back the data (as a map, or as a model made from it). The new row is read on a new query, so the where, the global scopes and the soft delete check of the query are not used.
+- Breaking: custom `DBDriver` classes must override the new `affectingStatement()` to use `update()`, `delete()`, `increment()` and `upsert()`. The default throws an `UnsupportedError`.
+- Breaking: `where('a', '=', null)` is now `"a" IS NULL`, and `where('a', '!=', null)` (or `<>`) is `"a" IS NOT NULL`. Before, they gave `"a" = '='` and `"a" = '!='`, so the query ran with wrong rows. Any other operator with `null` throws an `ArgumentError`. `where('a')` with no value throws an `ArgumentError` (it was `IS NULL`). The same for `orWhere()`.
+- Breaking: a model with a field or getter that has the name of a new query method (`min`, `max`, `sum`, `avg`, `latest`, `oldest`, `distinct`, `having`, `when`, `chunk`, `pluck`, `has`, ...) does not compile.
+- Fix: `update({})` sent `UPDATE "t" SET` and failed. Now it runs no query and returns 0.
+- Fix: `paginate(perPage: 0)` failed with `Infinity or NaN toInt`. Now a `perPage` below 1 throws an `ArgumentError`, and a `currentPage` below 1 is read as page 1.
+- Fix: params that the `onQuery` of a relation adds get the key prefix of the subquery, so they do not clash with the parent query in `withCount()`.
+- New `whereHas()`, `orWhereHas()`, `whereDoesntHave()`, `orWhereDoesntHave()` and `has(relation, [operator, count, where])`. They add an `EXISTS`, `NOT EXISTS` or `COUNT` subquery for a `hasOne`, `hasMany`, `belongsTo` or `manyToMany` relation. A name like `posts.comments` checks a relation of a relation. Soft deleted related rows do not count. A relation to the same table does not work yet.
+- New `whereGroup()`, `orWhereGroup()`, `whereNot()` and `orWhereNot()`: conditions in brackets, with a callback. Groups can nest.
+- New `whereBetween()`, `whereNotBetween()`, `whereColumn()`, `whereExists()`, `whereNotExists()`, `whereLike()` and `whereNotLike()`, each with an `or` form. `whereLike()` does not care about case by default (`ILIKE` on Postgres). `caseSensitive: true` uses `LIKE` on Postgres, `LIKE BINARY` on MySQL and `GLOB` on SQLite.
+- New `lockForUpdate()` and `sharedLock()`: `FOR UPDATE` and `FOR SHARE` on Postgres, `FOR UPDATE` and `LOCK IN SHARE MODE` on MySQL and MariaDB, nothing on SQLite (a SQLite transaction already takes the write lock). A lock lasts only inside `QueryBuilder.transaction()`. A locked `find()` does not use the find SQL cache.
+- New `firstOrFail()` and `findOrFail()`. They throw the new `ModelNotFoundException` (with `table`, `id` and `column`).
+- New `hasRows()` and `hasNoRows()`, `pluck()`, `pluckMap()` and `valueOf()`.
+- New `sum()`, `avg()`, `min()` and `max()`. They give `null` when no row matches, and throw a `StateError` with `groupBy()`.
+- New `distinct()`. `count()` then counts the distinct rows, and `sum()` and `avg()` use the distinct values.
+- New `having()`, `orHaving()`, `havingRaw()` and `orHavingRaw()`.
+- New `chunk()` and `chunkById()`. The callback returns `false` to stop.
+- New `latest()`, `oldest()`, `inRandomOrder()` and `when()`.
+- New `increment()` and `decrement()`, on a query and on a model. They run one `SET col = col + @n` query and return the changed rows. On a model they change only its row, and the model field gets the new value. They fire no events and do not set `updated_at`.
+- New `upsert(rows, uniqueBy, [updateColumns])`: `ON CONFLICT ... DO UPDATE` on Postgres and SQLite, `ON DUPLICATE KEY UPDATE` on MySQL and MariaDB. It returns the changed rows. The model form drops keys that `fillable` and `guarded` do not allow, and sets `created_at` and `updated_at`.
+- New `firstOrCreate()`, `firstOrNew()` and `updateOrCreate()`. The model forms go through `save()`, so the model events fire.
+- `insertMultiple()` docs say what it returns on each driver.
+
 ## 3.0.0-alpha.11
 
 - Version bump only, to match the other packages.
