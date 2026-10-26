@@ -1,4 +1,4 @@
-## Unreleased
+## 3.0.0-rc.1
 
 - Change: without `DATABASE_URL` and `DB_CONNECTION`, the migrations now use SQLite with the file `db/dox.sqlite`. This is the same default as the app template. Before, they used Postgres with the database `dox`, so with an empty `.env` the app and the migrations used different databases. Postgres and MySQL still use `dox` when no database name is set. An unknown `DB_CONNECTION` now throws an error.
 - Fix: two app instances that start at the same time no longer run the same migrations twice. A run now holds a lock. Postgres uses an advisory lock. MySQL and MariaDB use `GET_LOCK`. SQLite uses the file `<database>.lock` next to the database file. The other runs wait, then see that the migrations are done. The lock is released when the run ends or fails.
