@@ -28,9 +28,9 @@ M? belongsTo<T, M>(
   foreignKey = foreignKey ?? owner.foreignKeyName;
 
   if (relationSubquery) {
-    owner.helper.keyPrefix = subqueryKeyPrefix;
+    startSubquery(owner, foreign);
     owner.whereRaw(
-      subqueryMatch(owner, '${owner.tableName}.$localKey', foreign, foreignKey),
+      subqueryMatch(owner, '${tableRef(owner)}.$localKey', foreign, foreignKey),
     );
   } else {
     /// each owner once: no join to the children, so an owner with many

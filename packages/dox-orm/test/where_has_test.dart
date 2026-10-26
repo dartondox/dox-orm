@@ -400,4 +400,76 @@ void main() async {
       );
     });
   });
+
+  group('whereHas on the same table |', () {
+    Future<List<int?>> sections(QueryBuilder<Section> q) async {
+      return ids(await q.orderBy('id').get());
+    }
+
+    setUpAll(() async {
+      await Schema().dropIfExists('sections');
+      await Schema().create('sections', (Table table) {
+        table.id();
+        table.string('name');
+        table.integer('parent_id').nullable();
+        table.softDeletes();
+      });
+
+      /// a > b > c, d has only a deleted child e
+      await Section().insertMultiple(<Map<String, dynamic>>[
+        <String, dynamic>{'name': 'a', 'parent_id': null},
+        <String, dynamic>{'name': 'b', 'parent_id': 1},
+        <String, dynamic>{'name': 'c', 'parent_id': 2},
+        <String, dynamic>{'name': 'd', 'parent_id': null},
+        <String, dynamic>{'name': 'e', 'parent_id': 4},
+      ]);
+      await Section().where('id', 5).delete();
+    });
+
+    test('hasMany', () async {
+      expect(await sections(Section().whereHas('children')), <int>[1, 2]);
+      expect(await sections(Section().whereDoesntHave('children')), <int>[
+        3,
+        4,
+      ]);
+      expect(
+        await sections(
+          Section().whereHas('children', (QueryBuilder<dynamic> q) {
+            q.where('name', 'c');
+          }),
+        ),
+        <int>[2],
+      );
+      expect(await sections(Section().has('children', '=', 0)), <int>[3, 4]);
+    });
+
+    test('belongsTo', () async {
+      expect(await sections(Section().whereHas('parent')), <int>[2, 3]);
+      expect(await sections(Section().whereDoesntHave('parent')), <int>[1, 4]);
+      expect(
+        await sections(
+          Section().whereHas('parent', (QueryBuilder<dynamic> q) {
+            q.where('name', 'a');
+          }),
+        ),
+        <int>[2],
+      );
+    });
+
+    test('nested relation names', () async {
+      expect(await sections(Section().whereHas('children.children')), <int>[1]);
+      expect(await sections(Section().whereHas('parent.parent')), <int>[3]);
+    });
+
+    test('withCount', () async {
+      List<Section> list = await Section()
+          .withCount('children')
+          .orderBy('id')
+          .get();
+      expect(
+        <dynamic>[for (Section s in list) s.countOf('children')],
+        <int>[1, 1, 0, 0],
+      );
+    });
+  });
 }

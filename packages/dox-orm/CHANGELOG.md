@@ -1,3 +1,7 @@
+## 3.0.0-alpha.13
+
+- Fix: `whereHas()`, `whereDoesntHave()`, `has()` and `withCount()` now work on a relation to the same table, like the parent or the children of a category. Before, the subquery compared each row with itself, so the result was wrong. Now the subquery gives its table its own name.
+
 ## 3.0.0-alpha.12
 
 - Breaking: `update()`, `delete()` and `forceDelete()` of a query return `Future<int>`: the number of changed rows. Postgres and SQLite count every row the where matched. MySQL and MariaDB count only the rows that really changed, so a row that already has the new values counts 0.

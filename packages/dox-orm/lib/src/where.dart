@@ -49,7 +49,8 @@ mixin Where<T> implements SharedMixin<T> {
     /// wrap user conditions in brackets so an OR can not skip the
     /// soft delete check.
     if (isSoftDeletes && !withTrashed) {
-      String softDelete = "${helper.wrap('$tableName.deleted_at')} IS NULL";
+      String softDelete =
+          "${helper.wrap('${tableAlias ?? tableName}.deleted_at')} IS NULL";
       if (wheres == null) {
         return " WHERE $softDelete";
       }

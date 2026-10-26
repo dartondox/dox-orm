@@ -84,6 +84,11 @@ class QueryBuilder<T>
   @override
   String tableName = '';
 
+  /// the name of the table in a whereHas() or withCount() subquery on
+  /// the same table as the parent query, like a parent category
+  @override
+  String? tableAlias;
+
   @override
   void addSubstitutionValues(String key, dynamic value) {
     String index = key.replaceFirst('@', '');

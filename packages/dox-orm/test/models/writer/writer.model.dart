@@ -71,3 +71,23 @@ class Remark extends RemarkGenerator {
   @Column()
   int? articleId;
 }
+
+/// a model with relations to its own table, for whereHas() and
+/// withCount() on the same table
+@DoxModel(table: 'sections', softDelete: true, timestamps: false)
+class Section extends SectionGenerator {
+  @Column()
+  String? name;
+
+  @Column()
+  int? parentId;
+
+  @Column(name: 'deleted_at')
+  DateTime? deletedAt;
+
+  @BelongsTo(Section, foreignKey: 'parent_id')
+  Section? parent;
+
+  @HasMany(Section, foreignKey: 'parent_id')
+  List<Section> children = <Section>[];
+}
