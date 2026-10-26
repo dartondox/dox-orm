@@ -24,8 +24,31 @@ void main() {
       expect(c.isUnixSocket, isTrue);
     });
 
+    /// the same defaults as the app template, so an empty .env gives the
+    /// same database to the app and to the migrations
+    test('empty env is sqlite with db/dox.sqlite', () {
+      ConnectionConfig c = DbConnection.config(<String, String>{});
+      expect(c.driver, Driver.sqlite);
+      expect(c.database, 'db/dox.sqlite');
+
+      ConnectionConfig named = DbConnection.config(<String, String>{
+        'DB_NAME': 'data/app.sqlite',
+      });
+      expect(named.driver, Driver.sqlite);
+      expect(named.database, 'data/app.sqlite');
+    });
+
+    test('unknown DB_CONNECTION throws', () {
+      expect(
+        () => DbConnection.config(<String, String>{'DB_CONNECTION': 'oracle'}),
+        throwsArgumentError,
+      );
+    });
+
     test('DB_* keys and their defaults', () {
-      ConnectionConfig pg = DbConnection.config(<String, String>{});
+      ConnectionConfig pg = DbConnection.config(<String, String>{
+        'DB_CONNECTION': 'postgres',
+      });
       expect(pg.driver, Driver.postgres);
       expect(pg.port, 5432);
       expect(pg.user, 'postgres');

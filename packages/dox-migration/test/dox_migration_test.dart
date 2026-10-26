@@ -492,6 +492,42 @@ DROP TABLE IF EXISTS mig_tag
         expect(status.last.ran, true);
         await Migrator(migrations: dartMigrations).reset();
       });
+
+      /// many app instances start at once: the lock lets one run the
+      /// migrations, the others wait and then see they are done
+      test('two runners at once run each migration once', () async {
+        SlowUserTable.runs = 0;
+        List<MigrationEntry> list = <MigrationEntry>[
+          MigrationEntry('2023_01_01_000000_user', SlowUserTable()),
+        ];
+        await Future.wait(<Future<void>>[
+          Migrator(migrations: list).migrate(),
+          Migrator(migrations: list).migrate(),
+        ]);
+        expect(SlowUserTable.runs, 1);
+        expect((await migrations()).length, 1);
+        expect(await tableExists('mig_user'), true);
+      });
+
+      test('a failed run releases the lock', () async {
+        await expectLater(
+          Migrator(
+            migrations: <MigrationEntry>[
+              MigrationEntry('2023_01_01_000000_fail', FailingMigration()),
+            ],
+          ).migrate(),
+          throwsA(isA<MigrationException>()),
+        );
+        await db.execute('DROP TABLE IF EXISTS mig_fail');
+
+        /// it would wait for ever when the lock was still held
+        await Migrator(
+          migrations: <MigrationEntry>[
+            MigrationEntry('2023_01_01_000000_user', CreateUserTable()),
+          ],
+        ).migrate().timeout(const Duration(seconds: 10));
+        expect((await migrations()).length, 1);
+      });
     });
   }
 }
@@ -567,6 +603,18 @@ class FailingMigration extends Migration {
 
   @override
   Future<void> down(Schema schema) => schema.dropIfExists('mig_fail');
+}
+
+/// waits a bit in up(), so a second runner tries to run at the same time
+class SlowUserTable extends CreateUserTable {
+  static int runs = 0;
+
+  @override
+  Future<void> up(Schema schema) async {
+    runs++;
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    await super.up(schema);
+  }
 }
 
 class NoTransaction extends CreateUserTable {

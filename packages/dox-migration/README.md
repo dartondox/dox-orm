@@ -67,6 +67,8 @@ await Dox().startServer();
 - Each migration runs in one transaction. On MySQL, `CREATE`, `ALTER` and `DROP` can not be undone.
 - The migration list is compiled in, so an AOT binary can migrate.
 - Reads the database settings from `DATABASE_URL`, or `DB_CONNECTION`, `DB_HOST`, ... A real env var wins over `.env`.
+- With no database settings, it uses SQLite with `db/dox.sqlite`, the same as the app template.
+- A lock lets only one app instance run the migrations at a time. The others wait.
 
 ## Documentation
 

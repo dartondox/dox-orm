@@ -1,3 +1,8 @@
+## Unreleased
+
+- Fix: `create()` of a model now works like `save()` on a new model. Before, a model without hooks wrote the raw map. So `beforeSave` and the casts did not run, and `created_at` and `updated_at` were not set. Now `create()` fills a new model from the map and saves it. It fires the model events (saving, creating, created, saved), and a hook can cancel it. It sets `created_at` and `updated_at`, unless the model has `timestamps: false`. A value for them in the map is kept. Only `@Column` fields are saved. `insert()`, `firstOrCreate()` and `updateOrCreate()` of a model use it too. `QueryBuilder.table().create()` and `insert()` still write the map as it is.
+- Fix: `firstOrNew()` and `create()` no longer fail on a model with a field that is not nullable, like `bool done = false`, when the map has no value for it. The field keeps its default.
+
 ## 3.0.0-alpha.14
 
 - Fix: when many isolates open a new SQLite file at the same time (the first server start), some failed with `SqliteException(5): database is locked` on `PRAGMA journal_mode = WAL`. SQLite does not use `busy_timeout` for this step. Now it retries until `busyTimeout` (5 seconds by default) has passed.

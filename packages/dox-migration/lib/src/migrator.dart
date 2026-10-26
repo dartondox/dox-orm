@@ -159,15 +159,20 @@ class Migrator {
     return step;
   }
 
-  /// one driver for the whole run
+  /// one driver for the whole run. the run holds the migration lock,
+  /// see [DbConnection.withLock].
   Future<T> _withDriver<T>(Future<T> Function(DbConnection d) task) async {
     DBDriver? given = connection;
     DbConnection conn = DbConnection(
       given ?? (config ?? DbConnection.config(loadEnv())).createDriver(),
     );
     try {
-      await createMigrationTableIfNotExist(conn);
-      return await task(conn);
+      /// the task reads which migrations ran after it gets the lock, so
+      /// a runner that waited does not run them again
+      return await conn.withLock(() async {
+        await createMigrationTableIfNotExist(conn);
+        return await task(conn);
+      });
     } finally {
       /// a given driver belongs to the caller
       if (given == null) await conn.close();

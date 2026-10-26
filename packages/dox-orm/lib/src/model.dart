@@ -130,20 +130,8 @@ class Model<T> extends QueryBuilder<T> {
     String? createdAtColumn = timestampsColumn['created_at'];
     String? updatedAtColumn = timestampsColumn['updated_at'];
 
-    Map<String, dynamic> values = toMap(removeRelations: true);
-    DateTime currentTime = now();
     if (!exists) {
-      values.removeWhere((String key, dynamic value) => value == null);
-
-      if (createdAtColumn != null) {
-        values[createdAtColumn] = currentTime;
-        createdAt = values[createdAtColumn];
-      }
-
-      if (updatedAtColumn != null) {
-        values[updatedAtColumn] = currentTime;
-        updatedAt = values[updatedAtColumn];
-      }
+      Map<String, dynamic> values = _newRowValues();
 
       /// only the new id is needed, so no select of the new row
       List<Map<String, dynamic>> res = await _newQuery<dynamic>()
@@ -154,6 +142,8 @@ class Model<T> extends QueryBuilder<T> {
           (res.isNotEmpty ? res.first[primaryKey] : null) ?? values[primaryKey];
       _savedValues = <String, dynamic>{...values, primaryKey: tempIdValue};
     } else {
+      Map<String, dynamic> values = toMap(removeRelations: true);
+      DateTime currentTime = now();
       dynamic id = values[primaryKey];
       values.remove(primaryKey);
       values.remove(createdAtColumn);
@@ -177,6 +167,26 @@ class Model<T> extends QueryBuilder<T> {
 
       await _newQuery<T>(this).where(primaryKey, id).update(values);
     }
+  }
+
+  /// the columns to insert for this new model: no null values, and
+  /// created_at and updated_at set to now when they have no value yet.
+  /// It sets the createdAt and updatedAt fields too.
+  Map<String, dynamic> _newRowValues() {
+    String? createdAtColumn = timestampsColumn['created_at'];
+    String? updatedAtColumn = timestampsColumn['updated_at'];
+    Map<String, dynamic> values = toMap(removeRelations: true);
+    values.removeWhere((String key, dynamic value) => value == null);
+    DateTime currentTime = now();
+    if (createdAtColumn != null && values[createdAtColumn] == null) {
+      values[createdAtColumn] = currentTime;
+      createdAt = currentTime;
+    }
+    if (updatedAtColumn != null && values[updatedAtColumn] == null) {
+      values[updatedAtColumn] = currentTime;
+      updatedAt = currentTime;
+    }
+    return values;
   }
 
   /// true when the model value [a] is the same as the saved value [b].
@@ -723,25 +733,34 @@ class Model<T> extends QueryBuilder<T> {
   /// });
   /// ````
   ///
-  /// When the model has events, create() fills a new model from [data]
-  /// and calls save(), so the hooks run. Only @Column fields are saved
-  /// then. When a hook cancels, it returns the unsaved model (its id is
-  /// null).
+  /// create() works like save() on a new model. It fills a new model
+  /// from [data], so only @Column fields are saved, and beforeSave and
+  /// the casts run. It sets created_at and updated_at when the model has
+  /// timestamps and [data] has no value for them. Null values are not
+  /// sent, so the column default is used.
+  ///
+  /// When the model has events, it calls save(), so the hooks run. When
+  /// a hook cancels, it returns the unsaved model (its id is null).
   ///
   /// It never gives a map. When the new row can not be read (MySQL, no
   /// auto increment and no id in [data]), it gives a model made from
   /// [data], see [insert].
   @override
   Future<T> create(Map<String, dynamic> data) async {
-    data = _onlyFillable(data);
-    if (!_eventsOn) return await super.insert(data);
-    Model<T> model = _newModel(data);
+    Model<T> model = _newModel(_onlyFillable(data));
+    if (!_eventsOn) return await super.insert(model._newRowValues());
     if (!await model.save()) return model as T;
     return await _readBack(model);
   }
 
   /// a new model, not saved yet, made from [data]
   Model<T> _newModel(Map<String, dynamic> data) {
+    /// a column that is not in [data] takes the value of this new model,
+    /// like `bool done = false`. fromMap() needs a value for a field
+    /// that is not nullable.
+    if (!exists) {
+      data = <String, dynamic>{...columnsToMap()..remove(primaryKey), ...data};
+    }
     Model<T> model = fromMap(_dateTimesToString(data)) as Model<T>;
     model.debug(_debug);
     model.connection = connection;
@@ -773,8 +792,11 @@ class Model<T> extends QueryBuilder<T> {
     Map<String, dynamic> where, [
     Map<String, dynamic> values = const <String, dynamic>{},
   ]) async {
-    T found = await super.firstOrNew(where, values);
-    if ((found as Model<T>).exists) return found;
+    for (MapEntry<String, dynamic> e in where.entries) {
+      this.where(e.key, e.value);
+    }
+    T? found = await getFirst();
+    if (found != null) return found;
     return _newModel(_onlyFillable(<String, dynamic>{...where, ...values}))
         as T;
   }
