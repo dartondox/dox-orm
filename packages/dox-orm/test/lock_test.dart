@@ -36,6 +36,15 @@ class SqlOnlyDriver extends DBDriver {
   }
 
   @override
+  Future<int> affectingStatement(
+    String query, {
+    Map<String, dynamic>? substitutionValues,
+  }) async {
+    sqls.add(query);
+    return 0;
+  }
+
+  @override
   Future<R> transaction<R>(Future<R> Function() callback) => callback();
 }
 
