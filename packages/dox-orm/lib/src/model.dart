@@ -266,14 +266,17 @@ class Model<T> extends QueryBuilder<T> {
   /// await blog!.increment('views', 2);
   /// ```
   ///
-  /// On a model from the table it changes only that row. Keys of [extra]
-  /// that [fillable] and [guarded] do not allow are dropped. It fires no
-  /// model events and does not set updated_at.
+  /// On a model from the table it changes only that row, and it sets
+  /// the Dart field of [column] (and of the [extra] columns) to the new
+  /// value, with [setColumnValue]. A later save() does not send the old
+  /// value back. Keys of [extra] that [fillable] and [guarded] do not
+  /// allow are dropped. It fires no model events and does not set
+  /// updated_at.
   ///
-  /// ponytail: the Dart field of the model is not changed, because a
-  /// model has no setter by column name. Read the model again to see the
-  /// new value. save() does not send the old value back, because the
-  /// field did not change.
+  /// ponytail: a model made by an old dox_builder has no
+  /// [setColumnValue], so its field keeps the old value. Run build_runner
+  /// again, or read the model again to see the new value. A field that
+  /// is null (eg. not in a select()) stays null.
   @override
   Future<int> increment(
     String column, [
@@ -307,15 +310,68 @@ class Model<T> extends QueryBuilder<T> {
   ) {
     extra = _onlyFillable(extra);
     if (tempIdValue != null) {
-      QueryBuilder<T> row = _thisRecord();
-      return up
-          ? row.increment(column, amount, extra)
-          : row.decrement(column, amount, extra);
+      return _stepThisRecord(column, amount, extra, up);
     }
     return up
         ? super.increment(column, amount, extra)
         : super.decrement(column, amount, extra);
   }
+
+  /// increment or decrement this row, then set the fields to the new
+  /// values when the row changed
+  Future<int> _stepThisRecord(
+    String column,
+    num amount,
+    Map<String, dynamic> extra,
+    bool up,
+  ) async {
+    QueryBuilder<T> row = _thisRecord();
+    int count = up
+        ? await row.increment(column, amount, extra)
+        : await row.decrement(column, amount, extra);
+    if (count == 0) return count;
+
+    Map<String, dynamic> values = <String, dynamic>{...extra};
+    dynamic old = columnsToMap()[column];
+    if (old is num) {
+      /// int + int stays an int, so an int field takes it
+      values[column] = up ? old + amount : old - amount;
+    }
+    _setSavedColumns(values);
+    return count;
+  }
+
+  /// set the fields of [values] (column name => value) and mark them as
+  /// saved, so save() does not send them again. a column that
+  /// [setColumnValue] does not take is skipped.
+  void _setSavedColumns(Map<String, dynamic> values) {
+    List<String> done = <String>[
+      for (MapEntry<String, dynamic> e in values.entries)
+        if (setColumnValue(e.key, e.value)) e.key,
+    ];
+
+    /// a model that was not read or saved keeps exists false
+    if (done.isEmpty || !exists) return;
+    Map<String, dynamic> map = columnsToMap();
+    _savedValues = <String, dynamic>{
+      ...(_savedValues ?? originalMap),
+      for (String key in done) key: map[key],
+    };
+  }
+
+  /// set the Dart field of [column] (the column name, like `view_count`)
+  /// to [value]. It returns true when it set the field, false when the
+  /// model has no such column or [value] is not of the field type.
+  ///
+  /// ```
+  /// blog.setColumnValue('view_count', 10); // blog.viewCount = 10
+  /// ```
+  ///
+  /// The generator (dox_builder) overrides it for each @Column. The
+  /// default sets nothing and returns false, so models made by an old
+  /// generator work as before. increment() and decrement() on a model
+  /// use it.
+  bool setColumnValue(String column, dynamic value) => false;
 
   /// a new query on this row only, so the query state of this model
   /// (where, values of an old query) is not used again
