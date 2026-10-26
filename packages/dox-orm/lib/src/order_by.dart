@@ -1,3 +1,4 @@
+import 'drivers/db_driver.dart';
 import 'query_builder.dart';
 import 'shared_mixin.dart';
 
@@ -38,5 +39,36 @@ mixin OrderBy<T> implements SharedMixin<T> {
   QueryBuilder<T> orderByRaw(String query) {
     (_orderBy ??= <String>[]).add(query);
     return queryBuilder;
+  }
+
+  /// newest first: order by [column] desc, `created_at` by default
+  ///
+  /// ```
+  /// Blog? blog = await Blog().latest().getFirst();
+  /// List<Blog> blogs = await Blog().latest('updated_at').get();
+  /// ```
+  QueryBuilder<T> latest([String column = 'created_at']) {
+    return orderBy(column, 'desc');
+  }
+
+  /// oldest first: order by [column] asc, `created_at` by default
+  ///
+  /// ```
+  /// Blog? blog = await Blog().oldest().getFirst();
+  /// ```
+  QueryBuilder<T> oldest([String column = 'created_at']) {
+    return orderBy(column, 'asc');
+  }
+
+  /// random order, `RANDOM()` on postgres and sqlite, `RAND()` on mysql
+  ///
+  /// ```
+  /// Blog? blog = await Blog().inRandomOrder().getFirst();
+  /// ```
+  /// ponytail: it sorts the whole table, slow on big tables
+  QueryBuilder<T> inRandomOrder() {
+    return orderByRaw(
+      dbDriver.getName() == Driver.mysql ? 'RAND()' : 'RANDOM()',
+    );
   }
 }

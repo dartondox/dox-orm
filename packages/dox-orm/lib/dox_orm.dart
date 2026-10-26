@@ -14,6 +14,7 @@ export 'src/drivers/statement_cache.dart';
 export 'src/main.dart';
 export 'src/model.dart';
 export 'src/model_events.dart';
+export 'src/model_not_found_exception.dart';
 export 'src/printers/console_printer.dart';
 export 'src/printers/file_printer.dart';
 export 'src/printers/pretty_printer.dart';
