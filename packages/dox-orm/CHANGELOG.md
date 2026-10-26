@@ -1,4 +1,4 @@
-## Unreleased
+## 3.0.0-alpha.14
 
 - Fix: when many isolates open a new SQLite file at the same time (the first server start), some failed with `SqliteException(5): database is locked` on `PRAGMA journal_mode = WAL`. SQLite does not use `busy_timeout` for this step. Now it retries until `busyTimeout` (5 seconds by default) has passed.
 
