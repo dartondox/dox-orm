@@ -1,6 +1,6 @@
 name: Release
 
-# Push a tag like v3.0.0-alpha.12 to publish dox_orm
+# Push a tag like v<version> to publish dox_orm
 # and dox_migration to pub.dev, in dependency order. A package that is
 # already on pub.dev with this version is skipped, so a failed release can
 # be run again. The tag must match the root pubspec version and be on main.
