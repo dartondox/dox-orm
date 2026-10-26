@@ -6,9 +6,8 @@ The database packages of [Dox](https://dartondox.dev), a web backend framework f
 | --- | --- |
 | [`dox_orm`](packages/dox-orm) | Models, relations and a query builder for PostgreSQL, MySQL, MariaDB and SQLite. |
 | [`dox_migration`](packages/dox-migration) | Database migrations and seeders. |
-| [`dox_query_builder`](packages/dox-query-builder) | Old name of `dox_orm`. It only re-exports `dox_orm`. |
 
-All three share one version. Docs: [dartondox.dev](https://dartondox.dev/latest/database/).
+Both share one version. Docs: [dartondox.dev](https://dartondox.dev/latest/database/).
 
 ## Local development
 
