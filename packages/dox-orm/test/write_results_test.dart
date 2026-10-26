@@ -59,6 +59,26 @@ class Counter extends Model<Counter> {
   @override
   Map<String, dynamic> convertToMap(dynamic i) => (i as Counter).columnsToMap();
 
+  /// what dox_builder makes for each @Column
+  @override
+  bool setColumnValue(String column, dynamic value) {
+    switch (column) {
+      case 'id':
+        if (value is! int?) return false;
+        id = value;
+        return true;
+      case 'name':
+        if (value is! String?) return false;
+        name = value;
+        return true;
+      case 'views':
+        if (value is! int?) return false;
+        views = value;
+        return true;
+    }
+    return false;
+  }
+
   void _log(String event) {
     log.add(event);
     if (cancelOn == event) throw CancelModelEvent(event);
@@ -82,6 +102,39 @@ class Counter extends Model<Counter> {
   void onDeleted() => _log('deleted');
   @override
   void onForceDeleting() => _log('forceDeleting');
+}
+
+/// a model on the same table as [Counter] with no setColumnValue(), like
+/// a model made by an old dox_builder
+class PlainCounter extends Model<PlainCounter> {
+  int? get id => tempIdValue as int?;
+  set id(int? value) => tempIdValue = value;
+
+  String? name;
+  int? views;
+
+  @override
+  String get tableName => 'write_counters';
+
+  @override
+  List<String> get tableColumns => const <String>['id', 'name', 'views'];
+
+  @override
+  PlainCounter fromMap(Map<String, dynamic> m) => PlainCounter()
+    ..id = m['id'] as int?
+    ..name = m['name'] as String?
+    ..views = m['views'] as int?;
+
+  @override
+  Map<String, dynamic> columnsToMap() => <String, dynamic>{
+    'id': id,
+    'name': name,
+    'views': views,
+  };
+
+  @override
+  Map<String, dynamic> convertToMap(dynamic i) =>
+      (i as PlainCounter).columnsToMap();
 }
 
 /// a soft delete model
@@ -336,18 +389,67 @@ void main() async {
       Counter? a = await Counter().where('name', 'a').getFirst();
       expect(await a!.increment('views', 3), 1);
       expect(await _views('a'), 3);
+      expect(a.views, 3);
 
       /// only this row changed
       expect(await _views('b'), 0);
 
       expect(await a.decrement('views', 1, <String, dynamic>{'secret': 1}), 1);
       expect(await _views('a'), 2);
+      expect(a.views, 2);
 
       /// save() does not send the old value of the field back
       a.name = 'a2';
       await a.save();
       expect(await _views('a2'), 2);
       expect(Counter.log, isNot(contains('creating')));
+    });
+
+    test('increment on a model sets the fields of extra', () async {
+      Counter? a = await Counter().where('name', 'a').getFirst();
+      expect(
+        await a!.increment('views', 2, <String, dynamic>{'name': 'hot'}),
+        1,
+      );
+      expect(a.views, 2);
+      expect(a.name, 'hot');
+
+      /// another process changes the row. save() with no change sends
+      /// nothing, so it does not write views 2 back.
+      await _counters().where('name', 'hot').update(<String, dynamic>{
+        'views': 50,
+      });
+      await a.save();
+      expect(await _views('hot'), 50);
+    });
+
+    test('increment on a model whose field was not read', () async {
+      Counter? a = await Counter().select('id').where('name', 'a').getFirst();
+      expect(await a!.increment('views', 4), 1);
+      expect(await _views('a'), 4);
+
+      /// the old value is not known, so the field stays null
+      expect(a.views, isNull);
+    });
+
+    test('increment of a row that is gone changes no field', () async {
+      Counter? a = await Counter().where('name', 'a').getFirst();
+      await _counters().where('name', 'a').delete();
+      expect(await a!.increment('views'), 0);
+      expect(a.views, 0);
+    });
+
+    test('a model with no setColumnValue keeps its field', () async {
+      PlainCounter? a = await PlainCounter().where('name', 'a').getFirst();
+      expect(await a!.increment('views', 3), 1);
+      expect(await _views('a'), 3);
+      expect(a.views, 0);
+      expect(a.setColumnValue('views', 3), false);
+
+      /// save() does not send the old value back
+      a.name = 'a2';
+      await a.save();
+      expect(await _views('a2'), 3);
     });
 
     test('upsert inserts and updates', () async {
