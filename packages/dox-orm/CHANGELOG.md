@@ -21,6 +21,7 @@
 - New `chunk()` and `chunkById()`. The callback returns `false` to stop.
 - New `latest()`, `oldest()`, `inRandomOrder()` and `when()`.
 - New `increment()` and `decrement()`, on a query and on a model. They run one `SET col = col + @n` query and return the changed rows. On a model they change only its row, and the model field gets the new value. They fire no events and do not set `updated_at`.
+- New `Model.setColumnValue(column, value)`: sets a field by its column name. `dox_builder` writes it for every model, so run `build_runner` again after you update. Models made by an older `dox_builder` still work, but `increment()` does not change their field.
 - New `upsert(rows, uniqueBy, [updateColumns])`: `ON CONFLICT ... DO UPDATE` on Postgres and SQLite, `ON DUPLICATE KEY UPDATE` on MySQL and MariaDB. It returns the changed rows. The model form drops keys that `fillable` and `guarded` do not allow, and sets `created_at` and `updated_at`.
 - New `firstOrCreate()`, `firstOrNew()` and `updateOrCreate()`. The model forms go through `save()`, so the model events fire.
 - `insertMultiple()` docs say what it returns on each driver.
