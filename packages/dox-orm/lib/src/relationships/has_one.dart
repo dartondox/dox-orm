@@ -25,6 +25,7 @@ M? hasOne<T, M>(
   m.connection ??= owner.connection;
 
   if (relationSubquery) {
+    m.helper.keyPrefix = subqueryKeyPrefix;
     m.whereRaw(subqueryMatch(m, '${m.tableName}.$foreignKey', owner, localKey));
   } else {
     m.select('*, $foreignKey as _owner_id').whereIn(foreignKey, ids);

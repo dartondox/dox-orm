@@ -21,6 +21,7 @@ M? manyToMany<T, M>(
   Model<T> local = list.first;
   Model<M> related = model();
   related.connection ??= local.connection;
+  if (relationSubquery) related.helper.keyPrefix = subqueryKeyPrefix;
 
   localKey = localKey ?? local.primaryKey;
   relatedKey = relatedKey ?? related.primaryKey;
