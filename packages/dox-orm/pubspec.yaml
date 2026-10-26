@@ -1,6 +1,6 @@
 name: dox_orm
 description: PostgreSQL, MySQL, MariaDB and SQLite query builder, Support Model, Where, orWhere, Find, Join, softDeletes, Debugging and many mores.
-version: 3.0.0-alpha.11
+version: 3.0.0-alpha.12
 repository: https://github.com/dartondox/dox-orm
 homepage: https://dartondox.dev
 
