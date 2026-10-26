@@ -15,7 +15,9 @@ The repo is a [Dart pub workspace](https://dart.dev/tools/pub/workspaces).
 One `dart pub get` at the root links all packages.
 
 To use the Dox packages next to this repo (not pub.dev), clone
-[dartondox/dox](https://github.com/dartondox/dox) into `../dox` and add a
+[dartondox/dox](https://github.com/dartondox/dox) into `../dox` and
+[dartondox/dox-validation](https://github.com/dartondox/dox-validation)
+into `../dox-validation`, and add a
 `pubspec_overrides.yaml` at the root. It is in `.gitignore`:
 
 ```yaml
@@ -25,7 +27,7 @@ dependency_overrides:
   dox_builder:
     path: ../dox/packages/dox-builder
   dox_validation:
-    path: ../dox/packages/dox-validation
+    path: ../dox-validation
 ```
 
 ## Tests
