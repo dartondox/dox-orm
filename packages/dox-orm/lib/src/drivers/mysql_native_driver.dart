@@ -114,6 +114,16 @@ class MysqlNativeDriver extends DBDriver {
     return _run(query, substitutionValues, false);
   }
 
+  /// the rows that really changed, see [DBDriver.affectingStatement]
+  @override
+  Future<int> affectingStatement(
+    String query, {
+    Map<String, dynamic>? substitutionValues,
+  }) async {
+    MysqlNativeResult result = await _run(query, substitutionValues, false);
+    return result.affectedRows;
+  }
+
   /// one pooled connection runs the whole transaction.
   /// note: in mysql, schema changes (create/alter/drop table) commit the
   /// transaction right away, they can not be rolled back.

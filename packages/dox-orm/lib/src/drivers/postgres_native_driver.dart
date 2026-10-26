@@ -94,6 +94,24 @@ class PostgresNativeDriver extends DBDriver {
     return pool.query(query, parameters: substitutionValues, transaction: _tx);
   }
 
+  /// ponytail: the native result has no row count, so the query runs in
+  /// a CTE with `RETURNING 1` and the rows are counted. [query] must not
+  /// have its own RETURNING.
+  @override
+  Future<int> affectingStatement(
+    String query, {
+    Map<String, dynamic>? substitutionValues,
+  }) async {
+    PgNativeResult result = await pool.query(
+      'WITH dox_affected AS ($query RETURNING 1) '
+      'SELECT count(*) AS count FROM dox_affected',
+      parameters: substitutionValues,
+      transaction: _tx,
+    );
+    dynamic count = result.rows.first['count'];
+    return count is int ? count : int.parse('$count');
+  }
+
   @override
   Future<R> transaction<R>(Future<R> Function() callback) async {
     Map<PgNativePool, int>? open =

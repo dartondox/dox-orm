@@ -120,6 +120,30 @@ class SqliteDriver extends DBDriver {
     return _toMapList(db, sql, result);
   }
 
+  /// sqlite counts the rows the query matched, not the rows changed by
+  /// triggers or foreign key actions
+  @override
+  Future<int> affectingStatement(
+    String query, {
+    Map<String, dynamic>? substitutionValues,
+  }) async {
+    Database db = await _getConnection();
+    var (String sql, List<Object?> params) = toPositionalParams(
+      query,
+      substitutionValues,
+      _toSqliteValue,
+    );
+    PreparedStatement statement = _statement(db, sql);
+    try {
+      statement.execute(params);
+    } finally {
+      statement.reset();
+    }
+
+    /// sqlite3 is sync, so no other query ran since the execute
+    return db.updatedRows;
+  }
+
   /// only run query
   @override
   Future<void> execute(
