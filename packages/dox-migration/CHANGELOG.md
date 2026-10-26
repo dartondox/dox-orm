@@ -1,3 +1,7 @@
+## 3.0.0
+
+- The first stable release.
+
 ## 3.0.0-rc.1
 
 - Change: without `DATABASE_URL` and `DB_CONNECTION`, the migrations now use SQLite with the file `db/dox.sqlite`. This is the same default as the app template. Before, they used Postgres with the database `dox`, so with an empty `.env` the app and the migrations used different databases. Postgres and MySQL still use `dox` when no database name is set. An unknown `DB_CONNECTION` now throws an error.
