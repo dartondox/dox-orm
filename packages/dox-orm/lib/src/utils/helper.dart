@@ -207,8 +207,8 @@ class QueryBuilderHelper<T> {
     String snakeCase = '';
     for (int i = 0; i < input.length; i++) {
       String char = input[i];
-      // Check if the current character is uppercase
-      if (char == char.toUpperCase() && i > 0) {
+      // only letters have an upper case: digits and `_` stay as they are
+      if (char != char.toLowerCase() && i > 0) {
         snakeCase += '_'; // Add an underscore if it's uppercase and not the first character
       }
       snakeCase += char.toLowerCase(); // Convert the character to lowercase and add it to the result
