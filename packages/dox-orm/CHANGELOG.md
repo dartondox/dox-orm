@@ -1,4 +1,4 @@
-## Unreleased
+## 3.0.1
 
 - Faster: `paginate()` runs the count query and the page query at the same time, on two connections. One page now waits for one database round trip, not two. In a transaction, and on SQLite, they still run one after the other.
 - Faster: eager loading of a `belongsTo` relation reads the foreign key of each model once, not twice.
