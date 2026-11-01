@@ -301,6 +301,40 @@ void main() async {
         expect(rows.length, 2);
       });
 
+      test('every write matches ids the same way', () async {
+        Future<int> rowCount() async => (await QueryBuilder.table(
+          'artist_song',
+        ).where('artist_id', artist.id).get()).length;
+
+        /// attach keeps one of `1`, `'01'` and `1.0`
+        await artist.attach('songs', <dynamic>[1, '01', 1.0, 2.0]);
+        expect(await rowCount(), 2);
+        expect(await songIds(), <int>[1, 2]);
+
+        /// a whole double works on every database, Postgres too
+        expect(
+          await artist.updateExistingPivot(
+            'songs',
+            <dynamic>[2.0],
+            <String, dynamic>{'role': 'bass'},
+          ),
+          1,
+        );
+        expect(await artist.detach('songs', <dynamic>[2.0]), 1);
+        expect(await songIds(), <int>[1]);
+        expect(await artist.detach('songs', <dynamic>['01']), 1);
+        expect(await songIds(), <int>[]);
+
+        /// sync and toggle return the normalized id
+        PivotSyncResult r = await artist.sync('songs', <dynamic>['01', 2.0]);
+        expect(r.attached, <int>[1, 2]);
+        expect(await songIds(), <int>[1, 2]);
+        r = await artist.toggle('songs', <dynamic>['03', 2.0]);
+        expect(r.attached, <int>[3]);
+        expect(r.detached, <int>[2]);
+        expect(await songIds(), <int>[1, 3]);
+      });
+
       test('detach(null) deletes nothing, detach() deletes all', () async {
         await artist.attach('songs', <int>[1, 2]);
         expect(await artist.detach('songs', null), 0);

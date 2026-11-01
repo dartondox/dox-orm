@@ -183,11 +183,10 @@ class _Pivot {
   /// the pivot rows of the owner
   Future<List<Map<String, dynamic>>> rows() => query().get();
 
-  /// the row of [rows] whose related id is [id] by value, like the
-  /// database compares it: `'01'`, `1.0` and `1` are the same number
+  /// the row of [rows] whose related id is [id] by value, see [_sameId]
   Map<String, dynamic>? match(List<Map<String, dynamic>> rows, dynamic id) {
     for (Map<String, dynamic> r in rows) {
-      if (_same(r[relatedForeignKey], id)) return r;
+      if (_sameId(r[relatedForeignKey], id)) return r;
     }
     return null;
   }
@@ -196,8 +195,10 @@ class _Pivot {
   /// model, a list of ids or models, or a map of `id => values`.
   ///
   /// Like Laravel, null means no ids, and a null id (or a model without
-  /// a key) is skipped. An id is kept once: `[1, 1, '1']` gives one id,
-  /// the first one wins.
+  /// a key) is skipped. A whole number like `2.0` becomes the int `2`,
+  /// because Postgres does not take `2.0` for an integer column. An id is
+  /// kept once, by [_sameId]: `[1, '01', 1.0]` gives one id, the first
+  /// one wins. Every write uses these ids, so they all match the same way.
   Map<dynamic, Map<String, dynamic>> records(
     dynamic ids, [
     Map<String, dynamic> values = const <String, dynamic>{},
@@ -213,13 +214,13 @@ class _Pivot {
         for (dynamic id in list) MapEntry<dynamic, dynamic>(id, null),
       ];
     }
-    Set<String> seen = <String>{};
     skipped = false;
     Map<dynamic, Map<String, dynamic>> out = <dynamic, Map<String, dynamic>>{};
     for (MapEntry<dynamic, dynamic> e in entries) {
       dynamic id = _id(e.key);
       if (id == null) skipped = true;
-      if (id == null || !seen.add('$id')) continue;
+      // ponytail: O(n²) scan of the ids of one call, fine for normal lists
+      if (id == null || _hasSame(out.keys, id)) continue;
       out[id] = <String, dynamic>{
         ...values,
 
@@ -230,7 +231,10 @@ class _Pivot {
     return out;
   }
 
-  dynamic _id(dynamic id) => id is Model ? relationKey(id, relatedKey) : id;
+  dynamic _id(dynamic id) {
+    if (id is Model) id = relationKey(id, relatedKey);
+    return id is double ? _intId(id) ?? id : id;
+  }
 
   /// adds a pivot row for each of [records]
   Future<void> insert(Map<dynamic, Map<String, dynamic>> records) async {
@@ -409,7 +413,8 @@ extension ManyToManyWrites<T> on Model<T> {
     }
     List<Map<String, dynamic>> current = await p.rows();
 
-    /// match by value, so `'01'` keeps the row of `1`
+    /// match by value, so `'01'` keeps the row of `1`. [records] has
+    /// each id once, so two ids never match the same row.
     Map<dynamic, Map<String, dynamic>> attach =
         <dynamic, Map<String, dynamic>>{};
     List<dynamic> updated = <dynamic>[];
@@ -417,7 +422,7 @@ extension ManyToManyWrites<T> on Model<T> {
     for (MapEntry<dynamic, Map<String, dynamic>> e in records.entries) {
       Map<String, dynamic>? row = p.match(current, e.key);
       if (row == null) {
-        if (!_hasSame(attach.keys, e.key)) attach[e.key] = e.value;
+        attach[e.key] = e.value;
         continue;
       }
       kept.add(row[p.relatedForeignKey]);
@@ -460,9 +465,8 @@ extension ManyToManyWrites<T> on Model<T> {
     for (MapEntry<dynamic, Map<String, dynamic>> e in records.entries) {
       Map<String, dynamic>? row = p.match(current, e.key);
       if (row != null) {
-        dynamic id = row[p.relatedForeignKey];
-        if (!_hasSame(detached, id)) detached.add(id);
-      } else if (!_hasSame(attach.keys, e.key)) {
+        detached.add(row[p.relatedForeignKey]);
+      } else {
         attach[e.key] = e.value;
       }
     }
@@ -477,13 +481,33 @@ extension ManyToManyWrites<T> on Model<T> {
   }
 }
 
-/// [ids] with one type, like Laravel: a number id (`4` or `'4'`) is an
-/// int, other ids stay as they are
+/// [ids] with one type, like Laravel: a number id is an int. `4`, `4.0`,
+/// `'4'` and `'04'` all give `4`. Other ids stay as they are.
 List<dynamic> _keys(Iterable<dynamic> ids) {
-  return <dynamic>[
-    for (dynamic id in ids)
-      if (id is String && '${int.tryParse(id)}' == id) int.parse(id) else id,
-  ];
+  return <dynamic>[for (dynamic id in ids) _intId(id) ?? id];
+}
+
+/// [id] as an int when it is a whole number or a text of only digits
+/// (with an optional `-`), else null
+int? _intId(dynamic id) {
+  if (id is int) return id;
+  if (id is double && id.isFinite && id == id.truncateToDouble()) {
+    return id.toInt();
+  }
+  if (id is String && _digits.hasMatch(id)) return int.tryParse(id);
+  return null;
+}
+
+final RegExp _digits = RegExp(r'^-?[0-9]+$');
+
+/// true when the ids [a] and [b] are the same. Two number ids (see
+/// [_intId]) are the same when their int is the same, so `'01'`, `1.0`
+/// and `1` are the same id. Any other ids must be equal, so `'1.5'`,
+/// `' 1'` or `'abc'` only match the same text.
+bool _sameId(dynamic a, dynamic b) {
+  if (a == b) return true;
+  int? x = _intId(a);
+  return x != null && x == _intId(b);
 }
 
 /// the default of [ManyToManyWrites.detach]: no ids given, detach all
@@ -492,7 +516,7 @@ const Object _allIds = Object();
 /// true when [ids] has an id that is the same as [id] by value
 bool _hasSame(Iterable<dynamic> ids, dynamic id) {
   for (dynamic i in ids) {
-    if (_same(i, id)) return true;
+    if (_sameId(i, id)) return true;
   }
   return false;
 }
