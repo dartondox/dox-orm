@@ -52,6 +52,8 @@ mixin Join<T> implements SharedMixin<T> {
 
   /// join the rows of a sub query, named [alias]. the values of [query]
   /// are bound, like in this query. the other args are like join().
+  /// [query] is built when it is added: a change to it after this call is
+  /// not used.
   ///
   /// ```
   /// QueryBuilder<Map<String, dynamic>> latest = QueryBuilder.table('post')

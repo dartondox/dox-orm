@@ -124,7 +124,36 @@ void main() async {
           .paginate(currentPage: 2, perPage: 2);
       expect(page.total, 3);
       expect(page.data.map(_name).toList(), <String>['Carol']);
-      expect(() => q().sum('age'), throwsStateError);
+    });
+
+    test('union: aggregates use the whole result, like Laravel', () async {
+      QueryBuilder<Map<String, dynamic>> q() => users()
+          .select(<String>['name', 'age'])
+          .where('age', 20)
+          .unionAll(
+            users().select(<String>['name', 'age']).where('age', '>=', 30),
+          )
+          .unionAll(users().select(<String>['name', 'age']).where('age', 40));
+      expect(await q().sum('age'), 130);
+      expect(await q().avg('age'), 32.5);
+      expect(await q().min('age'), 20);
+      expect(await q().max('age'), 40);
+      expect(await q().count(), 4);
+
+      /// union drops the second Carol: Bob 30 + Carol 40
+      QueryBuilder<Map<String, dynamic>> distinct = users()
+          .select(<String>['name', 'age'])
+          .where('age', '>=', 30)
+          .union(users().select(<String>['name', 'age']).where('age', 40));
+      expect(await distinct.sum('age'), 70);
+      expect(
+        await users()
+            .select('age')
+            .where('age', 99)
+            .union(users().select('age').where('age', 98))
+            .max('age'),
+        isNull,
+      );
     });
 
     test('union on three queries, values bound in each part', () async {
@@ -212,7 +241,9 @@ void main() async {
         <String>['Alice'],
       );
       expect(
-        await names(users().whereDate('joined_at', '>=', DateTime(2024, 5, 2))),
+        await names(
+          users().whereDate('joined_at', '>=', DateTime.utc(2024, 5, 2)),
+        ),
         <String>['Bob'],
       );
       expect(
@@ -259,7 +290,7 @@ void main() async {
       expect(
         await names(
           users()
-              .whereDay('joined_at', DateTime(2000))
+              .whereDay('joined_at', DateTime.utc(2000))
               .orWhereYear('joined_at', 2023),
         ),
         <String>['Alice', 'Carol'],

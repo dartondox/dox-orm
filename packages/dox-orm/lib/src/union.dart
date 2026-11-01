@@ -28,8 +28,10 @@ mixin Union<T> implements SharedMixin<T> {
   /// - orderBy(), limit() and offset() of this query sort and cut the
   ///   whole result. use a plain column name in orderBy(), not
   ///   `table.column`. [query] can have its own orderBy() and limit().
-  /// - count() and paginate() count the whole result. sum(), avg(),
-  ///   min() and max() throw a [StateError].
+  /// - count(), paginate(), sum(), avg(), min() and max() use the whole
+  ///   result, like Laravel: `SELECT SUM(col) FROM (<union>) AS ...`.
+  /// - [query] is built when it is added: a change to it after this call
+  ///   is not used.
   QueryBuilder<T> union(QueryBuilder<dynamic> query) {
     return _union('UNION', query);
   }

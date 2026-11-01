@@ -1103,8 +1103,8 @@ class Model<T> extends QueryBuilder<T> {
   /// [QueryBuilder.insertOrIgnore]. keys that [fillable] and [guarded] do
   /// not allow are dropped from each row. It fires no model events.
   @override
-  Future<int> insertOrIgnore(List<Map<String, dynamic>> rows) {
-    return super.insertOrIgnore(<Map<String, dynamic>>[
+  Future<int> insertOrIgnore(List<Map<String, dynamic>> rows) async {
+    return await super.insertOrIgnore(<Map<String, dynamic>>[
       for (Map<String, dynamic> row in rows) _onlyFillable(row),
     ]);
   }

@@ -116,20 +116,37 @@ mixin Count<T> implements SharedMixin<T> {
 
   /// run `SELECT <function>(<column>)` with the where and join parts
   Future<dynamic> _aggregate(String function, String column) async {
-    if (queryBuilder.getGroupByQuery().isNotEmpty || queryBuilder.hasUnion) {
-      throw StateError(
-        '${function.toLowerCase()}() can not be used with groupBy(), '
-        'having() or union(). Use selectRaw() and get() instead.',
-      );
-    }
     String distinct =
         queryBuilder.isDistinct && (function == 'SUM' || function == 'AVG')
         ? 'DISTINCT '
         : '';
+
+    /// like Laravel: the aggregate of the whole union result. a groupBy()
+    /// here is on the first part of the union.
+    if (queryBuilder.hasUnion) {
+      return _first(
+        "SELECT $function($distinct${helper.wrap(column)}) as dox_aggregate"
+        " FROM (SELECT ${queryBuilder.getSelectQuery()}"
+        " FROM ${queryBuilder.getFromQuery()}"
+        "${helper.getCommonQuery(isCountQuery: true)}"
+        "${queryBuilder.getUnionQuery()}) as dox_union_aggregate",
+      );
+    }
+    if (queryBuilder.getGroupByQuery().isNotEmpty) {
+      throw StateError(
+        '${function.toLowerCase()}() can not be used with groupBy() or '
+        'having(). Use selectRaw() and get() instead.',
+      );
+    }
     String q =
         "SELECT $function($distinct${helper.wrap(column)}) as dox_aggregate"
         " FROM ${queryBuilder.getFromQuery()}"
         "${helper.getCommonQuery(isCountQuery: true)}";
+    return _first(q);
+  }
+
+  /// the `dox_aggregate` value of the first row of [q]
+  Future<dynamic> _first(String q) async {
     List<Map<String, dynamic>> rows = helper.getMapResult(
       await helper.runQuery(q),
     );

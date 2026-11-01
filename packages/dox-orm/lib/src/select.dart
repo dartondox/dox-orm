@@ -31,6 +31,8 @@ mixin Select<T> implements SharedMixin<T> {
   /// ```
   /// [alias] is also the table name of this query, so `totals.total`
   /// works in where() and orderBy().
+  /// [query] is built when it is added: a change to it after this call is
+  /// not used.
   QueryBuilder<T> fromSub(QueryBuilder<dynamic> query, String alias) {
     _fromSub = '(${helper.subQuery(query)}) AS ${helper.wrap(alias)}';
     tableName = alias;

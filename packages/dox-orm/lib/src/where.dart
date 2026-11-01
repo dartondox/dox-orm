@@ -375,6 +375,8 @@ mixin Where<T> implements SharedMixin<T> {
 
   /// where in condition. [values] is a list, or a sub query that
   /// selects one column. an empty list match no rows.
+  /// the sub query is built when it is added: a change to it after this
+  /// call is not used. MySQL and MariaDB do not allow LIMIT in it.
   ///
   /// ```
   /// List blogs = await whereIn('id', [1, 2, 3]).get();
@@ -425,8 +427,11 @@ mixin Where<T> implements SharedMixin<T> {
   ///     .whereDate('created_at', '>=', DateTime(2024, 5, 1))
   ///     .get();
   /// ```
-  /// the column is read as it is stored. on SQLite, Dox stores dates in
-  /// UTC, and on Postgres a `timestamptz` is read in the session time zone.
+  /// the column is read as it is stored. a `DateTime` value is read the
+  /// same way the driver binds it in where(): in UTC on SQLite and
+  /// Postgres (Dox stores dates in UTC there, and Postgres reads a
+  /// `timestamptz` in the session time zone, UTC by default), and as the
+  /// wall clock on MySQL and MariaDB.
   QueryBuilder<T> whereDate(
     String column,
     dynamic arg2, [
@@ -550,6 +555,10 @@ mixin Where<T> implements SharedMixin<T> {
   /// - MySQL and MariaDB: `JSON_CONTAINS()`.
   /// - SQLite: `json_each()`. [value] must be a string, a number, a bool
   ///   or a list of them, else it throws an [ArgumentError].
+  ///
+  /// ponytail: like Laravel, whereJsonDoesntContain() on a row without the
+  /// key differs per database: SQLite and MariaDB match the row, Postgres
+  /// and MySQL do not (the check is NULL there).
   QueryBuilder<T> whereJsonContains(String column, Object? value) {
     return _jsonContains('AND', column, value, false);
   }
@@ -865,6 +874,10 @@ mixin Where<T> implements SharedMixin<T> {
     String col = helper.wrap(column);
     String key = helper.parseColumnKey(column);
     Driver driver = dbDriver.getName();
+
+    /// the SQLite and Postgres drivers bind a DateTime in UTC, so its
+    /// parts are taken in UTC too. MySQL binds the wall clock as it is.
+    if (value is DateTime && driver != Driver.mysql) value = value.toUtc();
     String left;
     String right = key;
     switch (part) {
