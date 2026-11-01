@@ -66,6 +66,8 @@ class ArtistGenerator extends Model<Artist> {
       pivotForeignKey: 'artist_id',
       pivotRelatedForeignKey: 'song_id',
       pivotTable: 'artist_song',
+      withPivot: const <String>['role'],
+      withTimestamps: true,
       onQuery: Artist.onQuery,
     );
   }
