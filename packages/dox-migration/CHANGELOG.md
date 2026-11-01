@@ -1,3 +1,7 @@
+## 3.0.1
+
+- Version bump only, to match dox_orm.
+
 ## 3.0.0
 
 - The first stable release.
