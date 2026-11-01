@@ -1,7 +1,6 @@
 import 'package:dox_orm/dox_orm.dart';
 import 'package:dox_orm/src/drivers/db_driver.dart';
 
-// coverage:ignore-file
 class Logger {
   /// print [query] with each `@name` as `?`, and its values in the order
   /// of the `?`. values that the query does not use come last.

@@ -1,6 +1,5 @@
 import 'package:dox_orm/dox_orm.dart';
 
-// coverage:ignore-file
 class PrettyQueryPrinter implements QueryPrinter {
   int logLength = 80;
 

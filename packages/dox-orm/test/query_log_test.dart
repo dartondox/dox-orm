@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:dox_orm/dox_orm.dart';
@@ -137,17 +138,95 @@ void main() {
   );
 
   test('Logger.warn prints yellow', () {
-    List<String> lines = <String>[];
-    runZoned(
-      _warn,
-      zoneSpecification: ZoneSpecification(
-        print: (Zone self, ZoneDelegate parent, Zone zone, String line) {
-          lines.add(line);
-        },
-      ),
+    expect(_prints(() => Logger.warn('careful')), <String>[
+      '\x1B[33mcareful\x1B[0m',
+    ]);
+  });
+
+  test('Logger info, success and danger use their colors', () {
+    expect(
+      _prints(() {
+        Logger.info('a');
+        Logger.success('b');
+        Logger.danger('c');
+      }),
+      <String>['\x1B[36ma\x1B[0m', '\x1B[32mb\x1B[0m', '\x1B[31mc\x1B[0m'],
     );
-    expect(lines, <String>['\x1B[33mcareful\x1B[0m']);
+  });
+
+  test('ConsoleQueryPrinter prints one json line', () {
+    List<String> lines = _prints(
+      () => ConsoleQueryPrinter().log('SELECT ?', <String>['1']),
+    );
+    expect(lines.length, 1);
+    Map<String, dynamic> json = jsonDecode(lines.first) as Map<String, dynamic>;
+    expect(json['level'], 'INFO');
+    expect(json['message'], 'SELECT ?');
+    expect(json['payload'], <String, dynamic>{
+      'query': 'SELECT ?',
+      'params': <String>['1'],
+    });
+  });
+
+  test('ConsoleQueryPrinter filter changes the line', () {
+    List<String> lines = _prints(
+      () =>
+          ConsoleQueryPrinter(filter: (String s) => 'x')
+              .log('SELECT ?', <String>[]),
+    );
+    expect(lines, <String>['x']);
+  });
+
+  test('FileQueryPrinter filter changes the line', () async {
+    Directory dir = await Directory.systemTemp.createTemp('dox_log');
+    File file = File('${dir.path}/query.log');
+    FileQueryPrinter(
+      file: file,
+      filter: (String s) => 'x',
+    ).log('q', <String>[]);
+    expect(file.readAsLinesSync(), <String>['x']);
+    await dir.delete(recursive: true);
+  });
+
+  test(
+    'FileQueryPrinter buffered does not throw when the write fails',
+    () async {
+      Directory dir = await Directory.systemTemp.createTemp('dox_log');
+      File blocker = File('${dir.path}/blocker')..writeAsStringSync('x');
+      FileQueryPrinter printer = FileQueryPrinter(
+        file: File('${blocker.path}/query.log'),
+        buffered: true,
+      );
+      printer.log('q', <String>[]);
+      await printer.flush();
+      expect(File('${blocker.path}/query.log').existsSync(), isFalse);
+      await dir.delete(recursive: true);
+    },
+  );
+
+  test('PrettyQueryPrinter prints the query and the params', () {
+    String out = _prints(
+      () => PrettyQueryPrinter().log('SELECT ' * 20, <String>['p1']),
+    ).join('\n');
+    expect(out, contains('QUERY'));
+    expect(out, contains('PARAMS'));
+    expect(out, contains('p1'));
+    expect(
+      _prints(() => PrettyQueryPrinter().log('q', <String>[])).join(),
+      isNot(contains('PARAMS')),
+    );
   });
 }
 
-void _warn() => Logger.warn('careful');
+List<String> _prints(void Function() body) {
+  List<String> lines = <String>[];
+  runZoned(
+    body,
+    zoneSpecification: ZoneSpecification(
+      print: (Zone self, ZoneDelegate parent, Zone zone, String line) {
+        lines.add(line);
+      },
+    ),
+  );
+  return lines;
+}
