@@ -16,6 +16,44 @@ class GuardedUser extends User {
   List<String> get guarded => <String>['is_admin'];
 }
 
+/// a user model with the default fillable and guarded
+class DefaultUser extends Model<DefaultUser> {
+  int? get id => tempIdValue as int?;
+  set id(int? value) => tempIdValue = value;
+
+  String? name;
+  int? isAdmin;
+
+  @override
+  String get tableName => 'users';
+
+  @override
+  List<String> get tableColumns => const <String>['id', 'name', 'is_admin'];
+
+  @override
+  DefaultUser fromMap(Map<String, dynamic> m) => DefaultUser()
+    ..id = m['id'] as int?
+    ..name = m['name'] as String?
+    ..isAdmin = m['is_admin'] as int?;
+
+  @override
+  Map<String, dynamic> columnsToMap() => <String, dynamic>{
+    'id': id,
+    'name': name,
+    'is_admin': isAdmin,
+  };
+
+  @override
+  Map<String, dynamic> convertToMap(dynamic i) =>
+      (i as DefaultUser).columnsToMap();
+}
+
+/// the default user, but it takes `name` from a map
+class DefaultFillableUser extends DefaultUser {
+  @override
+  List<String> get fillable => <String>['name'];
+}
+
 void main() async {
   await initQueryBuilder();
 
@@ -89,6 +127,72 @@ void main() async {
       /// a query soft delete still works when fillable is set
       await FillableUser().where('id', 1).delete();
       expect(await User().count(), 1);
+    });
+
+    test('a model is guarded by default', () async {
+      expect(DefaultUser().guarded, <String>['*']);
+      Map<String, dynamic> body = <String, dynamic>{
+        'id': 99,
+        'name': 'a',
+        'is_admin': 1,
+      };
+
+      /// a map with keys throws, so no empty row is saved and no row is
+      /// changed
+      await QueryBuilder.table('users').insert(<String, dynamic>{'name': 'z'});
+      Matcher massAssignment = throwsA(
+        isA<MassAssignmentException>()
+            .having(
+              (MassAssignmentException e) => e.model,
+              'model',
+              'DefaultUser',
+            )
+            .having(
+              (MassAssignmentException e) => '$e',
+              'message',
+              contains('fillable'),
+            ),
+      );
+      await expectLater(DefaultUser().create(body), massAssignment);
+      await expectLater(
+        DefaultUser().where('name', 'z').update(body),
+        massAssignment,
+      );
+      await expectLater(
+        DefaultUser().firstOrCreate(<String, dynamic>{'name': 'new'}),
+        massAssignment,
+      );
+      await expectLater(
+        DefaultUser().insertMultiple(<Map<String, dynamic>>[body]),
+        massAssignment,
+      );
+      List<Map<String, dynamic>> before = await QueryBuilder.table('users')
+          .get();
+      expect(before, hasLength(1));
+      expect(before.first['name'], 'z');
+      expect(before.first['is_admin'], 0);
+      await QueryBuilder.table('users').forceDelete();
+
+      /// an empty map is fine
+      expect(
+        await DefaultUser().where('name', 'z').update(<String, dynamic>{}),
+        0,
+      );
+
+      /// only the fillable columns are taken, id and is_admin are not
+      await DefaultFillableUser().create(body);
+      List<Map<String, dynamic>> rows = await QueryBuilder.table('users').get();
+      expect(rows, hasLength(1));
+      expect(rows.first['name'], 'a');
+      expect(rows.first['is_admin'], 0);
+      expect(rows.first['id'], isNot(99));
+
+      /// setting fields in code still works
+      DefaultUser user = DefaultUser()
+        ..name = 'c'
+        ..isAdmin = 1;
+      await user.save();
+      expect(await QueryBuilder.table('users').where('is_admin', 1).count(), 1);
     });
 
     test('insertMultiple on a model drops keys that are not allowed', () async {

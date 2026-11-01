@@ -13,6 +13,10 @@ mixin Delete<T> implements SharedMixin<T> {
   /// ```
   /// int count = await Blog().where('id', 1).delete();
   /// ```
+  ///
+  /// With join(), orderBy() or limit(), the rows are picked by the primary
+  /// key, so the table needs that column (MySQL with no join and no offset
+  /// does not). groupBy() and having() throw an [ArgumentError].
   Future<int> delete() async {
     if (isSoftDeletes) {
       return await queryBuilder.update(<String, dynamic>{'deleted_at': now()});
@@ -34,7 +38,7 @@ mixin Delete<T> implements SharedMixin<T> {
     withTrashed = true;
     String q;
     q = "DELETE FROM ${helper.wrap(tableName)}";
-    q += helper.getCommonQuery();
+    q += helper.getWriteQuery();
     return await runAffectingQuery(queryBuilder, q);
   }
 }

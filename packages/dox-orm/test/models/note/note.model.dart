@@ -5,6 +5,9 @@ part 'note.model.g.dart';
 /// a model with a beforeSave and no hooks, for the create() test
 @DoxModel(table: 'notes')
 class Note extends NoteGenerator {
+  /// test model: takes every key of a map
+  @override
+  List<String> get guarded => const <String>[];
   @Column(beforeSave: slugOf)
   String? slug;
 

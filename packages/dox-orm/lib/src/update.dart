@@ -22,6 +22,10 @@ mixin Update<T> implements SharedMixin<T> {
   /// Postgres and SQLite count the rows the where matched. MySQL and
   /// MariaDB count only the rows that really changed: a row that already
   /// has the new values counts 0.
+  ///
+  /// With join(), orderBy() or limit(), the rows are picked by the primary
+  /// key, so the table needs that column (MySQL with no join and no offset
+  /// does not). groupBy() and having() throw an [ArgumentError].
   Future<int> update(Map<String, dynamic> data) {
     return _update(data, const <String>[]);
   }
@@ -87,7 +91,7 @@ mixin Update<T> implements SharedMixin<T> {
     if (columnToUpdate.isEmpty) return 0;
     String q =
         "UPDATE ${helper.wrap(tableName)} SET ${columnToUpdate.join(',')}";
-    q += helper.getCommonQuery();
+    q += helper.getWriteQuery();
     return await runAffectingQuery(queryBuilder, q);
   }
 }
