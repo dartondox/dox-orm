@@ -2,7 +2,6 @@ import 'dart:convert';
 
 import 'package:dox_orm/dox_orm.dart';
 
-// coverage:ignore-file
 class ConsoleQueryPrinter implements QueryPrinter {
   Function(String)? filter;
 

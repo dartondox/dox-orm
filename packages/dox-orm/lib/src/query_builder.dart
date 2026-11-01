@@ -223,7 +223,8 @@ class QueryBuilder<T>
   /// run [callback] in one database transaction.
   /// it commits when [callback] ends, and rolls back when it throws
   /// (the error is thrown again). queries and models inside use the
-  /// transaction. a nested call joins the outer transaction.
+  /// transaction. a nested call makes a savepoint. if it fails, only the
+  /// work since that savepoint is rolled back.
   ///
   /// ```
   /// await QueryBuilder.transaction(() async {

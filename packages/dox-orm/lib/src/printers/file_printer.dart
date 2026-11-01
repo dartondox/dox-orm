@@ -3,7 +3,6 @@ import 'dart:io';
 
 import 'package:dox_orm/dox_orm.dart';
 
-// coverage:ignore-file
 /// writes each query as one json line to [file].
 ///
 /// by default each line is in the file before `log()` returns, and a write
