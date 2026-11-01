@@ -125,8 +125,8 @@ void main() async {
         return exists.failedItems(values, context());
       }
 
-      // any row found: every item fails (one query can not tell which)
-      expect(await u(<Object?>['new@dox.dev', 'taken@dox.dev']), <int>[0, 1]);
+      // the row is an item by its exact text: only that item fails (3.0.1)
+      expect(await u(<Object?>['new@dox.dev', 'taken@dox.dev']), <int>[1]);
       expect(await e(<Object?>['taken@dox.dev', 'nope@dox.dev']), <int>[1]);
       expect(await e(<Object?>['taken@dox.dev', 'taken@dox.dev']), <int>[]);
       // only the database matched: it can not tell which, so all fail
@@ -144,13 +144,14 @@ void main() async {
       await QueryBuilder.table('rule_emails')
           .insert(<String, dynamic>{'email': 'other@dox.dev'});
       // OTHER@ is taken on MySQL and MariaDB, but it matches no row as
-      // text: every item must fail
+      // text: every item must fail there. The others only find taken@.
+      bool mysql = Platform.environment['DRIVER'] == 'mysql';
       expect(
         await const Unique(
           'rule_emails',
           column: 'email',
         ).failedItems(<Object?>['taken@dox.dev', 'OTHER@dox.dev'], context()),
-        <int>[0, 1],
+        mysql ? <int>[0, 1] : <int>[0],
       );
       await Schema().create('rule_people', (Table table) {
         table.id();
@@ -205,7 +206,8 @@ void main() async {
           'rule_emails',
           column: 'id',
         ).failedItems(<Object?>['abc', 1], context()),
-        <int>[0, 1], // Postgres can not compare, the others find id 1
+        // Postgres can not compare, the others find id 1
+        postgres ? <int>[0, 1] : <int>[1],
       );
       // too big for an int column (Postgres 22003)
       expect(
@@ -238,7 +240,7 @@ void main() async {
           'new@dox.dev',
           'taken@dox.dev',
         ], withParam),
-        <int>[0, 1],
+        <int>[1],
       );
       expect(
         (await v
@@ -289,7 +291,7 @@ void main() async {
           column: 'email',
           finder: finder,
         ).failedItems(many, context()),
-        hasLength(500),
+        <int>[250],
       );
       List<int> missing = await Exists(
         'rule_emails',
@@ -428,7 +430,7 @@ void main() async {
           'new@dox.dev',
           'taken@dox.dev',
         ], context()),
-        <int>[0, 1],
+        <int>[1],
       );
       expect(await unique.checkAsync('taken@dox.dev', context()), isFalse);
     });
