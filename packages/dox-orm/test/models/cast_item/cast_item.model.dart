@@ -24,6 +24,9 @@ class MoneyCast extends Cast<Money> {
 /// a model with column casts
 @DoxModel(timestamps: false)
 class CastItem extends CastItemGenerator {
+  /// test model: takes every key of a map
+  @override
+  List<String> get guarded => const <String>[];
   @Column(cast: JsonCast())
   Map<String, dynamic>? meta;
 

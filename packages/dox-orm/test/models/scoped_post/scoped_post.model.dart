@@ -5,6 +5,9 @@ part 'scoped_post.model.g.dart';
 /// a model with local and global scopes
 @DoxModel(timestamps: false)
 class ScopedPost extends ScopedPostGenerator {
+  /// test model: takes every key of a map
+  @override
+  List<String> get guarded => const <String>[];
   @Column()
   String? title;
 

@@ -6,6 +6,9 @@ part 'blog_info.model.g.dart';
 
 @DoxModel()
 class BlogInfo extends BlogInfoGenerator {
+  /// test model: takes every key of a map
+  @override
+  List<String> get guarded => const <String>[];
   @Column()
   Map<String, dynamic>? info;
 

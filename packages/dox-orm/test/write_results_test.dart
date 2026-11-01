@@ -107,6 +107,9 @@ class Counter extends Model<Counter> {
 /// a model on the same table as [Counter] with no setColumnValue(), like
 /// a model made by an old dox_builder
 class PlainCounter extends Model<PlainCounter> {
+  /// test model: takes every key of a map
+  @override
+  List<String> get guarded => const <String>[];
   int? get id => tempIdValue as int?;
   set id(int? value) => tempIdValue = value;
 
@@ -139,6 +142,9 @@ class PlainCounter extends Model<PlainCounter> {
 
 /// a soft delete model
 class Note extends Model<Note> with SoftDeletes<Note> {
+  /// test model: takes every key of a map
+  @override
+  List<String> get guarded => const <String>[];
   int? get id => tempIdValue as int?;
   set id(int? value) => tempIdValue = value;
 
@@ -168,6 +174,9 @@ class Note extends Model<Note> with SoftDeletes<Note> {
 /// a model on a table with no id column, so MySQL can not read the new
 /// row back
 class Pair extends Model<Pair> {
+  /// test model: takes every key of a map
+  @override
+  List<String> get guarded => const <String>[];
   int? aId;
   int? bId;
 

@@ -8,6 +8,9 @@ part 'writer.model.g.dart';
 /// pivot table topic_writer.
 @DoxModel(table: 'writers', softDelete: true, timestamps: false)
 class Writer extends WriterGenerator {
+  /// test model: takes every key of a map
+  @override
+  List<String> get guarded => const <String>[];
   @Column()
   String? name;
 
@@ -35,6 +38,9 @@ class Writer extends WriterGenerator {
 
 @DoxModel(table: 'articles', softDelete: true, timestamps: false)
 class Article extends ArticleGenerator {
+  /// test model: takes every key of a map
+  @override
+  List<String> get guarded => const <String>[];
   @Column()
   String? title;
 
@@ -56,6 +62,9 @@ class Article extends ArticleGenerator {
 
 @DoxModel(table: 'topics', softDelete: true, timestamps: false)
 class Topic extends TopicGenerator {
+  /// test model: takes every key of a map
+  @override
+  List<String> get guarded => const <String>[];
   @Column()
   String? name;
 
@@ -65,6 +74,9 @@ class Topic extends TopicGenerator {
 
 @DoxModel(table: 'remarks', timestamps: false)
 class Remark extends RemarkGenerator {
+  /// test model: takes every key of a map
+  @override
+  List<String> get guarded => const <String>[];
   @Column()
   String? body;
 
@@ -76,6 +88,9 @@ class Remark extends RemarkGenerator {
 /// withCount() on the same table
 @DoxModel(table: 'sections', softDelete: true, timestamps: false)
 class Section extends SectionGenerator {
+  /// test model: takes every key of a map
+  @override
+  List<String> get guarded => const <String>[];
   @Column()
   String? name;
 

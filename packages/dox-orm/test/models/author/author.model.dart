@@ -8,6 +8,9 @@ part 'author.model.g.dart';
 /// relations use `code` as local key, not the primary key
 @DoxModel()
 class Author extends AuthorGenerator {
+  /// test model: takes every key of a map
+  @override
+  List<String> get guarded => const <String>[];
   @Column()
   String? code;
 

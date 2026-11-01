@@ -15,8 +15,11 @@ class Model<T> extends QueryBuilder<T> {
 
   /// columns that create(), insert(), insertMultiple() and update() take
   /// from a map.
-  /// empty means every column. set it to stop mass assignment, eg. so
-  /// `User().create(req.body)` can not set `is_admin`.
+  ///
+  /// A model is guarded by default, like Laravel: with no [fillable] and
+  /// the default [guarded], no key is taken from a map, so
+  /// `User().create(req.body)` can not set `id` or `is_admin`. List the
+  /// columns that users may set:
   ///
   /// ```
   /// @override
@@ -25,18 +28,29 @@ class Model<T> extends QueryBuilder<T> {
   List<String> get fillable => const <String>[];
 
   /// columns that create(), insert(), insertMultiple() and update() never
-  /// take from a map
-  List<String> get guarded => const <String>[];
+  /// take from a map. `'*'` (the default) means every column that is not
+  /// in [fillable].
+  ///
+  /// To take every key of a map (not safe with user input), set it to an
+  /// empty list:
+  ///
+  /// ```
+  /// @override
+  /// List<String> get guarded => const <String>[];
+  /// ```
+  List<String> get guarded => const <String>['*'];
 
   /// [data] without the keys that [fillable] and [guarded] do not allow
   Map<String, dynamic> _onlyFillable(Map<String, dynamic> data) {
     List<String> allowed = fillable;
     List<String> blocked = guarded;
     if (allowed.isEmpty && blocked.isEmpty) return data;
+    bool blockAll = blocked.contains('*');
+    if (allowed.isEmpty && blockAll) return <String, dynamic>{};
     return <String, dynamic>{
       for (MapEntry<String, dynamic> e in data.entries)
-        if ((allowed.isEmpty || allowed.contains(e.key)) &&
-            !blocked.contains(e.key))
+        if (!blocked.contains(e.key) &&
+            (allowed.contains(e.key) || (allowed.isEmpty && !blockAll)))
           e.key: e.value,
     };
   }

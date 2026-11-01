@@ -5,6 +5,10 @@ part 'event_post.model.g.dart';
 /// a model with every hook, for the model events test
 @DoxModel(table: 'event_posts', softDelete: true)
 class EventPost extends EventPostGenerator {
+  /// test model: takes every key of a map
+  @override
+  List<String> get guarded => const <String>[];
+
   /// hooks write here, so the test can check the order
   static List<String> log = <String>[];
 

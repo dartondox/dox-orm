@@ -7,6 +7,9 @@ part 'owner.model.g.dart';
 /// pivot table club_owner.
 @DoxModel(table: 'owners', timestamps: false)
 class Owner extends OwnerGenerator {
+  /// test model: takes every key of a map
+  @override
+  List<String> get guarded => const <String>[];
   @Column()
   String? name;
 
@@ -22,6 +25,9 @@ class Owner extends OwnerGenerator {
 
 @DoxModel(table: 'pets', timestamps: false)
 class Pet extends PetGenerator {
+  /// test model: takes every key of a map
+  @override
+  List<String> get guarded => const <String>[];
   @Column()
   String? name;
 
@@ -34,6 +40,9 @@ class Pet extends PetGenerator {
 
 @DoxModel(table: 'clubs', timestamps: false)
 class Club extends ClubGenerator {
+  /// test model: takes every key of a map
+  @override
+  List<String> get guarded => const <String>[];
   @Column()
   String? name;
 }

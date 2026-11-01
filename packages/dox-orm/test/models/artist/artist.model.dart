@@ -6,6 +6,9 @@ part 'artist.model.g.dart';
 
 @DoxModel()
 class Artist extends ArtistGenerator {
+  /// test model: takes every key of a map
+  @override
+  List<String> get guarded => const <String>[];
   @Column()
   String? name;
 

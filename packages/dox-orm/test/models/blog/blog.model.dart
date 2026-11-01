@@ -6,6 +6,9 @@ part 'blog.model.g.dart';
 
 @DoxModel(primaryKey: 'uid', softDelete: true)
 class Blog extends BlogGenerator {
+  /// test model: takes every key of a map
+  @override
+  List<String> get guarded => const <String>[];
   @override
   List<String> get hidden => <String>['status', 'secret_note'];
 

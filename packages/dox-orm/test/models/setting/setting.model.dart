@@ -5,6 +5,9 @@ part 'setting.model.g.dart';
 /// a model without created_at and updated_at columns
 @DoxModel(timestamps: false)
 class Setting extends SettingGenerator {
+  /// test model: takes every key of a map
+  @override
+  List<String> get guarded => const <String>[];
   @Column()
   String? name;
 }
