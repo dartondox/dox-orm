@@ -327,4 +327,11 @@ void main() async {
       expect(row?['other'], "o'k");
     });
   });
+
+  test('snake case keeps a digit with the word before it', () {
+    Blog blog = Blog();
+    expect(blog.helper.toSnakeCase('Address2'), 'address2');
+    expect(blog.helper.toSnakeCase('BlogInfo'), 'blog_info');
+    expect(blog.helper.toSnakeCase('blog_info'), 'blog_info');
+  });
 }
