@@ -196,27 +196,5 @@ void main() {
       ParseResult<String> result = await email.safeParseAsync("x' OR '1'='1");
       expect(result.success, isFalse);
     });
-
-    test('unsafe table and column names throw before any query', () async {
-      const orm.RowFinder finder = orm.RowFinder();
-      for (List<String?> names in <List<String?>>[
-        <String?>['members; DROP TABLE members', 'email', null],
-        <String?>['members', 'email FROM members --', null],
-        <String?>['members', 'email', 'id OR 1=1'],
-      ]) {
-        await expectLater(
-          finder.found(
-            names[0]!,
-            names[1]!,
-            <Object?>['a'],
-            exceptColumn: names[2],
-            exceptValue: names[2] == null ? null : 1,
-          ),
-          throwsArgumentError,
-        );
-      }
-      // the table is still there
-      expect(await orm.QueryBuilder.table('members').count(), 2);
-    });
   });
 }

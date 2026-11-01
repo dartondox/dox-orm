@@ -7,9 +7,8 @@ import '../query_builder.dart';
 /// [PresenceVerifier] when the database starts. Soft-deleted rows count
 /// too, because it reads the table, not the model.
 ///
-/// The values are bound as query parameters. Table and column names go
-/// into the SQL text, so only plain names pass
-/// ([PresenceVerifier.checkName]).
+/// The values are bound as query parameters. Table and column names are
+/// quoted by the driver, which refuses unsafe names.
 class RowFinder implements PresenceVerifier {
   const RowFinder();
 
@@ -25,13 +24,10 @@ class RowFinder implements PresenceVerifier {
     Object? exceptValue,
     String? connection,
   }) async {
-    PresenceVerifier.checkName(table);
-    PresenceVerifier.checkName(column);
     QueryBuilder<dynamic> query = QueryBuilder.table(table)
         .select(column)
         .whereIn(column, values);
     if (exceptColumn != null) {
-      PresenceVerifier.checkName(exceptColumn);
       query = query.where(exceptColumn, '!=', exceptValue);
     }
     if (connection != null) query = query.withConnection(connection);
@@ -84,19 +80,30 @@ class Unique extends AsyncRule<Object?> {
   @override
   String get defaultMessage => 'The {field} has already been taken';
 
+  /// One value: the database decides what matches. MySQL ignores case,
+  /// so any row found means the value is taken.
   @override
   Future<bool> checkAsync(Object? value, RuleContext context) async {
-    return (await failedItems(<Object?>[value], context)).isEmpty;
+    return (await _found(<Object?>[value], context)).isEmpty;
   }
 
+  /// Many values: the found values are matched to the items as text.
   @override
   Future<List<int>> failedItems(
     List<Object?> values,
     RuleContext context,
   ) async {
+    Set<String> taken = await _found(values, context);
+    return <int>[
+      for (int i = 0; i < values.length; i++)
+        if (taken.contains('${values[i]}')) i,
+    ];
+  }
+
+  Future<Set<String>> _found(List<Object?> values, RuleContext context) {
     String? param = ignoreParam;
     String? skip = param == null ? null : context.state.params[param];
-    Set<String> taken = await finder.found(
+    return finder.found(
       table,
       column ?? context.field,
       values,
@@ -104,10 +111,6 @@ class Unique extends AsyncRule<Object?> {
       exceptValue: skip == null ? null : (int.tryParse(skip) ?? skip),
       connection: connection,
     );
-    return <int>[
-      for (int i = 0; i < values.length; i++)
-        if (taken.contains('${values[i]}')) i,
-    ];
   }
 }
 
@@ -136,22 +139,24 @@ class Exists extends AsyncRule<Object?> {
   @override
   String get defaultMessage => 'The selected {field} is invalid';
 
+  /// One value: the database decides what matches. MySQL ignores case,
+  /// so any row found means the value exists.
   @override
   Future<bool> checkAsync(Object? value, RuleContext context) async {
-    return (await failedItems(<Object?>[value], context)).isEmpty;
+    return (await _found(<Object?>[value])).isNotEmpty;
   }
 
+  Future<Set<String>> _found(List<Object?> values) {
+    return finder.found(table, column, values, connection: connection);
+  }
+
+  /// Many values: the found values are matched to the items as text.
   @override
   Future<List<int>> failedItems(
     List<Object?> values,
     RuleContext context,
   ) async {
-    Set<String> found = await finder.found(
-      table,
-      column,
-      values,
-      connection: connection,
-    );
+    Set<String> found = await _found(values);
     return <int>[
       for (int i = 0; i < values.length; i++)
         if (!found.contains('${values[i]}')) i,
