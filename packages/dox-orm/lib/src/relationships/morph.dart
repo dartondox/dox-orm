@@ -91,7 +91,12 @@ class _MorphTo {
 
   const _MorphTo(this.typeColumn, this.idColumn, this.ownerKey, this.onQuery);
 
-  String? typeOf(Model<dynamic> m) => relationKey(m, typeColumn)?.toString();
+  /// the type of [m], null when it has none. An empty type is no type,
+  /// like Laravel.
+  String? typeOf(Model<dynamic> m) {
+    String? type = relationKey(m, typeColumn)?.toString();
+    return type == null || type.isEmpty ? null : type;
+  }
 
   /// the query of the [type] models that [list] points to
   Model<dynamic> query(String type, List<Model<dynamic>> list) {

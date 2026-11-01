@@ -180,12 +180,16 @@ class _Pivot {
     return newTable().where(foreignKey, ownerValue);
   }
 
-  /// the rows of the owner, keyed by the related id as a string
-  Future<Map<String, Map<String, dynamic>>> rows() async {
-    List<Map<String, dynamic>> list = await query().get();
-    return <String, Map<String, dynamic>>{
-      for (Map<String, dynamic> r in list) '${r[relatedForeignKey]}': r,
-    };
+  /// the pivot rows of the owner
+  Future<List<Map<String, dynamic>>> rows() => query().get();
+
+  /// the row of [rows] whose related id is [id] by value, like the
+  /// database compares it: `'01'`, `1.0` and `1` are the same number
+  Map<String, dynamic>? match(List<Map<String, dynamic>> rows, dynamic id) {
+    for (Map<String, dynamic> r in rows) {
+      if (_same(r[relatedForeignKey], id)) return r;
+    }
+    return null;
   }
 
   /// [ids] as `id => extra pivot values`. [ids] can be one id, one
@@ -363,11 +367,13 @@ extension ManyToManyWrites<T> on Model<T> {
     await p.insert(p.records(ids, values));
   }
 
-  /// deletes the pivot rows of [ids], or every pivot row of this model
-  /// when [ids] is null. It returns how many rows it deleted.
-  Future<int> detach(String relation, [dynamic ids]) async {
+  /// deletes the pivot rows of [ids]. With no [ids] it deletes every
+  /// pivot row of this model. `null` is no ids, so it deletes nothing.
+  /// It returns how many rows it deleted.
+  Future<int> detach(String relation, [Object? ids = _allIds]) async {
     _Pivot p = _pivotOf(relation);
-    return await p.delete(ids == null ? null : p.records(ids).keys.toList());
+    if (identical(ids, _allIds)) return await p.delete(null);
+    return await p.delete(p.records(ids).keys.toList());
   }
 
   /// sets the pivot values of the related rows of [ids]. It returns
@@ -401,27 +407,30 @@ extension ManyToManyWrites<T> on Model<T> {
         'has a null id or a model that is not saved',
       );
     }
-    Map<String, Map<String, dynamic>> current = await p.rows();
-    Set<String> wanted = <String>{for (dynamic id in records.keys) '$id'};
+    List<Map<String, dynamic>> current = await p.rows();
 
-    List<dynamic> detached = <dynamic>[
-      if (detaching)
-        for (MapEntry<String, Map<String, dynamic>> e in current.entries)
-          if (!wanted.contains(e.key)) e.value[p.relatedForeignKey],
-    ];
-
+    /// match by value, so `'01'` keeps the row of `1`
     Map<dynamic, Map<String, dynamic>> attach =
         <dynamic, Map<String, dynamic>>{};
     List<dynamic> updated = <dynamic>[];
+    List<dynamic> kept = <dynamic>[];
     for (MapEntry<dynamic, Map<String, dynamic>> e in records.entries) {
-      Map<String, dynamic>? row = current['${e.key}'];
+      Map<String, dynamic>? row = p.match(current, e.key);
       if (row == null) {
-        attach[e.key] = e.value;
-      } else if (_changes(row, e.value)) {
-        await p.update(<dynamic>[e.key], e.value);
-        updated.add(e.key);
+        if (!_hasSame(attach.keys, e.key)) attach[e.key] = e.value;
+        continue;
+      }
+      kept.add(row[p.relatedForeignKey]);
+      if (_changes(row, e.value)) {
+        await p.update(<dynamic>[row[p.relatedForeignKey]], e.value);
+        updated.add(row[p.relatedForeignKey]);
       }
     }
+    List<dynamic> detached = <dynamic>[
+      if (detaching)
+        for (Map<String, dynamic> r in current)
+          if (!_hasSame(kept, r[p.relatedForeignKey])) r[p.relatedForeignKey],
+    ];
 
     /// insert first and delete last, so a failed insert keeps the old
     /// links. The ids of the two never overlap.
@@ -444,15 +453,19 @@ extension ManyToManyWrites<T> on Model<T> {
   Future<PivotSyncResult> toggle(String relation, dynamic ids) async {
     _Pivot p = _pivotOf(relation);
     Map<dynamic, Map<String, dynamic>> records = p.records(ids);
-    Map<String, Map<String, dynamic>> current = await p.rows();
-    List<dynamic> detached = <dynamic>[
-      for (dynamic id in records.keys)
-        if (current.containsKey('$id')) id,
-    ];
-    Map<dynamic, Map<String, dynamic>> attach = <dynamic, Map<String, dynamic>>{
-      for (MapEntry<dynamic, Map<String, dynamic>> e in records.entries)
-        if (!current.containsKey('${e.key}')) e.key: e.value,
-    };
+    List<Map<String, dynamic>> current = await p.rows();
+    List<dynamic> detached = <dynamic>[];
+    Map<dynamic, Map<String, dynamic>> attach =
+        <dynamic, Map<String, dynamic>>{};
+    for (MapEntry<dynamic, Map<String, dynamic>> e in records.entries) {
+      Map<String, dynamic>? row = p.match(current, e.key);
+      if (row != null) {
+        dynamic id = row[p.relatedForeignKey];
+        if (!_hasSame(detached, id)) detached.add(id);
+      } else if (!_hasSame(attach.keys, e.key)) {
+        attach[e.key] = e.value;
+      }
+    }
 
     /// insert first, so a failed insert keeps the old links
     await p.insert(attach);
@@ -471,6 +484,17 @@ List<dynamic> _keys(Iterable<dynamic> ids) {
     for (dynamic id in ids)
       if (id is String && '${int.tryParse(id)}' == id) int.parse(id) else id,
   ];
+}
+
+/// the default of [ManyToManyWrites.detach]: no ids given, detach all
+const Object _allIds = Object();
+
+/// true when [ids] has an id that is the same as [id] by value
+bool _hasSame(Iterable<dynamic> ids, dynamic id) {
+  for (dynamic i in ids) {
+    if (_same(i, id)) return true;
+  }
+  return false;
 }
 
 /// true when [values] has a value that is not the same in [row]

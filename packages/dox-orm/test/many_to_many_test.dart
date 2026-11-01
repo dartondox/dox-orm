@@ -276,6 +276,39 @@ void main() async {
         expect(r.detached, <int>[1]);
       });
 
+      test('ids match by value, like the database', () async {
+        await artist.attach('songs', <int>[1, 2]);
+        PivotSyncResult r = await artist.sync('songs', <dynamic>['01', 2]);
+        expect(r.attached, isEmpty);
+        expect(r.detached, isEmpty);
+        expect(await songIds(), <int>[1, 2]);
+
+        r = await artist.sync('songs', <dynamic>[1.0, 2]);
+        expect(r.attached, isEmpty);
+        expect(r.detached, isEmpty);
+        expect(await songIds(), <int>[1, 2]);
+
+        /// '01' is song 1, so toggle removes it, no second row
+        r = await artist.toggle('songs', <dynamic>['01']);
+        expect(r.detached, <int>[1]);
+        expect(r.attached, isEmpty);
+        expect(await songIds(), <int>[2]);
+        r = await artist.toggle('songs', <dynamic>['01', 1]);
+        expect(r.attached.length, 1);
+        List<Map<String, dynamic>> rows = await QueryBuilder.table(
+          'artist_song',
+        ).where('artist_id', artist.id).get();
+        expect(rows.length, 2);
+      });
+
+      test('detach(null) deletes nothing, detach() deletes all', () async {
+        await artist.attach('songs', <int>[1, 2]);
+        expect(await artist.detach('songs', null), 0);
+        expect(await songIds(), <int>[1, 2]);
+        expect(await artist.detach('songs'), 2);
+        expect(await songIds(), <int>[]);
+      });
+
       test('an id is kept once', () async {
         await artist.attach('songs', <dynamic>[1, 1, '1', 2]);
         List<Map<String, dynamic>> rows = await QueryBuilder.table(

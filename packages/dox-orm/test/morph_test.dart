@@ -143,7 +143,7 @@ void main() async {
           'commentable_type': 'nope',
         },
       ]);
-      expect(
+      await expectLater(
         () => Comment().preload('commentable').get(),
         throwsA(isA<StateError>()),
       );
@@ -151,6 +151,14 @@ void main() async {
         () => Comment().whereHas('commentable').get(),
         throwsA(isA<UnsupportedError>()),
       );
+
+      /// an empty type is no type, like Laravel
+      await Comment().where('body', 'x').update(<String, dynamic>{
+        'commentable_type': '',
+      });
+      List<Comment> blank = await Comment().preload('commentable').get();
+      expect(blank.first.commentable, isNull);
+
       Comment empty = Comment();
       await empty.$getRelation<dynamic>('commentable');
       expect(empty.commentable, isNull);
