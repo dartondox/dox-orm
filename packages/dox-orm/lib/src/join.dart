@@ -50,6 +50,45 @@ mixin Join<T> implements SharedMixin<T> {
     return _query('JOIN', arg1, arg2, arg3, arg4);
   }
 
+  /// join the rows of a sub query, named [alias]. the values of [query]
+  /// are bound, like in this query. the other args are like join().
+  ///
+  /// ```
+  /// QueryBuilder<Map<String, dynamic>> latest = QueryBuilder.table('post')
+  ///     .selectRaw('user_id, MAX(created_at) as last_post')
+  ///     .groupBy('user_id');
+  /// // JOIN (SELECT ...) AS "latest" on "latest"."user_id" = "user"."id"
+  /// List users = await User()
+  ///     .joinSub(latest, 'latest', 'latest.user_id', 'user.id')
+  ///     .get();
+  /// ```
+  QueryBuilder<T> joinSub(
+    QueryBuilder<dynamic> query,
+    String alias,
+    String first,
+    String arg2, [
+    String? arg3,
+  ]) {
+    return _on('JOIN', _sub(query, alias), first, arg2, arg3);
+  }
+
+  /// left join the rows of a sub query, see [joinSub]
+  ///
+  /// ```
+  /// List users = await User()
+  ///     .leftJoinSub(latest, 'latest', 'latest.user_id', 'user.id')
+  ///     .get();
+  /// ```
+  QueryBuilder<T> leftJoinSub(
+    QueryBuilder<dynamic> query,
+    String alias,
+    String first,
+    String arg2, [
+    String? arg3,
+  ]) {
+    return _on('LEFT JOIN', _sub(query, alias), first, arg2, arg3);
+  }
+
   /// join raw
   ///
   /// ```
@@ -84,16 +123,30 @@ mixin Join<T> implements SharedMixin<T> {
     String arg3, [
     dynamic arg4,
   ]) {
+    return _on(type, helper.wrap(arg1), arg2, arg3, arg4);
+  }
+
+  /// `(sub query) AS "alias"`
+  String _sub(QueryBuilder<dynamic> query, String alias) {
+    return '(${helper.subQuery(query)}) AS ${helper.wrap(alias)}';
+  }
+
+  /// add `type table on first = second`. [table] is ready sql.
+  QueryBuilder<T> _on(
+    String type,
+    String table,
+    String first,
+    String arg3, [
+    dynamic arg4,
+  ]) {
     String condition = '=';
-    String joinTable = arg1;
-    String firstJoinColumn = arg2;
-    String secondJoinColumn = arg3;
+    String second = arg3;
     if (arg4 != null) {
       condition = helper.operator(arg3);
-      secondJoinColumn = arg4;
+      second = arg4;
     }
     (_joins ??= <String>[]).add(
-      "$type ${helper.wrap(joinTable)} on ${helper.wrap(firstJoinColumn)} $condition ${helper.wrap(secondJoinColumn)}",
+      "$type $table on ${helper.wrap(first)} $condition ${helper.wrap(second)}",
     );
     return queryBuilder;
   }

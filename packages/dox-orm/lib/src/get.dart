@@ -9,13 +9,17 @@ import 'order_by.dart';
 import 'where.dart';
 import 'shared_mixin.dart';
 
+/// the select sql of [qb], as get() runs it. it is a function, not a
+/// query method, so it can not clash with the name of a model field.
+String selectSql(QueryBuilder<dynamic> qb) => qb._buildQuery();
+
 mixin Get<T> implements SharedMixin<T> {
   /// build query to run
   String _buildQuery() {
     if (queryBuilder.getRawQuery().isNotEmpty) {
       return queryBuilder.getRawQuery();
     }
-    String q = "SELECT $selectQueryString FROM ${helper.wrap(tableName)}";
+    String q = "SELECT $selectQueryString FROM ${queryBuilder.getFromQuery()}";
     q += helper.getCommonQuery();
     q += queryBuilder.getLockQuery();
     return q;
@@ -86,6 +90,8 @@ mixin Get<T> implements SharedMixin<T> {
         qb.getOrderByQuery().isEmpty &&
         qb.getLimitQuery().isEmpty &&
         !qb.hasLock &&
+        !qb.hasUnion &&
+        !qb.hasFromSub &&
         qb.getSelectQuery() == '*' &&
         !qb.hasAggregates &&
         !qb.trashedOnly &&
@@ -562,7 +568,7 @@ mixin Get<T> implements SharedMixin<T> {
     ].join(',');
     String distinct = queryBuilder.isDistinct ? 'DISTINCT ' : '';
     String q =
-        "SELECT $distinct$select FROM ${helper.wrap(tableName)}"
+        "SELECT $distinct$select FROM ${queryBuilder.getFromQuery()}"
         "${helper.getCommonQuery()}${queryBuilder.getLockQuery()}";
     return helper.getMapResult(await helper.runQuery(q));
   }
@@ -732,7 +738,7 @@ mixin Get<T> implements SharedMixin<T> {
   Future<List<T>> all() async {
     /// the where part adds soft deletes and global scopes
     String query =
-        "SELECT $selectQueryString FROM ${helper.wrap(tableName)}"
+        "SELECT $selectQueryString FROM ${queryBuilder.getFromQuery()}"
         "${queryBuilder.getWhereQuery()}${queryBuilder.getLockQuery()}";
     return _typed(await helper.formatResult(await helper.runQuery(query)));
   }

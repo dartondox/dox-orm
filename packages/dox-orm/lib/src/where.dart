@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'drivers/db_driver.dart';
 import 'query_builder.dart';
 import 'shared_mixin.dart';
@@ -371,40 +373,205 @@ mixin Where<T> implements SharedMixin<T> {
     return _like('OR', column, value, caseSensitive, true);
   }
 
-  /// where in condition. an empty list match no rows.
+  /// where in condition. [values] is a list, or a sub query that
+  /// selects one column. an empty list match no rows.
   ///
   /// ```
   /// List blogs = await whereIn('id', [1, 2, 3]).get();
+  /// // WHERE "id" IN (SELECT "blog_id" FROM "comment" WHERE ...)
+  /// List blogs = await Blog()
+  ///     .whereIn('id', QueryBuilder.table('comment').select('blog_id'))
+  ///     .get();
   /// ```
-  QueryBuilder<T> whereIn(String column, List<dynamic> values) {
+  QueryBuilder<T> whereIn(String column, Object values) {
     return _whereIn('AND', column, values, false);
   }
 
-  /// or where in condition. an empty list match no rows.
+  /// or where in condition, see [whereIn]. an empty list match no rows.
   ///
   /// ```
   /// List blogs = await where('id', 1).orWhereIn('id', [2, 3]).get();
   /// ```
-  QueryBuilder<T> orWhereIn(String column, List<dynamic> values) {
+  QueryBuilder<T> orWhereIn(String column, Object values) {
     return _whereIn('OR', column, values, false);
   }
 
-  /// where not in condition. an empty list match all rows.
+  /// where not in condition, see [whereIn]. an empty list match all rows.
   ///
   /// ```
   /// List blogs = await whereNotIn('id', [1, 2, 3]).get();
   /// ```
-  QueryBuilder<T> whereNotIn(String column, List<dynamic> values) {
+  QueryBuilder<T> whereNotIn(String column, Object values) {
     return _whereIn('AND', column, values, true);
   }
 
-  /// or where not in condition. an empty list match all rows.
+  /// or where not in condition, see [whereIn]. an empty list match all
+  /// rows.
   ///
   /// ```
   /// List blogs = await where('id', 1).orWhereNotIn('id', [2, 3]).get();
   /// ```
-  QueryBuilder<T> orWhereNotIn(String column, List<dynamic> values) {
+  QueryBuilder<T> orWhereNotIn(String column, Object values) {
     return _whereIn('OR', column, values, true);
+  }
+
+  /// where the date part of a date or datetime column matches [arg2]
+  /// (or [arg3] with [arg2] as the operator). the value is a `DateTime`
+  /// or a `yyyy-mm-dd` string.
+  ///
+  /// ```
+  /// List blogs = await Blog().whereDate('created_at', '2024-05-01').get();
+  /// List blogs = await Blog()
+  ///     .whereDate('created_at', '>=', DateTime(2024, 5, 1))
+  ///     .get();
+  /// ```
+  /// the column is read as it is stored. on SQLite, Dox stores dates in
+  /// UTC, and on Postgres a `timestamptz` is read in the session time zone.
+  QueryBuilder<T> whereDate(
+    String column,
+    dynamic arg2, [
+    dynamic arg3 = _missing,
+  ]) {
+    return _datePart('AND', _DatePart.date, column, arg2, arg3);
+  }
+
+  /// or where the date part matches, see [whereDate]
+  QueryBuilder<T> orWhereDate(
+    String column,
+    dynamic arg2, [
+    dynamic arg3 = _missing,
+  ]) {
+    return _datePart('OR', _DatePart.date, column, arg2, arg3);
+  }
+
+  /// where the time part (`hh:mm:ss`) of a datetime column matches,
+  /// see [whereDate]. the value is a `DateTime` or a `hh:mm:ss` string.
+  ///
+  /// ```
+  /// List blogs = await Blog().whereTime('created_at', '>', '18:00:00').get();
+  /// ```
+  QueryBuilder<T> whereTime(
+    String column,
+    dynamic arg2, [
+    dynamic arg3 = _missing,
+  ]) {
+    return _datePart('AND', _DatePart.time, column, arg2, arg3);
+  }
+
+  /// or where the time part matches, see [whereTime]
+  QueryBuilder<T> orWhereTime(
+    String column,
+    dynamic arg2, [
+    dynamic arg3 = _missing,
+  ]) {
+    return _datePart('OR', _DatePart.time, column, arg2, arg3);
+  }
+
+  /// where the year of a date column matches, see [whereDate]. the value
+  /// is an int, a number string or a `DateTime`.
+  ///
+  /// ```
+  /// List blogs = await Blog().whereYear('created_at', 2024).get();
+  /// ```
+  QueryBuilder<T> whereYear(
+    String column,
+    dynamic arg2, [
+    dynamic arg3 = _missing,
+  ]) {
+    return _datePart('AND', _DatePart.year, column, arg2, arg3);
+  }
+
+  /// or where the year matches, see [whereYear]
+  QueryBuilder<T> orWhereYear(
+    String column,
+    dynamic arg2, [
+    dynamic arg3 = _missing,
+  ]) {
+    return _datePart('OR', _DatePart.year, column, arg2, arg3);
+  }
+
+  /// where the month (1 to 12) of a date column matches, see [whereYear]
+  ///
+  /// ```
+  /// List blogs = await Blog().whereMonth('created_at', 5).get();
+  /// ```
+  QueryBuilder<T> whereMonth(
+    String column,
+    dynamic arg2, [
+    dynamic arg3 = _missing,
+  ]) {
+    return _datePart('AND', _DatePart.month, column, arg2, arg3);
+  }
+
+  /// or where the month matches, see [whereMonth]
+  QueryBuilder<T> orWhereMonth(
+    String column,
+    dynamic arg2, [
+    dynamic arg3 = _missing,
+  ]) {
+    return _datePart('OR', _DatePart.month, column, arg2, arg3);
+  }
+
+  /// where the day of the month (1 to 31) of a date column matches, see
+  /// [whereYear]
+  ///
+  /// ```
+  /// List blogs = await Blog().whereDay('created_at', 15).get();
+  /// ```
+  QueryBuilder<T> whereDay(
+    String column,
+    dynamic arg2, [
+    dynamic arg3 = _missing,
+  ]) {
+    return _datePart('AND', _DatePart.day, column, arg2, arg3);
+  }
+
+  /// or where the day matches, see [whereDay]
+  QueryBuilder<T> orWhereDay(
+    String column,
+    dynamic arg2, [
+    dynamic arg3 = _missing,
+  ]) {
+    return _datePart('OR', _DatePart.day, column, arg2, arg3);
+  }
+
+  /// where the json column has [value]: an item of a json array, or the
+  /// same json value. a list [value] must have all its items in the
+  /// array. `column->key` reads a key inside the json, keys are letters,
+  /// digits and `_`.
+  ///
+  /// ```
+  /// List users = await User().whereJsonContains('tags', 'dart').get();
+  /// List users = await User()
+  ///     .whereJsonContains('options->languages', ['en', 'de'])
+  ///     .get();
+  /// ```
+  /// - Postgres: `@>` on `jsonb`.
+  /// - MySQL and MariaDB: `JSON_CONTAINS()`.
+  /// - SQLite: `json_each()`. [value] must be a string, a number, a bool
+  ///   or a list of them, else it throws an [ArgumentError].
+  QueryBuilder<T> whereJsonContains(String column, Object? value) {
+    return _jsonContains('AND', column, value, false);
+  }
+
+  /// or where the json column has [value], see [whereJsonContains]
+  QueryBuilder<T> orWhereJsonContains(String column, Object? value) {
+    return _jsonContains('OR', column, value, false);
+  }
+
+  /// where the json column does not have [value], see [whereJsonContains]
+  ///
+  /// ```
+  /// List users = await User().whereJsonDoesntContain('tags', 'php').get();
+  /// ```
+  QueryBuilder<T> whereJsonDoesntContain(String column, Object? value) {
+    return _jsonContains('AND', column, value, true);
+  }
+
+  /// or where the json column does not have [value], see
+  /// [whereJsonContains]
+  QueryBuilder<T> orWhereJsonDoesntContain(String column, Object? value) {
+    return _jsonContains('OR', column, value, true);
   }
 
   /// where column is null
@@ -468,9 +635,20 @@ mixin Where<T> implements SharedMixin<T> {
   QueryBuilder<T> _whereIn(
     String type,
     String column,
-    List<dynamic> values,
+    Object values,
     bool not,
   ) {
+    if (values is QueryBuilder) {
+      return _rawQuery(
+        type,
+        "${helper.wrap(column)} ${not ? 'NOT IN' : 'IN'} "
+        "(${helper.subQuery(values)})",
+      );
+    }
+    if (values is! List) {
+      throw ArgumentError.value(values, 'values', 'must be a List or a query');
+    }
+
     /// `in ()` is not valid sql, so an empty list becomes
     /// "no rows" for IN and "all rows" for NOT IN
     if (values.isEmpty) {
@@ -668,6 +846,146 @@ mixin Where<T> implements SharedMixin<T> {
     return out.toString();
   }
 
+  QueryBuilder<T> _datePart(
+    String type,
+    _DatePart part,
+    String column,
+    dynamic arg2,
+    dynamic arg3,
+  ) {
+    String operator = '=';
+    dynamic value = arg2;
+    if (!identical(arg3, _missing)) {
+      operator = helper.operator(arg2);
+      value = arg3;
+    }
+    if (value == null) {
+      throw ArgumentError.value(value, column, 'needs a value');
+    }
+    String col = helper.wrap(column);
+    String key = helper.parseColumnKey(column);
+    Driver driver = dbDriver.getName();
+    String left;
+    String right = key;
+    switch (part) {
+      case _DatePart.date:
+      case _DatePart.time:
+        bool date = part == _DatePart.date;
+        if (value is DateTime) value = date ? _ymd(value) : _hms(value);
+        String sqlType = date ? 'date' : 'time';
+
+        /// both sides go through the same function, so `2024-5-1` or
+        /// `9:00` match too
+        switch (driver) {
+          case Driver.postgres:
+          case Driver.mysql:
+            left = 'CAST($col AS $sqlType)';
+            right = 'CAST($key AS $sqlType)';
+          case Driver.sqlite:
+            left = '$sqlType($col)';
+            right = '$sqlType($key)';
+        }
+      case _DatePart.year:
+      case _DatePart.month:
+      case _DatePart.day:
+        if (value is DateTime) {
+          value = part == _DatePart.year
+              ? value.year
+              : part == _DatePart.month
+              ? value.month
+              : value.day;
+        }
+        if (value is! int) value = int.parse('$value');
+        String name = part.name;
+        switch (driver) {
+          case Driver.postgres:
+            left = 'CAST(EXTRACT($name FROM $col) AS integer)';
+          case Driver.mysql:
+            left = '${name.toUpperCase()}($col)';
+          case Driver.sqlite:
+            String format = const <_DatePart, String>{
+              _DatePart.year: '%Y',
+              _DatePart.month: '%m',
+              _DatePart.day: '%d',
+            }[part]!;
+            left = "CAST(strftime('$format', $col) AS INTEGER)";
+        }
+    }
+    addSubstitutionValues(key, value);
+    return _rawQuery(type, '$left $operator $right');
+  }
+
+  /// `yyyy-mm-dd` of [d]
+  static String _ymd(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-${_two(d.month)}-${_two(d.day)}';
+
+  /// `hh:mm:ss` of [d]
+  static String _hms(DateTime d) =>
+      '${_two(d.hour)}:${_two(d.minute)}:${_two(d.second)}';
+
+  static String _two(int n) => n.toString().padLeft(2, '0');
+
+  /// a json path key: letters, digits and `_` only, so it is safe in sql
+  static final RegExp _jsonKey = RegExp(r'^\w+$');
+
+  QueryBuilder<T> _jsonContains(
+    String type,
+    String column,
+    Object? value,
+    bool not,
+  ) {
+    List<String> parts = column.split('->');
+    List<String> keys = parts.sublist(1);
+    for (String k in keys) {
+      if (!_jsonKey.hasMatch(k)) {
+        throw ArgumentError.value(column, 'column', 'has a bad json key: $k');
+      }
+    }
+    String col = helper.wrap(parts.first);
+    String path = '\$${keys.map(_jsonPathKey).join()}';
+    String sql;
+    switch (dbDriver.getName()) {
+      case Driver.postgres:
+        String key = helper.parseColumnKey(parts.first);
+        addSubstitutionValues(key, jsonEncode(value));
+        String arrows = keys.map(_pgArrow).join();
+        sql = '(CAST($col AS jsonb)$arrows) @> CAST($key AS jsonb)';
+      case Driver.mysql:
+        String key = helper.parseColumnKey(parts.first);
+        addSubstitutionValues(key, jsonEncode(value));
+        sql = keys.isEmpty
+            ? 'JSON_CONTAINS($col, $key)'
+            : "JSON_CONTAINS($col, $key, '$path')";
+      case Driver.sqlite:
+
+        /// ponytail: scalars and lists of scalars only. json_each() gives
+        /// the items of an array, or the value itself.
+        List<Object?> items = value is List ? value : <Object?>[value];
+        List<String> checks = <String>[];
+        for (Object? item in items) {
+          if (item is! String && item is! num && item is! bool) {
+            throw ArgumentError.value(
+              value,
+              'value',
+              'on SQLite must be a string, a number, a bool or a list of them',
+            );
+          }
+          String key = helper.parseColumnKey(parts.first);
+          addSubstitutionValues(key, item);
+          checks.add(
+            "EXISTS (SELECT 1 FROM json_each($col, '$path') "
+            'WHERE json_each.value = $key)',
+          );
+        }
+        sql = checks.isEmpty ? '1 = 1' : '(${checks.join(' AND ')})';
+    }
+    return _rawQuery(type, not ? 'NOT $sql' : sql);
+  }
+
+  static String _jsonPathKey(String key) => '."$key"';
+
+  static String _pgArrow(String key) => "->'$key'";
+
   QueryBuilder<T> _rawQuery(String type, String rawQuery, [dynamic params]) {
     List<String>? wheres = _wheres;
     if (wheres == null) {
@@ -683,3 +1001,6 @@ mixin Where<T> implements SharedMixin<T> {
     return queryBuilder;
   }
 }
+
+/// the part of a date that whereDate() and the others compare
+enum _DatePart { date, time, year, month, day }

@@ -6,6 +6,37 @@ mixin Select<T> implements SharedMixin<T> {
 
   bool _distinct = false;
 
+  /// the sub query of fromSub(), with its alias
+  String? _fromSub;
+
+  /// true when fromSub() was called
+  bool get hasFromSub => _fromSub != null;
+
+  /// the part after `FROM`: the table, or the sub query of fromSub()
+  String getFromQuery() => _fromSub ?? helper.wrap(tableName);
+
+  /// select from the rows of a sub query, named [alias], not from a
+  /// table. the values of [query] are bound, like in this query.
+  ///
+  /// ```
+  /// QueryBuilder<Map<String, dynamic>> totals = QueryBuilder.table('order')
+  ///     .selectRaw('user_id, SUM(amount) as total')
+  ///     .groupBy('user_id');
+  /// // SELECT * FROM (SELECT user_id, ... GROUP BY "user_id") AS "totals"
+  /// // WHERE "total" > @total_p0
+  /// List<Map<String, dynamic>> rows = await QueryBuilder.table('totals')
+  ///     .fromSub(totals, 'totals')
+  ///     .where('total', '>', 100)
+  ///     .get();
+  /// ```
+  /// [alias] is also the table name of this query, so `totals.total`
+  /// works in where() and orderBy().
+  QueryBuilder<T> fromSub(QueryBuilder<dynamic> query, String alias) {
+    _fromSub = '(${helper.subQuery(query)}) AS ${helper.wrap(alias)}';
+    tableName = alias;
+    return queryBuilder;
+  }
+
   /// true when distinct() was called
   bool get isDistinct => _distinct;
 

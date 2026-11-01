@@ -5,8 +5,12 @@ import 'shared_mixin.dart';
 /// the sql of count() for [qb]. it is a function, not a query method,
 /// so it can not clash with the name of a model field.
 String countQuery(QueryBuilder<dynamic> qb) {
-  String table = qb.helper.wrap(qb.tableName);
+  String table = qb.getFromQuery();
   String common = qb.helper.getCommonQuery(isCountQuery: true);
+  if (qb.hasUnion) {
+    return "SELECT count(*) as total FROM (SELECT ${qb.getSelectQuery()}"
+        " FROM $table$common${qb.getUnionQuery()}) as dox_count";
+  }
   if (qb.isDistinct) {
     return "SELECT count(*) as total FROM (SELECT ${qb.getSelectQuery()}"
         " FROM $table$common) as dox_count";
@@ -49,8 +53,9 @@ mixin Count<T> implements SharedMixin<T> {
   /// bool taken = await User().where('email', email).hasRows();
   /// ```
   Future<bool> hasRows() async {
+    if (queryBuilder.hasUnion) return await count() > 0;
     String q =
-        "SELECT 1 as one FROM ${helper.wrap(tableName)}"
+        "SELECT 1 as one FROM ${queryBuilder.getFromQuery()}"
         "${helper.getCommonQuery(isCountQuery: true)} LIMIT 1";
     return (await helper.runQuery(q)).isNotEmpty;
   }
@@ -111,10 +116,10 @@ mixin Count<T> implements SharedMixin<T> {
 
   /// run `SELECT <function>(<column>)` with the where and join parts
   Future<dynamic> _aggregate(String function, String column) async {
-    if (queryBuilder.getGroupByQuery().isNotEmpty) {
+    if (queryBuilder.getGroupByQuery().isNotEmpty || queryBuilder.hasUnion) {
       throw StateError(
-        '${function.toLowerCase()}() can not be used with groupBy() or '
-        'having(). Use selectRaw() and get() instead.',
+        '${function.toLowerCase()}() can not be used with groupBy(), '
+        'having() or union(). Use selectRaw() and get() instead.',
       );
     }
     String distinct =
@@ -123,7 +128,7 @@ mixin Count<T> implements SharedMixin<T> {
         : '';
     String q =
         "SELECT $function($distinct${helper.wrap(column)}) as dox_aggregate"
-        " FROM ${helper.wrap(tableName)}"
+        " FROM ${queryBuilder.getFromQuery()}"
         "${helper.getCommonQuery(isCountQuery: true)}";
     List<Map<String, dynamic>> rows = helper.getMapResult(
       await helper.runQuery(q),
