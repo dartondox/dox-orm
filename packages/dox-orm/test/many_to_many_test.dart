@@ -212,6 +212,38 @@ void main() async {
         expect(r.detached, <int>[2, 1]);
       });
 
+      test('null ids are no ids, like Laravel', () async {
+        await artist.attach('songs', null);
+        await artist.attach('songs', <dynamic>[null, 1]);
+        await artist.attach('songs', <dynamic, dynamic>{null: null, 2: null});
+        await artist.attach('songs', Song()); // a model without an id
+        expect(await songIds(), <int>[1, 2]);
+        expect(await artist.detach('songs', <dynamic>[null]), 0);
+        expect(await songIds(), <int>[1, 2]);
+
+        SyncResult r = await artist.toggle('songs', null);
+        expect(r.attached, isEmpty);
+        expect(r.detached, isEmpty);
+
+        /// sync(null) is sync([]): it detaches all and throws nothing
+        r = await artist.sync('songs', null);
+        expect(r.detached.length, 2);
+        expect(r.attached, isEmpty);
+        expect(await songIds(), <int>[]);
+      });
+
+      test('an id is kept once', () async {
+        await artist.attach('songs', <dynamic>[1, 1, '1', 2]);
+        List<Map<String, dynamic>> rows = await QueryBuilder.table(
+          'artist_song',
+        ).where('artist_id', artist.id).get();
+        expect(rows.length, 2);
+
+        SyncResult r = await artist.sync('songs', <dynamic>[3, '3', 3]);
+        expect(r.attached, <int>[3]);
+        expect(await songIds(), <int>[3]);
+      });
+
       test('sync compares pivot values by type', () async {
         await artist.attach('songs', 1, <String, dynamic>{'role': '1'});
         SyncResult r = await artist.sync('songs', <int, Map<String, dynamic>>{

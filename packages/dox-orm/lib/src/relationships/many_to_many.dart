@@ -186,25 +186,38 @@ class _Pivot {
 
   /// [ids] as `id => extra pivot values`. [ids] can be one id, one
   /// model, a list of ids or models, or a map of `id => values`.
+  ///
+  /// Like Laravel, null means no ids, and a null id (or a model without
+  /// a key) is skipped. An id is kept once: `[1, 1, '1']` gives one id,
+  /// the first one wins.
   Map<dynamic, Map<String, dynamic>> records(
     dynamic ids, [
     Map<String, dynamic> values = const <String, dynamic>{},
   ]) {
-    if (ids is Map) {
-      return <dynamic, Map<String, dynamic>>{
-        for (MapEntry<dynamic, dynamic> e in ids.entries)
-          _id(e.key): <String, dynamic>{
-            ...values,
+    Iterable<MapEntry<dynamic, dynamic>> entries;
+    if (ids == null) {
+      entries = const <MapEntry<dynamic, dynamic>>[];
+    } else if (ids is Map) {
+      entries = ids.entries;
+    } else {
+      List<dynamic> list = ids is Iterable ? ids.toList() : <dynamic>[ids];
+      entries = <MapEntry<dynamic, dynamic>>[
+        for (dynamic id in list) MapEntry<dynamic, dynamic>(id, null),
+      ];
+    }
+    Set<String> seen = <String>{};
+    Map<dynamic, Map<String, dynamic>> out = <dynamic, Map<String, dynamic>>{};
+    for (MapEntry<dynamic, dynamic> e in entries) {
+      dynamic id = _id(e.key);
+      if (id == null || !seen.add('$id')) continue;
+      out[id] = <String, dynamic>{
+        ...values,
 
-            /// an untyped map literal like `{1: {'role': 'x'}}` works too
-            ...?(e.value as Map<dynamic, dynamic>?)?.cast<String, dynamic>(),
-          },
+        /// an untyped map literal like `{1: {'role': 'x'}}` works too
+        ...?(e.value as Map<dynamic, dynamic>?)?.cast<String, dynamic>(),
       };
     }
-    List<dynamic> list = ids is Iterable ? ids.toList() : <dynamic>[ids];
-    return <dynamic, Map<String, dynamic>>{
-      for (dynamic id in list) _id(id): values,
-    };
+    return out;
   }
 
   dynamic _id(dynamic id) => id is Model ? relationKey(id, relatedKey) : id;

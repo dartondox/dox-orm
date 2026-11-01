@@ -219,6 +219,16 @@ class MorphTo {
   /// the key of the related model that `<name>_id` points to, default
   /// its primary key
   final String? ownerKey;
+
+  /// a static function that changes the query. It runs for the query of
+  /// every type, so it must take and return `Model<dynamic>`:
+  ///
+  /// ```
+  /// static Model<dynamic> notDeleted(Model<dynamic> q) {
+  ///   q.whereNull('hidden_at');
+  ///   return q;
+  /// }
+  /// ```
   final Function? onQuery;
   final bool? eager;
 
