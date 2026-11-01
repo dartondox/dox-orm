@@ -114,7 +114,8 @@ void main() async {
         return exists.failedItems(values, context());
       }
 
-      expect(await u(<Object?>['new@dox.dev', 'taken@dox.dev']), <int>[1]);
+      // any row found: every item fails (one query can not tell which)
+      expect(await u(<Object?>['new@dox.dev', 'taken@dox.dev']), <int>[0, 1]);
       expect(await e(<Object?>['taken@dox.dev', 'nope@dox.dev']), <int>[1]);
       expect(await e(<Object?>['taken@dox.dev', 'taken@dox.dev']), <int>[]);
       // only the database matched: it can not tell which, so all fail
@@ -124,8 +125,42 @@ void main() async {
       );
       expect(
         await e(<Object?>['TAKEN@dox.dev', 'TAKEN@dox.dev']),
-        caseFree ? <int>[] : <int>[0, 1],
+        <int>[0, 1], // an item passes only when its exact text is found
       );
+    });
+
+    test('a list never lets a wrong value pass (MySQL ignores case)', () async {
+      await QueryBuilder.table('rule_emails')
+          .insert(<String, dynamic>{'email': 'other@dox.dev'});
+      // OTHER@ is taken on MySQL and MariaDB, but it matches no row as
+      // text: every item must fail
+      expect(
+        await const Unique(
+          'rule_emails',
+          column: 'email',
+        ).failedItems(<Object?>['taken@dox.dev', 'OTHER@dox.dev'], context()),
+        <int>[0, 1],
+      );
+      await Schema().create('rule_people', (Table table) {
+        table.id();
+        table.string('name');
+      });
+      try {
+        for (String name in <String>['bob', 'Bob']) {
+          await QueryBuilder.table('rule_people')
+              .insert(<String, dynamic>{'name': name});
+        }
+        // `bob` finds two rows on MySQL: `nobody` must still fail
+        expect(
+          await const Exists(
+            'rule_people',
+            column: 'name',
+          ).failedItems(<Object?>['bob', 'nobody'], context()),
+          <int>[1],
+        );
+      } finally {
+        await Schema().dropIfExists('rule_people');
+      }
     });
 
     test('a value that does not fit the column is not found', () async {
@@ -159,7 +194,7 @@ void main() async {
           'rule_emails',
           column: 'id',
         ).failedItems(<Object?>['abc', 1], context()),
-        postgres ? <int>[0, 1] : <int>[1],
+        <int>[0, 1], // Postgres can not compare, the others find id 1
       );
       // too big for an int column (Postgres 22003)
       expect(
@@ -192,7 +227,7 @@ void main() async {
           'new@dox.dev',
           'taken@dox.dev',
         ], withParam),
-        <int>[1],
+        <int>[0, 1],
       );
       expect(
         (await v
@@ -243,7 +278,7 @@ void main() async {
           column: 'email',
           finder: finder,
         ).failedItems(many, context()),
-        <int>[250],
+        hasLength(500),
       );
       List<int> missing = await Exists(
         'rule_emails',

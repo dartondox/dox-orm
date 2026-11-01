@@ -3,6 +3,7 @@ import 'package:dox_postgres_native/dox_postgres_native.dart'
 import 'package:dox_validation/dox_validation.dart';
 
 import '../drivers/db_driver.dart';
+import '../main.dart';
 import '../query_builder.dart';
 
 /// Reads rows for [Unique] and [Exists], and for `v.string().exists()`
@@ -70,15 +71,20 @@ class RowFinder extends PresenceVerifier {
     return error.code.startsWith('22');
   }
 
-  /// Run [query]. Inside a transaction it runs in a savepoint (a nested
-  /// transaction). On Postgres a failed query aborts the whole
+  /// Run [query]. On Postgres inside a transaction it runs in a savepoint
+  /// (a nested transaction). There a failed query aborts the whole
   /// transaction, so without it the next query of the app would fail
-  /// with 25P02. With it, only this one query is rolled back.
+  /// with 25P02. With it, only this one query is rolled back. MySQL and
+  /// SQLite give no error here, so they skip the 2 extra statements.
   static Future<List<dynamic>> _get(
     QueryBuilder<dynamic> query,
     String? connection,
   ) {
-    if (!DBDriver.inTransaction) return query.get();
+    if (!DBDriver.inTransaction ||
+        SqlQueryBuilder().getDBDriver(connection).getName() !=
+            Driver.postgres) {
+      return query.get();
+    }
     return QueryBuilder.transaction(query.get, connection: connection);
   }
 
