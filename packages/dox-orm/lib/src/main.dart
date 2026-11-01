@@ -1,4 +1,5 @@
 import 'package:dox_orm/dox_orm.dart';
+import 'package:dox_validation/dox_validation.dart' show PresenceVerifier;
 
 /// one driver per connection name, so each name keeps its own pool and
 /// its own statement caches
@@ -26,7 +27,12 @@ class SqlQueryBuilder {
     return driver;
   }
 
-  set dbDriver(DBDriver driver) => _dbDriver = driver;
+  set dbDriver(DBDriver driver) {
+    _dbDriver = driver;
+    // `exists()` and `unique()` of dox_validation read the database
+    // through this, unless the app set its own verifier
+    PresenceVerifier.instance ??= const RowFinder();
+  }
 
   bool debug = true;
 

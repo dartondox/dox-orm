@@ -2,14 +2,21 @@ import 'package:dox_validation/dox_validation.dart';
 
 import '../query_builder.dart';
 
-/// Reads rows for [Unique] and [Exists]. Soft-deleted rows count too,
-/// because it reads the table, not the model.
-class RowFinder {
+/// Reads rows for [Unique] and [Exists], and for `v.string().exists()`
+/// and `.unique()` of the fluent schemas: the ORM sets it as the
+/// [PresenceVerifier] when the database starts. Soft-deleted rows count
+/// too, because it reads the table, not the model.
+///
+/// The values are bound as query parameters. Table and column names go
+/// into the SQL text, so only plain names pass
+/// ([PresenceVerifier.checkName]).
+class RowFinder implements PresenceVerifier {
   const RowFinder();
 
   /// The values of [values] that are in [column] of [table], as text.
   /// When [exceptColumn] is set, rows where it equals [exceptValue] are
   /// left out. One `WHERE IN` query.
+  @override
   Future<Set<String>> found(
     String table,
     String column,
@@ -18,10 +25,13 @@ class RowFinder {
     Object? exceptValue,
     String? connection,
   }) async {
+    PresenceVerifier.checkName(table);
+    PresenceVerifier.checkName(column);
     QueryBuilder<dynamic> query = QueryBuilder.table(table)
         .select(column)
         .whereIn(column, values);
     if (exceptColumn != null) {
+      PresenceVerifier.checkName(exceptColumn);
       query = query.where(exceptColumn, '!=', exceptValue);
     }
     if (connection != null) query = query.withConnection(connection);
