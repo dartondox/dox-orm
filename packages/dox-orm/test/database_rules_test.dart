@@ -81,12 +81,13 @@ void main() async {
           !inDb,
           reason: '@Unique $value',
         );
+        // @Exists keeps the 3.0.1 rule: the exact text must be found
         expect(
           await const Exists(
             'rule_emails',
             column: 'email',
           ).checkAsync(value, context()),
-          inDb,
+          value == 'taken@dox.dev',
           reason: '@Exists $value',
         );
         ParseResult<String> fluent = await v
@@ -94,6 +95,16 @@ void main() async {
             .unique('rule_emails', column: 'email')
             .safeParseAsync(value);
         expect(fluent.success, !inDb, reason: 'unique() $value');
+      }
+    });
+
+    test('one @Exists value needs its exact text, like 3.0.1', () async {
+      Exists id = const Exists('rule_emails');
+      expect(await id.checkAsync(1, context()), isTrue);
+      expect(await id.checkAsync('1', context()), isTrue);
+      // these find the row 1 on some databases, but they are not `1`
+      for (String value in <String>['01', ' 1', '1abc']) {
+        expect(await id.checkAsync(value, context()), isFalse, reason: value);
       }
     });
 

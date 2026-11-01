@@ -209,11 +209,12 @@ class Exists extends AsyncRule<Object?> {
   @override
   String get defaultMessage => 'The selected {field} is invalid';
 
-  /// One value: the database decides what matches. MySQL ignores case,
-  /// so any row found means the value exists.
+  /// One value: it passes only when the database finds its exact text,
+  /// the same as in 3.0.1. So `'01'` does not find the id `1`, and on
+  /// MySQL `'1abc'` or `team-a` for `TEAM-A` do not pass either.
   @override
   Future<bool> checkAsync(Object? value, RuleContext context) async {
-    return (await _found(<Object?>[value])).isNotEmpty;
+    return (await _found(<Object?>[value])).contains('$value');
   }
 
   Future<Set<String>> _found(List<Object?> values) {
