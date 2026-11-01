@@ -130,6 +130,46 @@ class BlogGenerator extends Model<Blog> with SoftDeletes<Blog> {
   }
 
   @override
+  bool setColumnValue(String column, dynamic value) {
+    Blog instance = this as Blog;
+    switch (column) {
+      case 'uid':
+        if (value is! int?) return false;
+        instance.uid = value;
+        return true;
+      case 'title':
+        if (value is! String?) return false;
+        instance.title = value;
+        return true;
+      case 'status':
+        if (value is! String?) return false;
+        instance.status = value;
+        return true;
+      case 'slug':
+        if (value is! String?) return false;
+        instance.slug = value;
+        return true;
+      case 'body':
+        if (value is! String?) return false;
+        instance.description = value;
+        return true;
+      case 'deleted_at':
+        if (value is! DateTime?) return false;
+        instance.deletedAt = value;
+        return true;
+      case 'created_at':
+        if (value is! DateTime?) return false;
+        instance.createdAt = value;
+        return true;
+      case 'updated_at':
+        if (value is! DateTime?) return false;
+        instance.updatedAt = value;
+        return true;
+    }
+    return false;
+  }
+
+  @override
   void setComputedValues(Map<String, dynamic> map) {
     Blog instance = this as Blog;
     map['title_length'] = instance.titleLength;

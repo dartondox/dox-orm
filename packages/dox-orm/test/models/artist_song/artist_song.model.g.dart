@@ -78,4 +78,32 @@ class ArtistSongGenerator extends Model<ArtistSong> {
 
     return map;
   }
+
+  @override
+  bool setColumnValue(String column, dynamic value) {
+    ArtistSong instance = this as ArtistSong;
+    switch (column) {
+      case 'id':
+        if (value is! int?) return false;
+        instance.id = value;
+        return true;
+      case 'blog_id':
+        if (value is! int?) return false;
+        instance.songId = value;
+        return true;
+      case 'artist_id':
+        if (value is! int?) return false;
+        instance.artistId = value;
+        return true;
+      case 'created_at':
+        if (value is! DateTime?) return false;
+        instance.createdAt = value;
+        return true;
+      case 'updated_at':
+        if (value is! DateTime?) return false;
+        instance.updatedAt = value;
+        return true;
+    }
+    return false;
+  }
 }

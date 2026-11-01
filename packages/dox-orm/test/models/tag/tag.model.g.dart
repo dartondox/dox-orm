@@ -75,4 +75,28 @@ class TagGenerator extends Model<Tag> {
 
     return map;
   }
+
+  @override
+  bool setColumnValue(String column, dynamic value) {
+    Tag instance = this as Tag;
+    switch (column) {
+      case 'id':
+        if (value is! int?) return false;
+        instance.id = value;
+        return true;
+      case 'title':
+        if (value is! String?) return false;
+        instance.title = value;
+        return true;
+      case 'created_at':
+        if (value is! DateTime?) return false;
+        instance.createdAt = value;
+        return true;
+      case 'updated_at':
+        if (value is! DateTime?) return false;
+        instance.updatedAt = value;
+        return true;
+    }
+    return false;
+  }
 }

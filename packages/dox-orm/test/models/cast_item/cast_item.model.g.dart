@@ -91,4 +91,44 @@ class CastItemGenerator extends Model<CastItem> {
 
     return map;
   }
+
+  @override
+  bool setColumnValue(String column, dynamic value) {
+    CastItem instance = this as CastItem;
+    switch (column) {
+      case 'id':
+        if (value is! int?) return false;
+        instance.id = value;
+        return true;
+      case 'meta':
+        if (value is! Map<String, dynamic>?) return false;
+        instance.meta = value;
+        return true;
+      case 'tags':
+        if (value is! List<String>?) return false;
+        instance.tags = value;
+        return true;
+      case 'active':
+        if (value is! bool?) return false;
+        instance.active = value;
+        return true;
+      case 'done':
+        if (value is! bool) return false;
+        instance.done = value;
+        return true;
+      case 'status':
+        if (value is! Status?) return false;
+        instance.status = value;
+        return true;
+      case 'level':
+        if (value is! Level?) return false;
+        instance.level = value;
+        return true;
+      case 'price':
+        if (value is! Money?) return false;
+        instance.price = value;
+        return true;
+    }
+    return false;
+  }
 }

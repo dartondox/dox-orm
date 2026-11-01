@@ -122,6 +122,22 @@ class OwnerGenerator extends Model<Owner> {
 
     return map;
   }
+
+  @override
+  bool setColumnValue(String column, dynamic value) {
+    Owner instance = this as Owner;
+    switch (column) {
+      case 'id':
+        if (value is! int?) return false;
+        instance.id = value;
+        return true;
+      case 'name':
+        if (value is! String?) return false;
+        instance.name = value;
+        return true;
+    }
+    return false;
+  }
 }
 
 // ignore_for_file: always_specify_types
@@ -206,6 +222,26 @@ class PetGenerator extends Model<Pet> {
 
     return map;
   }
+
+  @override
+  bool setColumnValue(String column, dynamic value) {
+    Pet instance = this as Pet;
+    switch (column) {
+      case 'id':
+        if (value is! int?) return false;
+        instance.id = value;
+        return true;
+      case 'name':
+        if (value is! String?) return false;
+        instance.name = value;
+        return true;
+      case 'owner_id':
+        if (value is! int?) return false;
+        instance.ownerId = value;
+        return true;
+    }
+    return false;
+  }
 }
 
 // ignore_for_file: always_specify_types
@@ -266,5 +302,21 @@ class ClubGenerator extends Model<Club> {
     Map<String, dynamic> map = instance.columnsToMap();
 
     return map;
+  }
+
+  @override
+  bool setColumnValue(String column, dynamic value) {
+    Club instance = this as Club;
+    switch (column) {
+      case 'id':
+        if (value is! int?) return false;
+        instance.id = value;
+        return true;
+      case 'name':
+        if (value is! String?) return false;
+        instance.name = value;
+        return true;
+    }
+    return false;
   }
 }

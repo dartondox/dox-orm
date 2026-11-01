@@ -75,4 +75,28 @@ class DeviceGenerator extends Model<Device> {
 
     return map;
   }
+
+  @override
+  bool setColumnValue(String column, dynamic value) {
+    Device instance = this as Device;
+    switch (column) {
+      case 'uuid':
+        if (value is! String?) return false;
+        instance.uuid = value;
+        return true;
+      case 'name':
+        if (value is! String?) return false;
+        instance.name = value;
+        return true;
+      case 'created_at':
+        if (value is! DateTime?) return false;
+        instance.createdAt = value;
+        return true;
+      case 'updated_at':
+        if (value is! DateTime?) return false;
+        instance.updatedAt = value;
+        return true;
+    }
+    return false;
+  }
 }
