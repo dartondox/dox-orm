@@ -22,6 +22,14 @@ class ConnectionConfig {
   /// `QueryPrinter` interface
   QueryPrinter? printer;
 
+  /// names of values to hide in the debug query log. off by default: the
+  /// log shows every value. a value is shown as `***` when its key ends
+  /// with one of these names (case does not matter). eg. `['password',
+  /// 'token']` hides `password`, `users.password`, `old_password` and
+  /// `remember_token`. only the log changes, the query still gets the
+  /// real values.
+  List<String> logRedact;
+
   /// database host
   String host;
 
@@ -44,7 +52,9 @@ class ConnectionConfig {
   ///   self-signed certificate in development.
   /// - postgres: TLS mode `require` (encrypt, no certificate check, like
   ///   libpq). set `extra['sslMode']` to `verify-full` to also check the
-  ///   certificate. see [postgresSslMode].
+  ///   certificate. see [postgresSslMode]. the app prints one warning to
+  ///   stderr when it connects with `require`. set `extra['sslWarning']`
+  ///   to false to turn the warning off.
   bool useSSL;
 
   /// extra configuration for the connection
@@ -74,6 +84,7 @@ class ConnectionConfig {
     required this.debug,
     this.printer,
     this.driverFactory,
+    this.logRedact = const <String>[],
   });
 
   /// Makes a config from a database url, like `DATABASE_URL`.
@@ -109,6 +120,7 @@ class ConnectionConfig {
     bool debug = false,
     QueryPrinter? printer,
     Map<String, dynamic> extra = const <String, dynamic>{},
+    List<String> logRedact = const <String>[],
   }) {
     url = url.trim();
     int colon = url.indexOf(':');
@@ -124,6 +136,7 @@ class ConnectionConfig {
         database: Uri.decodeComponent(path),
         debug: debug,
         printer: printer,
+        logRedact: logRedact,
         extra: extra,
       );
     }
@@ -183,6 +196,7 @@ class ConnectionConfig {
       useSSL: useSSL,
       debug: debug,
       printer: printer,
+      logRedact: logRedact,
       extra: options,
     );
   }
@@ -201,6 +215,11 @@ class ConnectionConfig {
   /// the Postgres TLS mode: `disable`, `prefer`, `require`, `verify-ca`
   /// (checks the certificate, not the host name) or `verify-full`. it is `extra['sslMode']` when set, else `require`
   /// with [useSSL], else `disable`.
+  ///
+  /// `require` encrypts the data but does not check the server
+  /// certificate, so it does not stop a fake server in the middle. the app
+  /// prints one warning to stderr when it connects with `require`. use
+  /// `verify-full` in production.
   String get postgresSslMode =>
       extra['sslMode'] as String? ?? (useSSL ? 'require' : 'disable');
 

@@ -80,6 +80,7 @@ class MysqlNativeDriver extends DBDriver {
       sql,
       values,
       _toMysqlValue,
+      mysql: true,
     );
     return rows
         ? pool.query(query, parameters: params, transaction: _tx)

@@ -6,6 +6,20 @@ import 'keys.dart';
 final Expando<String> _localKeys = Expando<String>();
 
 /// one to one relationship query
+///
+/// when an owner has many child rows, eager loading keeps the last row the
+/// query returns, and the database does not promise any order. add an
+/// `orderBy` in `onQuery` to pick the row, eg. order by `id` to keep the
+/// row with the highest id:
+/// ```
+/// @HasOne(Address, onQuery: latestAddress)
+/// Address? address;
+///
+/// static Model<Address> latestAddress(Address q) {
+///   q.orderBy('id');
+///   return q;
+/// }
+/// ```
 M? hasOne<T, M>(
   List<Model<T>> list,
   Model<M> Function() model, {
@@ -46,7 +60,8 @@ Future<Map<String, M>> getHasOne<T, M>(dynamic q, List<Model<T>> list) async {
 
   Map<String, M> ret = <String, M>{};
 
-  /// filter matched values with local id value
+  /// filter matched values with local id value. with many rows for one
+  /// owner the last row wins, see [hasOne].
   for (M r in results) {
     String ownerId = (r as Model<M>).originalMap['_owner_id'].toString();
     ret[ownerId] = r;

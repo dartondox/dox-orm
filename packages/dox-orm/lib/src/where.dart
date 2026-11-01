@@ -431,7 +431,9 @@ mixin Where<T> implements SharedMixin<T> {
     return _rawQuery('OR', '${helper.wrap(column)} IS NOT NULL');
   }
 
-  /// where raw condition
+  /// where raw condition, nothing is quoted. never put user input in
+  /// [rawQuery]. pass user values in [params] as `@name`, they are bound
+  /// safely.
   ///
   /// ```
   /// List blogs = await whereRaw('id = @id', {"id" : 1}).get();
@@ -440,7 +442,9 @@ mixin Where<T> implements SharedMixin<T> {
     return _rawQuery('AND', rawQuery, params);
   }
 
-  /// where raw condition
+  /// where raw condition, nothing is quoted. never put user input in
+  /// [rawQuery]. pass user values in [params] as `@name`, they are bound
+  /// safely.
   ///
   /// ```
   /// List blogs = await orWhereRaw('id = @id', {"id" : 1}).get();
