@@ -1,24 +1,37 @@
 import 'package:dox_orm/dox_orm.dart';
+import 'package:dox_orm/src/drivers/db_driver.dart';
 
 // coverage:ignore-file
 class Logger {
+  /// print [query] with each `@name` as `?`, and its values in the order
+  /// of the `?`. values that the query does not use come last.
   void log(String query, [dynamic params]) {
-    query = query.replaceAll(RegExp(r'@\w+'), '?');
-    params = _parseParams(params);
-    QueryPrinter printer = SqlQueryBuilder().printer;
-    printer.log(query, params);
+    Map<String, dynamic> values =
+        params as Map<String, dynamic>? ?? const <String, dynamic>{};
+    List<String> redact = SqlQueryBuilder().logRedact;
+    List<String> list = <String>[];
+    Set<String> used = <String>{};
+    StringBuffer out = StringBuffer();
+    int copied = 0;
+    for (SqlParam p in findSqlParams(query)) {
+      out
+        ..write(query.substring(copied, p.start))
+        ..write('?');
+      copied = p.end;
+      if (values.containsKey(p.name)) {
+        used.add(p.name);
+        list.add(_show(p.name, values[p.name], redact));
+      }
+    }
+    out.write(query.substring(copied));
+    for (MapEntry<String, dynamic> e in values.entries) {
+      if (!used.contains(e.key)) list.add(_show(e.key, e.value, redact));
+    }
+    SqlQueryBuilder().printer.log(out.toString(), list);
   }
 
-  List<String> _parseParams(dynamic params) {
-    List<String> list = <String>[];
-    if (params != null && (params as Map<String, dynamic>).isNotEmpty) {
-      List<String> redact = SqlQueryBuilder().logRedact;
-      params.forEach((String key, dynamic value) {
-        list.add(_hidden(key, redact) ? '***' : value.toString());
-      });
-    }
-    return list;
-  }
+  static String _show(String key, dynamic value, List<String> redact) =>
+      _hidden(key, redact) ? '***' : value.toString();
 
   /// true when [key] (eg. `old_password_p3`) ends with a name in [redact]
   static bool _hidden(String key, List<String> redact) {

@@ -5,6 +5,7 @@
 - Warning: Postgres with `useSSL: true` (or `sslmode=require`) uses TLS mode `require`. It encrypts the data but does not check the server certificate. The app now prints one warning to stderr when it connects this way. The mode does not change. To check the certificate, set `extra['sslMode'] = 'verify-full'`.
 - New: `ConnectionConfig.logRedact` (and `SqlQueryBuilder().logRedact`) hides values in the debug query log. It is a list of names, like `['password', 'token']`. A value whose key ends with one of the names is shown as `***`. It is off by default, so the log does not change unless you set it.
 - Fix: on MySQL and SQLite, `@name` inside a quoted string, a quoted name or a comment is no longer changed to a `?` parameter. Before, `whereRaw("name = '@who' OR name = @who", {'who': 'bob'})` sent two values for one `?` and failed. Postgres already worked this way.
+- Fix: the debug query log now lists the values in the order of the `?` in the query. Before, it used the order the values were added, so `where(...).update(...)` showed the WHERE value first. Only the log changes.
 
 ## 3.0.1
 

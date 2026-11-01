@@ -29,6 +29,23 @@ void main() {
     SqlQueryBuilder().logRedact = <String>[];
   });
 
+  group('log order', () {
+    test('values follow the order of the ?, not of the map', () {
+      // where(...).update(...) adds the WHERE value first
+      Logger().log(
+        'UPDATE "t" SET "name" = @name_p2 WHERE "id" = @id_p1',
+        <String, dynamic>{'id_p1': 7, 'name_p2': 'new'},
+      );
+      expect(capture.query, 'UPDATE "t" SET "name" = ? WHERE "id" = ?');
+      expect(capture.params, <String>['new', '7']);
+    });
+
+    test('a name used twice shows twice, unused values come last', () {
+      Logger().log('x = @a OR y = @a', <String, dynamic>{'b': 2, 'a': 1});
+      expect(capture.params, <String>['1', '1', '2']);
+    });
+  });
+
   group('log redaction', () {
     test('shows every value by default', () {
       Logger().log(
