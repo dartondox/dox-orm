@@ -268,7 +268,12 @@ bool _isWord(int c) =>
 /// every `@name` of [sql] that is not inside a quoted string ('' and ""),
 /// a quoted name (``) or a comment (`--`, `/* */`, and `#` for [mysql]).
 /// in [mysql] mode `\` escapes the next char in a string, and `--` is a
-/// comment only when a space follows, like MySQL.
+/// comment only when a space follows, like MySQL. `/*! ... */` and
+/// `/*M! ... */` are not comments in [mysql] mode: MySQL runs the SQL in
+/// them, so their `@name` is found.
+/// ponytail: a MySQL server with `NO_BACKSLASH_ESCAPES` does not treat `\`
+/// as an escape, so a string that ends in `\` (eg. `'C:\'`) is read wrong
+/// and the `@name` after it is skipped. the default sql_mode is fine.
 List<SqlParam> findSqlParams(String sql, {bool mysql = false}) {
   List<SqlParam> found = <SqlParam>[];
   int n = sql.length;
@@ -295,6 +300,10 @@ List<SqlParam> findSqlParams(String sql, {bool mysql = false}) {
     } else if (c == _hash && mysql) {
       i = _lineEnd(sql, i);
     } else if (c == _slash && i + 1 < n && sql.codeUnitAt(i + 1) == _star) {
+      if (mysql && _isRunComment(sql, i + 2)) {
+        i += 2; // MySQL runs it: scan the inside like normal sql
+        continue;
+      }
       int end = sql.indexOf('*/', i + 2);
       i = end < 0 ? n : end + 2;
     } else if (c == _atSign) {
@@ -312,6 +321,10 @@ List<SqlParam> findSqlParams(String sql, {bool mysql = false}) {
   }
   return found;
 }
+
+/// true when [sql] has `!` or `M!` at [i]: a `/*!` or `/*M!` block
+bool _isRunComment(String sql, int i) =>
+    sql.startsWith('!', i) || sql.startsWith('M!', i);
 
 /// index of the line break after [i], or the end of [sql]
 int _lineEnd(String sql, int i) {

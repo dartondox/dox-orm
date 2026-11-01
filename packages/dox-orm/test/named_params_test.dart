@@ -54,6 +54,15 @@ void main() {
       ]);
     });
 
+    test('mysql: /*! */ and /*M! */ run, so their @name is found', () {
+      expect(
+        run('x = 1 /*!50100 AND y = @a */ /*M! AND z = @b */', mysql: true),
+        <Object?>['x = 1 /*!50100 AND y = ? */ /*M! AND z = ? */', 1, 2],
+      );
+      // not mysql: a normal comment
+      expect(run('x = @b /*! @a */'), <Object?>['x = ? /*! @a */', 2]);
+    });
+
     test('mysql: -- with no space is not a comment', () {
       expect(run('x = 1--@a', mysql: true), <Object?>['x = 1--?', 1]);
     });
