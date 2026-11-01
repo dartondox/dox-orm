@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:dox_orm/dox_orm.dart';
@@ -7,6 +8,24 @@ import 'package:dox_postgres_native/dox_postgres_native.dart';
 
 /// zone key to find the open transaction of a pool
 const Symbol _txKey = #doxPostgresNativeTransaction;
+
+bool _tlsWarned = false;
+
+/// Prints one warning to stderr, once per isolate, when [sslMode] is
+/// `require`. In `require` mode the data is encrypted, but the server
+/// certificate is not checked. So a fake server in the middle can read the
+/// data. Returns true when it printed the warning.
+bool warnUnverifiedPostgresTls(String sslMode) {
+  if (sslMode != 'require' || _tlsWarned) return false;
+  _tlsWarned = true;
+  stderr.writeln(
+    'Dox ORM warning: Postgres TLS uses sslMode "require". The data is '
+    'encrypted, but the server certificate is not checked. To check it, '
+    "set extra['sslMode'] = 'verify-full' (or sslmode=verify-full in the "
+    'database url).',
+  );
+  return true;
+}
 
 /// The Dox ORM driver for Postgres, on [PgNativePool]
 /// (dox_postgres_native). Errors from the server are [PgServerException],
@@ -24,6 +43,7 @@ class PostgresNativeDriver extends DBDriver {
   /// Throws an [UnsupportedError] when the native library does not load.
   factory PostgresNativeDriver.fromConfig(ConnectionConfig config) {
     NativeDrivers.ensureAvailable(Driver.postgres);
+    warnUnverifiedPostgresTls(config.postgresSslMode);
     Map<String, dynamic> extra = config.extra;
     return PostgresNativeDriver(
       PgNativePool.open(

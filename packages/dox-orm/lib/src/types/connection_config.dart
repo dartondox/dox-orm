@@ -44,7 +44,8 @@ class ConnectionConfig {
   ///   self-signed certificate in development.
   /// - postgres: TLS mode `require` (encrypt, no certificate check, like
   ///   libpq). set `extra['sslMode']` to `verify-full` to also check the
-  ///   certificate. see [postgresSslMode].
+  ///   certificate. see [postgresSslMode]. the app prints one warning to
+  ///   stderr when it connects with `require`.
   bool useSSL;
 
   /// extra configuration for the connection
@@ -201,6 +202,11 @@ class ConnectionConfig {
   /// the Postgres TLS mode: `disable`, `prefer`, `require`, `verify-ca`
   /// (checks the certificate, not the host name) or `verify-full`. it is `extra['sslMode']` when set, else `require`
   /// with [useSSL], else `disable`.
+  ///
+  /// `require` encrypts the data but does not check the server
+  /// certificate, so it does not stop a fake server in the middle. the app
+  /// prints one warning to stderr when it connects with `require`. use
+  /// `verify-full` in production.
   String get postgresSslMode =>
       extra['sslMode'] as String? ?? (useSSL ? 'require' : 'disable');
 
