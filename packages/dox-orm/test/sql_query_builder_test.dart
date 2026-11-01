@@ -447,10 +447,9 @@ void main() async {
 
       /// the database error itself, not a ParallelWaitError
       await expectLater(
-        Blog().whereRaw('no_such_column = 1').paginate(
-          currentPage: 1,
-          perPage: 10,
-        ),
+        Blog()
+            .whereRaw('no_such_column = 1')
+            .paginate(currentPage: 1, perPage: 10),
         throwsA(isNot(isA<ParallelWaitError<dynamic, dynamic>>())),
       );
     });
