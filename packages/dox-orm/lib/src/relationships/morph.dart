@@ -60,7 +60,8 @@ dynamic Function(dynamic) _whereType(
   dynamic onQuery,
 ) {
   return (dynamic q) {
-    q.where(column, type);
+    /// with the table name, so a join in onQuery can not make it unclear
+    q.where('${tableRef(q as QueryBuilder<dynamic>)}.$column', type);
     return onQuery == null ? q : onQuery(q);
   };
 }
@@ -148,10 +149,13 @@ class _MorphTo {
     Model<dynamic> related = Relation.morphModel(type);
     related.connection ??= owner.connection;
     related.debug(owner.shouldDebug);
-    related.whereIn(ownerKey ?? related.primaryKey, <dynamic>[
-      for (Model<dynamic> m in list)
-        if (typeOf(m) == type) relationKey(m, idColumn),
-    ]);
+    related.whereIn(
+      ownerKey ?? related.primaryKey,
+      uniqueKeys(<dynamic>[
+        for (Model<dynamic> m in list)
+          if (typeOf(m) == type) relationKey(m, idColumn),
+      ]),
+    );
     if (onQuery != null) related = onQuery(related);
     return related;
   }

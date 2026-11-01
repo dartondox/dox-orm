@@ -171,6 +171,14 @@ void main() async {
         expect('${first!.pivot['song_id']}', '2');
       });
 
+      test('a new query made from a loaded row has no pivot', () async {
+        await artist.attach('songs', <int>[1, 2]);
+        Song s = (await Artist().preload('songs').find(artist.id))!.songs.first;
+        expect(s.pivot, isNotEmpty);
+        List<Song> rows = await s.where('id', 3).get();
+        expect(rows.first.pivot, isEmpty);
+      });
+
       test('sync compares pivot values by type', () async {
         await artist.attach('songs', 1, <String, dynamic>{'role': '1'});
         SyncResult r = await artist.sync('songs', <int, Map<String, dynamic>>{

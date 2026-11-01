@@ -169,11 +169,11 @@ class QueryBuilderHelper<T> {
     List<T> ret = <T>[];
 
     /// a many to many query: each row keeps the pivot settings
-    Object? pivot = manyToManyPivot[queryBuilder];
+    Object? pivot = manyToManyQuery[queryBuilder];
     for (Map<String, dynamic> e in result) {
       Model<dynamic> res = self.fromMap(e);
       res.originalMap = e;
-      if (pivot != null) manyToManyPivot[res] = pivot;
+      if (pivot != null) manyToManyRow[res] = pivot;
 
       /// so save() and delete() on this model use the same connection
       res.connection = queryBuilder.connection;

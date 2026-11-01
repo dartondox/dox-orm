@@ -76,7 +76,7 @@ M? manyToMany<T, M>(
     q = onQuery(q);
   }
   _localKeys[q] = localKey;
-  manyToManyPivot[q] = _Pivot(
+  manyToManyQuery[q] = _Pivot(
     owner: local,
     ownerKey: localKey,
     relatedKey: relatedKey,
@@ -303,7 +303,7 @@ extension ManyToManyWrites<T> on Model<T> {
   /// print(artist.songs.first.pivot['role']);
   /// ```
   Map<String, dynamic> get pivot {
-    _Pivot? p = manyToManyPivot[this] as _Pivot?;
+    _Pivot? p = manyToManyRow[this] as _Pivot?;
     return <String, dynamic>{
       /// the join makes `_owner_id` the owner key and the related key
       /// the pivot related key, so they are not read again
@@ -320,7 +320,7 @@ extension ManyToManyWrites<T> on Model<T> {
   _Pivot _pivotOf(String relation) {
     _Pivot? p;
     dynamic q = related<dynamic>(relation);
-    if (q != null) p = manyToManyPivot[q as Object] as _Pivot?;
+    if (q != null) p = manyToManyQuery[q as Object] as _Pivot?;
     if (p == null) {
       throw ArgumentError.value(
         relation,

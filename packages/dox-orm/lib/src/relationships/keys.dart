@@ -68,7 +68,11 @@ String subqueryMatch(
       '${child.helper.wrap('${tableRef(parent)}.$parentColumn')}';
 }
 
-/// the pivot settings of a many to many query, and of each model that
-/// query reads. get() copies it from the query to each row, so `pivot`
-/// has the two keys for `related().get()` too.
-final Expando<Object> manyToManyPivot = Expando<Object>();
+/// the pivot settings of a many to many query
+final Expando<Object> manyToManyQuery = Expando<Object>();
+
+/// the pivot settings of a row that such a query read. get() copies it
+/// from the query, so `pivot` has the two keys for `related().get()`
+/// too. It is a second Expando because a row is also a query: a new
+/// query made from a row must not give its rows the settings.
+final Expando<Object> manyToManyRow = Expando<Object>();
