@@ -1,3 +1,9 @@
+## Unreleased
+
+- Faster: `paginate()` runs the count query and the page query at the same time, on two connections. One page now waits for one database round trip, not two. In a transaction, and on SQLite, they still run one after the other.
+- Faster: eager loading of a `belongsTo` relation reads the foreign key of each model once, not twice.
+- Faster: the MySQL driver no longer tries to read every text that ends with `Z` as a date. A text that can not be a date is sent as it is, without the parse.
+
 ## 3.0.0
 
 - The first stable release.

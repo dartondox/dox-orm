@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:dox_orm/dox_orm.dart';
 
+import 'count.dart';
 import 'limit.dart';
 import 'shared_mixin.dart';
 
@@ -128,15 +129,41 @@ mixin Get<T> implements SharedMixin<T> {
     }
     if (currentPage < 1) currentPage = 1;
     int offset = (currentPage - 1) * perPage;
+    QueryBuilder<T> qb = queryBuilder;
 
-    int total = await queryBuilder.count();
+    /// the count gets its own copy of the values, because the page query
+    /// adds LIMIT and OFFSET to them
+    String countSql = countQuery(qb);
+    Map<String, dynamic> countValues = Map<String, dynamic>.of(
+      substitutionValues,
+    );
+    Future<int> total = Future<int>.sync(
+      () => helper.runQuery(countSql, countValues).then(countTotal),
+    );
 
-    List<T> data = await queryBuilder.limit(perPage).offset(offset).get();
+    /// count and page run at the same time, on two connections. in a
+    /// transaction (one connection) and on sqlite (sync) they run one
+    /// after the other.
+    if (DBDriver.inTransaction || dbDriver.getName() == Driver.sqlite) {
+      await total;
+    }
+    Future<List<T>> page = qb.limit(perPage).offset(offset).get();
+    int rowCount;
+    List<T> data;
+    try {
+      (rowCount, data) = await (total, page).wait;
+    } on ParallelWaitError<(int?, List<T>?), (AsyncError?, AsyncError?)> catch (
+      e
+    ) {
+      /// throw the error itself, like one query does
+      AsyncError error = e.errors.$1 ?? e.errors.$2!;
+      Error.throwWithStackTrace(error.error, error.stackTrace);
+    }
 
     return Pagination<T>(
-      total: total,
+      total: rowCount,
       perPage: perPage,
-      lastPage: (total / perPage).ceil(),
+      lastPage: (rowCount / perPage).ceil(),
       currentPage: currentPage,
       data: data,
     );

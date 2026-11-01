@@ -10,9 +10,14 @@ dynamic relationKey(Model<dynamic> model, String key) {
 
 /// the values of [key] in [list], each once and without null
 List<dynamic> relationKeys(List<Model<dynamic>> list, String key) {
-  return <dynamic>{for (Model<dynamic> i in list) relationKey(i, key)}
-      .where(_notNull)
-      .toList();
+  return uniqueKeys(<dynamic>[
+    for (Model<dynamic> i in list) relationKey(i, key),
+  ]);
+}
+
+/// [keys] each once and without null
+List<dynamic> uniqueKeys(List<dynamic> keys) {
+  return keys.toSet().where(_notNull).toList();
 }
 
 bool _notNull(dynamic value) => value != null;

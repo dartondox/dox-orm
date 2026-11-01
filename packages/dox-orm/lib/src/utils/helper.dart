@@ -81,8 +81,12 @@ class QueryBuilderHelper<T> {
     return query;
   }
 
-  Future<List<Map<String, dynamic>>> runQuery(String query) {
-    Map<String, dynamic> values = queryBuilder.substitutionValues;
+  /// run [query] with [values], or with the values of this query
+  Future<List<Map<String, dynamic>>> runQuery(
+    String query, [
+    Map<String, dynamic>? values,
+  ]) {
+    values ??= queryBuilder.substitutionValues;
     if (queryBuilder.shouldDebug) queryBuilder.logger.log(query, values);
     return queryBuilder.dbDriver.query(
       query,

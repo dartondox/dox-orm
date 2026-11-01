@@ -158,6 +158,15 @@ class MysqlNativeDriver extends DBDriver {
     return result;
   }
 
+  /// false when [text] can not be a date for DateTime.tryParse(), so a
+  /// word like `XYZ` is not parsed. a date starts with a digit, `+` or
+  /// `-`, and has 8 digits at least.
+  static bool _mayBeDate(String text) {
+    if (text.length < 9) return false;
+    int first = text.codeUnitAt(0);
+    return (first >= 0x30 && first <= 0x39) || first == 0x2B || first == 0x2D;
+  }
+
   /// a Dox value as a MySQL parameter
   static Object? _toMysqlValue(dynamic value) {
     if (value == null ||
@@ -176,7 +185,7 @@ class MysqlNativeDriver extends DBDriver {
 
     /// iso date string with `Z` (eg. from model timestamps), mysql
     /// DATETIME do not accept the `Z`
-    if (text.endsWith('Z')) {
+    if (text.endsWith('Z') && _mayBeDate(text)) {
       DateTime? date = DateTime.tryParse(text);
       if (date != null) {
         return date.toIso8601String().split('.').first;
