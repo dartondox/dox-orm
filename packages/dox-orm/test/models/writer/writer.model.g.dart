@@ -154,6 +154,26 @@ class WriterGenerator extends Model<Writer> with SoftDeletes<Writer> {
 
     return map;
   }
+
+  @override
+  bool setColumnValue(String column, dynamic value) {
+    Writer instance = this as Writer;
+    switch (column) {
+      case 'id':
+        if (value is! int?) return false;
+        instance.id = value;
+        return true;
+      case 'name':
+        if (value is! String?) return false;
+        instance.name = value;
+        return true;
+      case 'deleted_at':
+        if (value is! DateTime?) return false;
+        instance.deletedAt = value;
+        return true;
+    }
+    return false;
+  }
 }
 
 // ignore_for_file: always_specify_types
@@ -270,6 +290,34 @@ class ArticleGenerator extends Model<Article> with SoftDeletes<Article> {
 
     return map;
   }
+
+  @override
+  bool setColumnValue(String column, dynamic value) {
+    Article instance = this as Article;
+    switch (column) {
+      case 'id':
+        if (value is! int?) return false;
+        instance.id = value;
+        return true;
+      case 'title':
+        if (value is! String?) return false;
+        instance.title = value;
+        return true;
+      case 'published':
+        if (value is! bool?) return false;
+        instance.published = value;
+        return true;
+      case 'writer_id':
+        if (value is! int?) return false;
+        instance.writerId = value;
+        return true;
+      case 'deleted_at':
+        if (value is! DateTime?) return false;
+        instance.deletedAt = value;
+        return true;
+    }
+    return false;
+  }
 }
 
 // ignore_for_file: always_specify_types
@@ -335,6 +383,26 @@ class TopicGenerator extends Model<Topic> with SoftDeletes<Topic> {
 
     return map;
   }
+
+  @override
+  bool setColumnValue(String column, dynamic value) {
+    Topic instance = this as Topic;
+    switch (column) {
+      case 'id':
+        if (value is! int?) return false;
+        instance.id = value;
+        return true;
+      case 'name':
+        if (value is! String?) return false;
+        instance.name = value;
+        return true;
+      case 'deleted_at':
+        if (value is! DateTime?) return false;
+        instance.deletedAt = value;
+        return true;
+    }
+    return false;
+  }
 }
 
 // ignore_for_file: always_specify_types
@@ -397,6 +465,26 @@ class RemarkGenerator extends Model<Remark> {
     Map<String, dynamic> map = instance.columnsToMap();
 
     return map;
+  }
+
+  @override
+  bool setColumnValue(String column, dynamic value) {
+    Remark instance = this as Remark;
+    switch (column) {
+      case 'id':
+        if (value is! int?) return false;
+        instance.id = value;
+        return true;
+      case 'body':
+        if (value is! String?) return false;
+        instance.body = value;
+        return true;
+      case 'article_id':
+        if (value is! int?) return false;
+        instance.articleId = value;
+        return true;
+    }
+    return false;
   }
 }
 
@@ -516,5 +604,29 @@ class SectionGenerator extends Model<Section> with SoftDeletes<Section> {
     }
 
     return map;
+  }
+
+  @override
+  bool setColumnValue(String column, dynamic value) {
+    Section instance = this as Section;
+    switch (column) {
+      case 'id':
+        if (value is! int?) return false;
+        instance.id = value;
+        return true;
+      case 'name':
+        if (value is! String?) return false;
+        instance.name = value;
+        return true;
+      case 'parent_id':
+        if (value is! int?) return false;
+        instance.parentId = value;
+        return true;
+      case 'deleted_at':
+        if (value is! DateTime?) return false;
+        instance.deletedAt = value;
+        return true;
+    }
+    return false;
   }
 }

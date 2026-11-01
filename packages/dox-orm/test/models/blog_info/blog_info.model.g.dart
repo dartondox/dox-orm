@@ -105,6 +105,34 @@ class BlogInfoGenerator extends Model<BlogInfo> {
   }
 
   @override
+  bool setColumnValue(String column, dynamic value) {
+    BlogInfo instance = this as BlogInfo;
+    switch (column) {
+      case 'id':
+        if (value is! int?) return false;
+        instance.id = value;
+        return true;
+      case 'info':
+        if (value is! Map<String, dynamic>?) return false;
+        instance.info = value;
+        return true;
+      case 'blog_id':
+        if (value is! int?) return false;
+        instance.blogId = value;
+        return true;
+      case 'created_at':
+        if (value is! DateTime?) return false;
+        instance.createdAt = value;
+        return true;
+      case 'updated_at':
+        if (value is! DateTime?) return false;
+        instance.updatedAt = value;
+        return true;
+    }
+    return false;
+  }
+
+  @override
   void setComputedValues(Map<String, dynamic> map) {
     BlogInfo instance = this as BlogInfo;
     map['has_info'] = instance.hasInfo;

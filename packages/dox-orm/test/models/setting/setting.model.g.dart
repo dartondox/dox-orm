@@ -62,4 +62,20 @@ class SettingGenerator extends Model<Setting> {
 
     return map;
   }
+
+  @override
+  bool setColumnValue(String column, dynamic value) {
+    Setting instance = this as Setting;
+    switch (column) {
+      case 'id':
+        if (value is! int?) return false;
+        instance.id = value;
+        return true;
+      case 'name':
+        if (value is! String?) return false;
+        instance.name = value;
+        return true;
+    }
+    return false;
+  }
 }

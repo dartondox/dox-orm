@@ -81,6 +81,34 @@ class ScopedPostGenerator extends Model<ScopedPost> {
 
     return map;
   }
+
+  @override
+  bool setColumnValue(String column, dynamic value) {
+    ScopedPost instance = this as ScopedPost;
+    switch (column) {
+      case 'id':
+        if (value is! int?) return false;
+        instance.id = value;
+        return true;
+      case 'title':
+        if (value is! String?) return false;
+        instance.title = value;
+        return true;
+      case 'published':
+        if (value is! bool?) return false;
+        instance.published = value;
+        return true;
+      case 'archived':
+        if (value is! bool?) return false;
+        instance.archived = value;
+        return true;
+      case 'views':
+        if (value is! int?) return false;
+        instance.views = value;
+        return true;
+    }
+    return false;
+  }
 }
 
 extension ScopedPostScopes on QueryBuilder<ScopedPost> {

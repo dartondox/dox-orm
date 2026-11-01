@@ -1,0 +1,9 @@
+# dox_builder runs on lib/** by default. The models and DTOs of the tests
+# are in test/, so they are allowed here too.
+targets:
+  $default:
+    builders:
+      dox_builder:
+        generate_for:
+          - lib/**
+          - test/**
