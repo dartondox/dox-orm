@@ -19,6 +19,8 @@ class Artist extends ArtistGenerator {
     pivotForeignKey: 'artist_id',
     pivotRelatedForeignKey: 'song_id',
     pivotTable: 'artist_song',
+    withPivot: <String>['role'],
+    withTimestamps: true,
     onQuery: onQuery,
   )
   List<Song> songs = <Song>[];
