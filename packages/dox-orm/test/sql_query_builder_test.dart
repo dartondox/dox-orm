@@ -418,6 +418,43 @@ void main() async {
       expect(json.contains('total'), true);
     });
 
+    test('paginate with where, in a transaction, and with an error', () async {
+      await Blog().insertMultiple(<Map<String, dynamic>>[
+        for (int i = 0; i < 25; i++)
+          <String, dynamic>{
+            'title': 'title $i',
+            'body': 'body',
+            'status': i < 15 ? 'active' : 'draft',
+          },
+      ]);
+
+      /// the count must not get the LIMIT and OFFSET of the page
+      Pagination<Blog> page = await Blog()
+          .where('status', 'active')
+          .orderBy('uid')
+          .paginate(currentPage: 2, perPage: 10);
+      expect(page.total, 15);
+      expect(page.data.length, 5);
+      expect(page.data.first.title, 'title 10');
+
+      Pagination<Blog> inTransaction = await QueryBuilder.transaction(() {
+        return Blog()
+            .where('status', 'draft')
+            .paginate(currentPage: 1, perPage: 4);
+      });
+      expect(inTransaction.total, 10);
+      expect(inTransaction.data.length, 4);
+
+      /// the database error itself, not a ParallelWaitError
+      await expectLater(
+        Blog().whereRaw('no_such_column = 1').paginate(
+          currentPage: 1,
+          perPage: 10,
+        ),
+        throwsA(isNot(isA<ParallelWaitError<dynamic, dynamic>>())),
+      );
+    });
+
     test('update with where saves the right values', () async {
       await Blog().insertMultiple(<Map<String, dynamic>>[
         <String, dynamic>{'title': 'title 1', 'body': 'body 1'},

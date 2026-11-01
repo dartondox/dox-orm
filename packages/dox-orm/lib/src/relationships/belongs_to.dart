@@ -2,9 +2,11 @@ import 'package:dox_orm/dox_orm.dart';
 
 import 'keys.dart';
 
-/// (foreign key, local key) used by each query, so the result can be
-/// matched to the children
-final Expando<(String, String)> _keys = Expando<(String, String)>();
+/// (foreign key value of each child, local key) used by each query, so
+/// the result can be matched to the children. the values are read once:
+/// a generated model makes a map of all its columns to read one.
+final Expando<(List<dynamic>, String)> _keys =
+    Expando<(List<dynamic>, String)>();
 
 /// belongs to relationship query
 M? belongsTo<T, M>(
@@ -27,6 +29,7 @@ M? belongsTo<T, M>(
   localKey = localKey ?? owner.primaryKey;
   foreignKey = foreignKey ?? owner.foreignKeyName;
 
+  List<dynamic> childKeys = const <dynamic>[];
   if (relationSubquery) {
     startSubquery(owner, foreign);
     owner.whereRaw(
@@ -35,16 +38,14 @@ M? belongsTo<T, M>(
   } else {
     /// each owner once: no join to the children, so an owner with many
     /// children is one row, not one row per child
-    owner.whereIn(
-      '${owner.tableName}.$localKey',
-      relationKeys(list, foreignKey),
-    );
+    childKeys = <dynamic>[for (Model<T> i in list) relationKey(i, foreignKey)];
+    owner.whereIn('${owner.tableName}.$localKey', uniqueKeys(childKeys));
   }
 
   if (onQuery != null) {
     owner = onQuery(owner);
   }
-  _keys[owner] = (foreignKey, localKey);
+  _keys[owner] = (childKeys, localKey);
   return owner as M;
 }
 
@@ -56,7 +57,7 @@ Future<Map<String, M>> getBelongsTo<T, M>(
 ) async {
   if (q == null) return <String, M>{}; // coverage:ignore-line
   List<M> results = await q.get();
-  var (String foreignKey, String localKey) = _keys[q]!;
+  var (List<dynamic> childKeys, String localKey) = _keys[q]!;
 
   /// owners by their local key value
   Map<String, M> owners = <String, M>{};
@@ -66,10 +67,10 @@ Future<Map<String, M>> getBelongsTo<T, M>(
 
   /// match each child by its foreign key
   Map<String, M> ret = <String, M>{};
-  for (Model<T> i in list) {
-    M? owner = owners[relationKey(i, foreignKey).toString()];
+  for (int i = 0; i < list.length; i++) {
+    M? owner = owners[childKeys[i].toString()];
     if (owner != null) {
-      ret[i.tempIdValue.toString()] = owner;
+      ret[list[i].tempIdValue.toString()] = owner;
     }
   }
   return ret;

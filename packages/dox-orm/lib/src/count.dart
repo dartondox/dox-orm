@@ -1,4 +1,28 @@
+import 'package:dox_orm/dox_orm.dart';
+
 import 'shared_mixin.dart';
+
+/// the sql of count() for [qb]. it is a function, not a query method,
+/// so it can not clash with the name of a model field.
+String countQuery(QueryBuilder<dynamic> qb) {
+  String table = qb.helper.wrap(qb.tableName);
+  String common = qb.helper.getCommonQuery(isCountQuery: true);
+  if (qb.isDistinct) {
+    return "SELECT count(*) as total FROM (SELECT ${qb.getSelectQuery()}"
+        " FROM $table$common) as dox_count";
+  }
+  if (qb.getGroupByQuery().isNotEmpty) {
+    return "SELECT count(*) as total FROM (SELECT 1 as one FROM $table"
+        "$common) as dox_count";
+  }
+  return "SELECT count(*) as total FROM $table$common";
+}
+
+/// the number in the rows of a count query
+int countTotal(List<Map<String, dynamic>> rows) {
+  dynamic total = rows.isEmpty ? null : rows.first['total'];
+  return total == null ? 0 : int.parse(total.toString());
+}
 
 mixin Count<T> implements SharedMixin<T> {
   /// count the record
@@ -10,27 +34,8 @@ mixin Count<T> implements SharedMixin<T> {
   /// await Blog().count();
   /// await QueryBuilder.table('blog').select('status').distinct().count();
   /// ```
-  // ignore: always_specify_types
   Future<int> count() async {
-    String table = helper.wrap(tableName);
-    String q = "SELECT count(*) as total FROM $table";
-    q += helper.getCommonQuery(isCountQuery: true);
-    if (queryBuilder.isDistinct) {
-      q =
-          "SELECT count(*) as total FROM (SELECT ${queryBuilder.getSelectQuery()}"
-          " FROM $table${helper.getCommonQuery(isCountQuery: true)}) as dox_count";
-    } else if (queryBuilder.getGroupByQuery().isNotEmpty) {
-      q =
-          "SELECT count(*) as total FROM (SELECT 1 as one FROM $table"
-          "${helper.getCommonQuery(isCountQuery: true)}) as dox_count";
-    }
-    List<dynamic> result = helper.getMapResult(await helper.runQuery(q));
-    if (result.isNotEmpty) {
-      if (result.first['total'] != null) {
-        return int.parse(result.first['total'].toString());
-      }
-    }
-    return 0;
+    return countTotal(await helper.runQuery(countQuery(queryBuilder)));
   }
 
   /// true when the query matches at least one row. it reads one row at
