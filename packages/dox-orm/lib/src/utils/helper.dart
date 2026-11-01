@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:dox_orm/dox_orm.dart';
 
 import '../limit.dart';
+import '../relationships/keys.dart';
 
 final RegExp _notWord = RegExp(r'[^\w]');
 
@@ -166,9 +167,13 @@ class QueryBuilderHelper<T> {
     List<String> preloads = self.customPreloadList;
     List<String> aggregateKeys = queryBuilder.aggregateKeys;
     List<T> ret = <T>[];
+
+    /// a many to many query: each row keeps the pivot settings
+    Object? pivot = manyToManyPivot[queryBuilder];
     for (Map<String, dynamic> e in result) {
       Model<dynamic> res = self.fromMap(e);
       res.originalMap = e;
+      if (pivot != null) manyToManyPivot[res] = pivot;
 
       /// so save() and delete() on this model use the same connection
       res.connection = queryBuilder.connection;

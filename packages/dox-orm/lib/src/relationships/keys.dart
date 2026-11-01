@@ -67,3 +67,8 @@ String subqueryMatch(
   return '${child.helper.wrap(childColumn)} = '
       '${child.helper.wrap('${tableRef(parent)}.$parentColumn')}';
 }
+
+/// the pivot settings of a many to many query, and of each model that
+/// query reads. get() copies it from the query to each row, so `pivot`
+/// has the two keys for `related().get()` too.
+final Expando<Object> manyToManyPivot = Expando<Object>();

@@ -76,7 +76,7 @@ M? manyToMany<T, M>(
     q = onQuery(q);
   }
   _localKeys[q] = localKey;
-  _pivots[q] = _Pivot(
+  manyToManyPivot[q] = _Pivot(
     owner: local,
     ownerKey: localKey,
     relatedKey: relatedKey,
@@ -108,11 +108,8 @@ Future<Map<String, List<M>>> getManyToMany<T, M>(
 
   Map<String, List<M>> ret = <String, List<M>>{};
 
-  _Pivot? pivot = _pivots[q as Object];
-
   /// filter matched values with local id value
   for (M r in results) {
-    if (pivot != null) _pivotKeys[r as Object] = pivot;
     String ownerId = (r as Model<M>).originalMap['_owner_id'].toString();
     if (ret[ownerId] == null) {
       ret[ownerId] = <M>[];
@@ -133,13 +130,6 @@ Future<Map<String, List<M>>> getManyToMany<T, M>(
 
 /// pivot columns are read with this prefix, like `_pivot_role`
 const String _pivotPrefix = '_pivot_';
-
-/// the pivot table of each many to many query, for the write methods
-final Expando<_Pivot> _pivots = Expando<_Pivot>();
-
-/// the pivot of each model that a many to many relation read, so
-/// [ManyToManyWrites.pivot] can give the two keys without more SQL
-final Expando<_Pivot> _pivotKeys = Expando<_Pivot>();
 
 class _Pivot {
   final Model<dynamic> owner;
@@ -299,8 +289,9 @@ class SyncResult {
 /// The ids can be ids, models, a list of them, or a map of
 /// `id => extra pivot values`. The model must be saved first.
 extension ManyToManyWrites<T> on Model<T> {
-  /// the extra pivot columns of a model that a many to many relation
-  /// read: the two keys, the `withPivot` columns, and `created_at` and
+  /// the pivot columns of a model that a many to many relation read
+  /// (with `preload`, `$getRelation`, `eager` or `related().get()`):
+  /// the two keys, the `withPivot` columns, and `created_at` and
   /// `updated_at` with `withTimestamps`. It is empty for a model that was
   /// not read by a many to many relation.
   ///
@@ -312,7 +303,7 @@ extension ManyToManyWrites<T> on Model<T> {
   /// print(artist.songs.first.pivot['role']);
   /// ```
   Map<String, dynamic> get pivot {
-    _Pivot? p = _pivotKeys[this];
+    _Pivot? p = manyToManyPivot[this] as _Pivot?;
     return <String, dynamic>{
       /// the join makes `_owner_id` the owner key and the related key
       /// the pivot related key, so they are not read again
@@ -329,7 +320,7 @@ extension ManyToManyWrites<T> on Model<T> {
   _Pivot _pivotOf(String relation) {
     _Pivot? p;
     dynamic q = related<dynamic>(relation);
-    if (q != null) p = _pivots[q as Object];
+    if (q != null) p = manyToManyPivot[q as Object] as _Pivot?;
     if (p == null) {
       throw ArgumentError.value(
         relation,

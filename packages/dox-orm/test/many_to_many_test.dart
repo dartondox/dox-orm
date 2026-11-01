@@ -160,6 +160,17 @@ void main() async {
         );
       });
 
+      test('related().get() rows have the two pivot keys too', () async {
+        await artist.attach('songs', 2, <String, dynamic>{'role': 'singer'});
+        List<Song> songs = await artist.related<Song>('songs')!.get();
+        expect(songs.first.pivot['role'], 'singer');
+        expect('${songs.first.pivot['artist_id']}', '${artist.id}');
+        expect('${songs.first.pivot['song_id']}', '2');
+
+        Song? first = await artist.related<Song>('songs')!.getFirst();
+        expect('${first!.pivot['song_id']}', '2');
+      });
+
       test('sync compares pivot values by type', () async {
         await artist.attach('songs', 1, <String, dynamic>{'role': '1'});
         SyncResult r = await artist.sync('songs', <int, Map<String, dynamic>>{
