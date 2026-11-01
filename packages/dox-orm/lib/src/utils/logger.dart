@@ -61,7 +61,7 @@ class Logger {
   /// Logger.warn('careful!');
   ///
   static void warn(dynamic text) {
-    print('\x1B[34m$text\x1B[0m');
+    print('\x1B[33m$text\x1B[0m');
   }
 
   /// log the text using success color (green)

@@ -7,6 +7,7 @@
 - Fix: on MySQL and SQLite, `@name` inside a quoted string, a quoted name or a comment is no longer changed to a `?` parameter. Before, `whereRaw("name = '@who' OR name = @who", {'who': 'bob'})` sent two values for one `?` and failed. Postgres already worked this way.
 - Fix: the debug query log now lists the values in the order of the `?` in the query. Before, it used the order the values were added, so `where(...).update(...)` showed the WHERE value first. Only the log changes.
 - Faster: `FileQueryPrinter` no longer opens, writes and closes the log file on every query. It keeps the lines in memory and writes them in the background, in order. A new `flush()` waits until every line is in the file, eg. before `exit()`.
+- Fix: `Logger.warn` now prints yellow, as its docs say. Before, it printed blue.
 
 ## 3.0.1
 

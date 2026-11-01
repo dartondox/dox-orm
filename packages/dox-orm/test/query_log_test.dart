@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:dox_orm/dox_orm.dart';
@@ -121,4 +122,19 @@ void main() {
       await dir.delete(recursive: true);
     },
   );
+
+  test('Logger.warn prints yellow', () {
+    List<String> lines = <String>[];
+    runZoned(
+      _warn,
+      zoneSpecification: ZoneSpecification(
+        print: (Zone self, ZoneDelegate parent, Zone zone, String line) {
+          lines.add(line);
+        },
+      ),
+    );
+    expect(lines, <String>['\x1B[33mcareful\x1B[0m']);
+  });
 }
+
+void _warn() => Logger.warn('careful');
