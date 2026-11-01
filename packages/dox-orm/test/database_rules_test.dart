@@ -6,6 +6,33 @@ import 'connection.dart';
 
 /// `@Unique`, `@Exists` and the fluent `unique()` / `exists()` on every
 /// database. Run with DRIVER=sqlite, postgres or mysql.
+/// counts the queries of [RowFinder] (each `found` call is one query)
+class CountingFinder extends RowFinder {
+  CountingFinder();
+
+  int calls = 0;
+
+  @override
+  Future<Set<String>> found(
+    String table,
+    String column,
+    List<Object?> values, {
+    String? exceptColumn,
+    Object? exceptValue,
+    String? connection,
+  }) {
+    calls++;
+    return super.found(
+      table,
+      column,
+      values,
+      exceptColumn: exceptColumn,
+      exceptValue: exceptValue,
+      connection: connection,
+    );
+  }
+}
+
 void main() async {
   await initQueryBuilder();
 
@@ -192,6 +219,106 @@ void main() async {
             .success,
         isTrue,
       );
+    });
+
+    test('a long list needs a few queries, not one per item', () async {
+      List<String> many = <String>[
+        for (int i = 0; i < 499; i++) 'new$i@dox.dev',
+      ]..insert(250, 'TAKEN@dox.dev');
+      bool inDb =
+          (await QueryBuilder.table('rule_emails')
+              .where('email', 'TAKEN@dox.dev')
+              .count()) >
+          0;
+      CountingFinder finder = CountingFinder();
+      expect(
+        await Unique(
+          'rule_emails',
+          column: 'email',
+          finder: finder,
+        ).failedItems(many, context()),
+        inDb ? <int>[250] : <int>[],
+      );
+      expect(finder.calls, lessThanOrEqualTo(22));
+      // one exact hit and 499 new items: 2 queries at most
+      many[250] = 'taken@dox.dev';
+      finder.calls = 0;
+      expect(
+        await Unique(
+          'rule_emails',
+          column: 'email',
+          finder: finder,
+        ).failedItems(many, context()),
+        <int>[250],
+      );
+      expect(finder.calls, lessThanOrEqualTo(2));
+      // a bad value for a number id in a long list (Postgres)
+      List<Object?> ids = <Object?>[for (int i = 1; i <= 499; i++) i]
+        ..insert(300, 'abc');
+      finder.calls = 0;
+      List<int> missing = await Exists(
+        'rule_emails',
+        finder: finder,
+      ).failedItems(ids, context());
+      expect(missing.contains(0), isFalse); // the row with id 1
+      expect(missing.contains(300), isTrue);
+      expect(missing, hasLength(499));
+      expect(finder.calls, lessThanOrEqualTo(40));
+    });
+
+    test('a bad date for a date column is not found', () async {
+      await Schema().create('rule_days', (Table table) {
+        table.id();
+        table.date('day');
+      });
+      try {
+        await QueryBuilder.table('rule_days')
+            .insert(<String, dynamic>{'day': '2024-01-31'});
+        for (String value in <String>['abc', '2020-13-45']) {
+          expect(
+            await const Exists(
+              'rule_days',
+              column: 'day',
+            ).checkAsync(value, context()),
+            isFalse,
+            reason: value,
+          );
+        }
+      } finally {
+        await Schema().dropIfExists('rule_days');
+      }
+    });
+
+    test('a bad value in a transaction does not break it', () async {
+      int count = await QueryBuilder.transaction(() async {
+        expect(
+          await const Exists('rule_emails').checkAsync('abc', context()),
+          isFalse,
+        );
+        expect(
+          await const Unique(
+            'rule_emails',
+            column: 'email',
+            ignoreParam: 'id',
+          ).checkAsync(
+            'taken@dox.dev',
+            RuleContext(
+              state: ParseState(
+                root: <String, dynamic>{},
+                params: <String, String>{'id': 'abc'},
+              ),
+              path: const <Object>['email'],
+            ),
+          ),
+          isFalse,
+        );
+        // the next query of the app still works
+        await QueryBuilder.table('rule_emails')
+            .insert(<String, dynamic>{'email': 'in-tx@dox.dev'});
+        return QueryBuilder.table('rule_emails').count();
+      });
+      expect(count, 2);
+      expect(await QueryBuilder.table('rule_emails').count(), 2);
     });
 
     test('values are bound, not put into the SQL', () async {

@@ -2,6 +2,7 @@ import 'package:dox_postgres_native/dox_postgres_native.dart'
     show PgServerException;
 import 'package:dox_validation/dox_validation.dart';
 
+import '../drivers/db_driver.dart';
 import '../query_builder.dart';
 
 /// Reads rows for [Unique] and [Exists], and for `v.string().exists()`
@@ -35,13 +36,15 @@ class RowFinder extends PresenceVerifier {
     if (connection != null) query = query.withConnection(connection);
     List<dynamic> rows;
     try {
-      rows = await query.get();
+      rows = await _get(query, connection);
     } on PgServerException catch (error) {
-      // A value that does not fit the column type can not be in the
-      // column: `abc` or `1.0` for a bigint (22P02), a number that is too
-      // big (22003), or text with a NUL byte (22021). Other errors, like a
-      // lost connection, still throw. MySQL and SQLite give no error for
-      // these, only no rows.
+      // A value that does not fit the column can not be in the column.
+      // Postgres says so with a "data exception" (SQLSTATE class 22):
+      // `abc` or `1.0` for a bigint (22P02), a number that is too big
+      // (22003), text with a NUL byte (22021), a bad date (22007, 22008).
+      // In this query they can only come from the bound values. Other
+      // errors, like a lost connection, still throw. MySQL and SQLite give
+      // no error for these, only no rows.
       if (!_notFit(error)) rethrow;
       // The ignore value can be the bad one (it comes from the URL). Then
       // no row has it, so there is nothing to skip: drop it and ask again.
@@ -50,14 +53,19 @@ class RowFinder extends PresenceVerifier {
         return this.found(table, column, values, connection: connection);
       }
       if (values.length == 1) return <String>{};
-      // one bad item fails the whole query: ask for each item alone
+      // one bad item fails the whole query: split the list in two halves
+      // and ask again, so a bad item costs about 2 * log2(n) queries
+      int mid = values.length ~/ 2;
       Set<String> found = <String>{};
-      for (Object? value in values) {
+      for (List<Object?> half in <List<Object?>>[
+        values.sublist(0, mid),
+        values.sublist(mid),
+      ]) {
         found.addAll(
           await this.found(
             table,
             column,
-            <Object?>[value],
+            half,
             exceptColumn: exceptColumn,
             exceptValue: exceptValue,
             connection: connection,
@@ -74,9 +82,19 @@ class RowFinder extends PresenceVerifier {
   }
 
   static bool _notFit(PgServerException error) {
-    return error.code == '22P02' ||
-        error.code == '22003' ||
-        error.code == '22021';
+    return error.code.startsWith('22');
+  }
+
+  /// Run [query]. Inside a transaction it runs in a savepoint (a nested
+  /// transaction). On Postgres a failed query aborts the whole
+  /// transaction, so without it the next query of the app would fail
+  /// with 25P02. With it, only this one query is rolled back.
+  static Future<List<dynamic>> _get(
+    QueryBuilder<dynamic> query,
+    String? connection,
+  ) {
+    if (!DBDriver.inTransaction) return query.get();
+    return QueryBuilder.transaction(query.get, connection: connection);
   }
 
   /// `false` when [value] does not fit [column] of [table] (Postgres).
@@ -92,7 +110,7 @@ class RowFinder extends PresenceVerifier {
         .limit(1);
     if (connection != null) query = query.withConnection(connection);
     try {
-      await query.get();
+      await _get(query, connection);
       return true;
     } on PgServerException catch (error) {
       if (_notFit(error)) return false;
