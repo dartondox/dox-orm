@@ -47,6 +47,9 @@ class Computed {
   const Computed({this.name});
 }
 
+/// one to one relation. when an owner has many child rows, eager loading
+/// keeps the last row the query returns. add an `orderBy` in [onQuery] to
+/// pick the row, see `hasOne()`.
 class HasOne {
   final Type model;
   final String? foreignKey;
