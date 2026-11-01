@@ -193,7 +193,7 @@ void main() async {
           'singer',
         );
 
-        SyncResult r = await artist.sync('songs', <dynamic, dynamic>{
+        PivotSyncResult r = await artist.sync('songs', <dynamic, dynamic>{
           1: <dynamic, dynamic>{'role': 'bass'},
           3: <dynamic, dynamic>{},
         });
@@ -221,7 +221,7 @@ void main() async {
         expect(await artist.detach('songs', <dynamic>[null]), 0);
         expect(await songIds(), <int>[1, 2]);
 
-        SyncResult r = await artist.toggle('songs', null);
+        PivotSyncResult r = await artist.toggle('songs', null);
         expect(r.attached, isEmpty);
         expect(r.detached, isEmpty);
 
@@ -232,6 +232,50 @@ void main() async {
         expect(await songIds(), <int>[]);
       });
 
+      test('sync with a null id or an unsaved model throws first', () async {
+        await artist.attach('songs', <int>[2, 3]);
+        expect(
+          () => artist.sync('songs', <dynamic>[null]),
+          throwsA(isA<ArgumentError>()),
+        );
+        expect(
+          () => artist.sync('songs', <dynamic>[1, Song()..title = 'new']),
+          throwsA(isA<ArgumentError>()),
+        );
+        expect(await songIds(), <int>[2, 3]);
+
+        /// without detaching nothing is lost, so it is skipped
+        await artist.syncWithoutDetaching('songs', <dynamic>[null, 1]);
+        expect(await songIds(), <int>[1, 2, 3]);
+      });
+
+      test('a failed insert keeps the old links', () async {
+        await artist.attach('songs', <int>[2, 3]);
+        await expectLater(
+          artist.sync('songs', <int, Map<String, dynamic>>{
+            4: <String, dynamic>{'nope': 1},
+          }),
+          throwsA(anything),
+        );
+        expect(await songIds(), <int>[2, 3]);
+
+        await expectLater(
+          artist.toggle('songs', <int, Map<String, dynamic>>{
+            2: <String, dynamic>{},
+            4: <String, dynamic>{'nope': 1},
+          }),
+          throwsA(anything),
+        );
+        expect(await songIds(), <int>[2, 3]);
+      });
+
+      test('result ids have one type', () async {
+        await artist.attach('songs', <int>[1, 2]);
+        PivotSyncResult r = await artist.sync('songs', <dynamic>['2', '3']);
+        expect(r.attached, <int>[3]);
+        expect(r.detached, <int>[1]);
+      });
+
       test('an id is kept once', () async {
         await artist.attach('songs', <dynamic>[1, 1, '1', 2]);
         List<Map<String, dynamic>> rows = await QueryBuilder.table(
@@ -239,16 +283,19 @@ void main() async {
         ).where('artist_id', artist.id).get();
         expect(rows.length, 2);
 
-        SyncResult r = await artist.sync('songs', <dynamic>[3, '3', 3]);
+        PivotSyncResult r = await artist.sync('songs', <dynamic>[3, '3', 3]);
         expect(r.attached, <int>[3]);
         expect(await songIds(), <int>[3]);
       });
 
       test('sync compares pivot values by type', () async {
         await artist.attach('songs', 1, <String, dynamic>{'role': '1'});
-        SyncResult r = await artist.sync('songs', <int, Map<String, dynamic>>{
-          1: <String, dynamic>{'role': 1},
-        });
+        PivotSyncResult r = await artist.sync(
+          'songs',
+          <int, Map<String, dynamic>>{
+            1: <String, dynamic>{'role': 1},
+          },
+        );
         expect(r.updated, isEmpty);
         r = await artist.sync('songs', <int, Map<String, dynamic>>{
           1: <String, dynamic>{'role': true},
@@ -271,9 +318,9 @@ void main() async {
 
       test('sync returns attached, detached and updated ids', () async {
         await artist.attach('songs', <int>[1, 2]);
-        SyncResult r = await artist.sync('songs', <int>[2, 3]);
+        PivotSyncResult r = await artist.sync('songs', <int>[2, 3]);
         expect(r.attached, <int>[3]);
-        expect(r.detached.map((dynamic e) => '$e'), <String>['1']);
+        expect(r.detached, <int>[1]);
         expect(r.updated, isEmpty);
         expect(await songIds(), <int>[2, 3]);
 
@@ -304,7 +351,7 @@ void main() async {
 
       test('toggle', () async {
         await artist.attach('songs', <int>[1, 2]);
-        SyncResult r = await artist.toggle('songs', <int>[2, 3]);
+        PivotSyncResult r = await artist.toggle('songs', <int>[2, 3]);
         expect(r.attached, <int>[3]);
         expect(r.detached, <int>[2]);
         expect(await songIds(), <int>[1, 3]);

@@ -200,7 +200,7 @@ class MorphOne {
 /// the inverse of [MorphMany] and [MorphOne], like a comment that
 /// belongs to a post or a video. The field type is `Model<dynamic>?`.
 /// Every model it can point to must be in the morph map, see
-/// `Relation.morphMap()`.
+/// `Model.morphMap()`.
 ///
 /// ```
 /// @MorphTo()

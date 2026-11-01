@@ -2,56 +2,6 @@ import 'package:dox_orm/dox_orm.dart';
 
 import 'keys.dart';
 
-/// the morph map: the type names that polymorphic relations store in
-/// the `<name>_type` column, like Laravel's `Relation::morphMap()`.
-class Relation {
-  static final Map<String, Model<dynamic> Function()> _models =
-      <String, Model<dynamic> Function()>{};
-  static final Map<Type, String> _names = <Type, String>{};
-
-  /// sets the type name of each model. A `@MorphTo` relation needs every
-  /// model it can point to in this map. Call it once when the app starts.
-  ///
-  /// ```
-  /// Relation.morphMap({'post': Post.new, 'video': Video.new});
-  /// ```
-  ///
-  /// Without it, `@MorphMany` and `@MorphOne` store the class name, like
-  /// `Post`. [merge] false removes the names set before.
-  static void morphMap(
-    Map<String, Model<dynamic> Function()> map, {
-    bool merge = true,
-  }) {
-    if (!merge) {
-      _models.clear();
-      _names.clear();
-    }
-    for (MapEntry<String, Model<dynamic> Function()> e in map.entries) {
-      _models[e.key] = e.value;
-      _names[e.value().runtimeType] = e.key;
-    }
-  }
-
-  /// the type name of [model]: its name in the morph map, or its class
-  /// name
-  static String morphTypeOf(Model<dynamic> model) {
-    return _names[model.runtimeType] ?? model.runtimeType.toString();
-  }
-
-  /// a new model for the type name [type]. It throws when [type] is not
-  /// in the morph map.
-  static Model<dynamic> morphModel(String type) {
-    Model<dynamic> Function()? make = _models[type];
-    if (make == null) {
-      throw StateError(
-        'no model for the morph type "$type". '
-        'Add it with Relation.morphMap()',
-      );
-    }
-    return make();
-  }
-}
-
 /// the `where <name>_type = <type of the owner>` of [morphMany] and
 /// [morphOne]
 dynamic Function(dynamic) _whereType(
@@ -86,7 +36,7 @@ M? morphMany<T, M>(
     localKey: localKey,
     onQuery: _whereType(
       typeColumn ?? '${name}_type',
-      Relation.morphTypeOf(list.first),
+      Model.morphTypeOf(list.first),
       onQuery,
     ),
   );
@@ -118,7 +68,7 @@ M? morphOne<T, M>(
     localKey: localKey,
     onQuery: _whereType(
       typeColumn ?? '${name}_type',
-      Relation.morphTypeOf(list.first),
+      Model.morphTypeOf(list.first),
       onQuery,
     ),
   );
@@ -146,7 +96,7 @@ class _MorphTo {
   /// the query of the [type] models that [list] points to
   Model<dynamic> query(String type, List<Model<dynamic>> list) {
     Model<dynamic> owner = list.first;
-    Model<dynamic> related = Relation.morphModel(type);
+    Model<dynamic> related = Model.morphModel(type);
     related.connection ??= owner.connection;
     related.debug(owner.shouldDebug);
     related.whereIn(
@@ -163,7 +113,7 @@ class _MorphTo {
 
 /// the inverse of [morphMany] and [morphOne]: a comment that belongs to
 /// a post or a video. The `<name>_type` column picks the model from the
-/// morph map, see [Relation.morphMap].
+/// morph map, see [Model.morphMap].
 ///
 /// It is the query of the type of the first owner that has a type.
 /// [getMorphTo] reads the other types too.

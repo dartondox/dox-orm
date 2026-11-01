@@ -3,6 +3,55 @@ import 'dart:async';
 import '../dox_orm.dart';
 
 class Model<T> extends QueryBuilder<T> {
+  static final Map<String, Model<dynamic> Function()> _morphModels =
+      <String, Model<dynamic> Function()>{};
+  static final Map<Type, String> _morphNames = <Type, String>{};
+
+  /// the morph map: the type names that polymorphic relations store in
+  /// the `<name>_type` column, like Laravel's `Relation::morphMap()`.
+  /// A `@MorphTo` relation needs every model it can point to in this
+  /// map. The map is kept per isolate, so call it in the `setup()` of a
+  /// provider, which runs in every isolate.
+  ///
+  /// ```
+  /// Model.morphMap({'post': Post.new, 'video': Video.new});
+  /// ```
+  ///
+  /// Without it, `@MorphMany` and `@MorphOne` store the class name, like
+  /// `Post`. [merge] false removes the names set before.
+  static void morphMap(
+    Map<String, Model<dynamic> Function()> map, {
+    bool merge = true,
+  }) {
+    if (!merge) {
+      _morphModels.clear();
+      _morphNames.clear();
+    }
+    for (MapEntry<String, Model<dynamic> Function()> e in map.entries) {
+      _morphModels[e.key] = e.value;
+      _morphNames[e.value().runtimeType] = e.key;
+    }
+  }
+
+  /// the morph type name of [model]: its name in the morph map, or its
+  /// class name
+  static String morphTypeOf(Model<dynamic> model) {
+    return _morphNames[model.runtimeType] ?? model.runtimeType.toString();
+  }
+
+  /// a new model for the morph type name [type]. It throws a
+  /// [StateError] when [type] is not in the morph map.
+  static Model<dynamic> morphModel(String type) {
+    Model<dynamic> Function()? make = _morphModels[type];
+    if (make == null) {
+      throw StateError(
+        'no model for the morph type "$type". '
+        'Add it with Model.morphMap()',
+      );
+    }
+    return make();
+  }
+
   /// primary key value, it can be any type (int, uuid string...)
   dynamic tempIdValue;
   DateTime? createdAt;

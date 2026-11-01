@@ -140,7 +140,11 @@ class _Pivot {
   final String relatedForeignKey;
   final bool withTimestamps;
 
-  const _Pivot({
+  /// true when the last [records] dropped a null id or a model that is
+  /// not saved
+  bool skipped = false;
+
+  _Pivot({
     required this.owner,
     required this.ownerKey,
     required this.relatedKey,
@@ -206,9 +210,11 @@ class _Pivot {
       ];
     }
     Set<String> seen = <String>{};
+    skipped = false;
     Map<dynamic, Map<String, dynamic>> out = <dynamic, Map<String, dynamic>>{};
     for (MapEntry<dynamic, dynamic> e in entries) {
       dynamic id = _id(e.key);
+      if (id == null) skipped = true;
       if (id == null || !seen.add('$id')) continue;
       out[id] = <String, dynamic>{
         ...values,
@@ -265,7 +271,7 @@ class _Pivot {
 }
 
 /// the result of [ManyToManyWrites.sync] and [ManyToManyWrites.toggle]
-class SyncResult {
+class PivotSyncResult {
   /// the related ids that got a new pivot row
   final List<dynamic> attached;
 
@@ -275,7 +281,7 @@ class SyncResult {
   /// the related ids whose pivot row got new values
   final List<dynamic> updated;
 
-  const SyncResult({
+  const PivotSyncResult({
     this.attached = const <dynamic>[],
     this.detached = const <dynamic>[],
     this.updated = const <dynamic>[],
@@ -283,7 +289,7 @@ class SyncResult {
 
   @override
   String toString() =>
-      'SyncResult(attached: $attached, detached: $detached, '
+      'PivotSyncResult(attached: $attached, detached: $detached, '
       'updated: $updated)';
 }
 
@@ -296,7 +302,7 @@ class SyncResult {
 /// await artist.attach('songs', {1: {'role': 'singer'}, 2: {}});
 /// await artist.detach('songs', [1]);
 /// await artist.detach('songs'); // all songs
-/// SyncResult r = await artist.sync('songs', [1, 2, 3]);
+/// PivotSyncResult r = await artist.sync('songs', [1, 2, 3]);
 /// await artist.toggle('songs', [1, 2]);
 /// await artist.updateExistingPivot('songs', 1, {'role': 'writer'});
 /// ```
@@ -378,13 +384,23 @@ extension ManyToManyWrites<T> on Model<T> {
   /// makes the pivot rows match [ids]: it adds the missing rows, deletes
   /// the other rows (only when [detaching] is true), and sets the extra
   /// values of the rows that are already there.
-  Future<SyncResult> sync(
+  Future<PivotSyncResult> sync(
     String relation,
     dynamic ids, {
     bool detaching = true,
   }) async {
     _Pivot p = _pivotOf(relation);
     Map<dynamic, Map<String, dynamic>> records = p.records(ids);
+
+    /// a null id or a model that is not saved is a mistake here: it would
+    /// delete every other link. null or [] alone is asked for, so it is ok.
+    if (detaching && p.skipped) {
+      throw ArgumentError.value(
+        ids,
+        'ids',
+        'has a null id or a model that is not saved',
+      );
+    }
     Map<String, Map<String, dynamic>> current = await p.rows();
     Set<String> wanted = <String>{for (dynamic id in records.keys) '$id'};
 
@@ -393,7 +409,6 @@ extension ManyToManyWrites<T> on Model<T> {
         for (MapEntry<String, Map<String, dynamic>> e in current.entries)
           if (!wanted.contains(e.key)) e.value[p.relatedForeignKey],
     ];
-    await p.delete(detached);
 
     Map<dynamic, Map<String, dynamic>> attach =
         <dynamic, Map<String, dynamic>>{};
@@ -407,22 +422,26 @@ extension ManyToManyWrites<T> on Model<T> {
         updated.add(e.key);
       }
     }
+
+    /// insert first and delete last, so a failed insert keeps the old
+    /// links. The ids of the two never overlap.
     await p.insert(attach);
-    return SyncResult(
-      attached: attach.keys.toList(),
-      detached: detached,
-      updated: updated,
+    await p.delete(detached);
+    return PivotSyncResult(
+      attached: _keys(attach.keys),
+      detached: _keys(detached),
+      updated: _keys(updated),
     );
   }
 
   /// [sync] that does not delete rows
-  Future<SyncResult> syncWithoutDetaching(String relation, dynamic ids) {
+  Future<PivotSyncResult> syncWithoutDetaching(String relation, dynamic ids) {
     return sync(relation, ids, detaching: false);
   }
 
   /// adds a pivot row for each of [ids] that has none, and deletes the
   /// row of each of [ids] that has one
-  Future<SyncResult> toggle(String relation, dynamic ids) async {
+  Future<PivotSyncResult> toggle(String relation, dynamic ids) async {
     _Pivot p = _pivotOf(relation);
     Map<dynamic, Map<String, dynamic>> records = p.records(ids);
     Map<String, Map<String, dynamic>> current = await p.rows();
@@ -434,10 +453,24 @@ extension ManyToManyWrites<T> on Model<T> {
       for (MapEntry<dynamic, Map<String, dynamic>> e in records.entries)
         if (!current.containsKey('${e.key}')) e.key: e.value,
     };
-    await p.delete(detached);
+
+    /// insert first, so a failed insert keeps the old links
     await p.insert(attach);
-    return SyncResult(attached: attach.keys.toList(), detached: detached);
+    await p.delete(detached);
+    return PivotSyncResult(
+      attached: _keys(attach.keys),
+      detached: _keys(detached),
+    );
   }
+}
+
+/// [ids] with one type, like Laravel: a number id (`4` or `'4'`) is an
+/// int, other ids stay as they are
+List<dynamic> _keys(Iterable<dynamic> ids) {
+  return <dynamic>[
+    for (dynamic id in ids)
+      if (id is String && '${int.tryParse(id)}' == id) int.parse(id) else id,
+  ];
 }
 
 /// true when [values] has a value that is not the same in [row]

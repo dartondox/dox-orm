@@ -17,7 +17,7 @@ void main() async {
     });
 
     setUp(() async {
-      Relation.morphMap(<String, Model<dynamic> Function()>{}, merge: false);
+      Model.morphMap(<String, Model<dynamic> Function()>{}, merge: false);
       for (String t in <String>['photo', 'video', 'comment']) {
         await Schema().dropIfExists(t);
       }
@@ -69,7 +69,7 @@ void main() async {
     }
 
     test('morphMany and morphOne use the class name by default', () async {
-      expect(Relation.morphTypeOf(Photo()), 'Photo');
+      expect(Model.morphTypeOf(Photo()), 'Photo');
       await addComments('Photo', 'Video');
 
       List<Photo> photos = await Photo()
@@ -90,11 +90,11 @@ void main() async {
     });
 
     test('morph map names, morphTo and related()', () async {
-      Relation.morphMap(<String, Model<dynamic> Function()>{
+      Model.morphMap(<String, Model<dynamic> Function()>{
         'photo': Photo.new,
         'video': Video.new,
       });
-      expect(Relation.morphTypeOf(Video()), 'video');
+      expect(Model.morphTypeOf(Video()), 'video');
       await addComments('photo', 'video');
 
       Photo? photo = await Photo().preload('comments').find(1);
