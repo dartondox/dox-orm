@@ -53,7 +53,8 @@ class ConnectionConfig {
   /// - postgres: TLS mode `require` (encrypt, no certificate check, like
   ///   libpq). set `extra['sslMode']` to `verify-full` to also check the
   ///   certificate. see [postgresSslMode]. the app prints one warning to
-  ///   stderr when it connects with `require`.
+  ///   stderr when it connects with `require`. set `extra['sslWarning']`
+  ///   to false to turn the warning off.
   bool useSSL;
 
   /// extra configuration for the connection
