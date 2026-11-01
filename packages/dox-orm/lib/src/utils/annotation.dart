@@ -139,3 +139,95 @@ class ManyToMany {
     this.withTimestamps = false,
   });
 }
+
+/// polymorphic one to many relation, like a post with many comments.
+/// [name] is the morph name: the related table has `<name>_id` and
+/// `<name>_type` columns (see `table.morphs(name)`).
+///
+/// ```
+/// @MorphMany(Comment, 'commentable')
+/// List<Comment> comments = <Comment>[];
+/// ```
+class MorphMany {
+  final Type model;
+  final String name;
+
+  /// the type column, default `<name>_type`
+  final String? typeColumn;
+
+  /// the id column, default `<name>_id`
+  final String? idColumn;
+
+  /// the key of this model that `<name>_id` points to, default the
+  /// primary key
+  final String? localKey;
+  final Function? onQuery;
+  final bool? eager;
+
+  const MorphMany(
+    this.model,
+    this.name, {
+    this.typeColumn,
+    this.idColumn,
+    this.localKey,
+    this.onQuery,
+    this.eager,
+  });
+}
+
+/// polymorphic one to one relation, like a post with one image.
+/// see [MorphMany].
+class MorphOne {
+  final Type model;
+  final String name;
+  final String? typeColumn;
+  final String? idColumn;
+  final String? localKey;
+  final Function? onQuery;
+  final bool? eager;
+
+  const MorphOne(
+    this.model,
+    this.name, {
+    this.typeColumn,
+    this.idColumn,
+    this.localKey,
+    this.onQuery,
+    this.eager,
+  });
+}
+
+/// the inverse of [MorphMany] and [MorphOne], like a comment that
+/// belongs to a post or a video. The field type is `Model<dynamic>?`.
+/// Every model it can point to must be in the morph map, see
+/// `Relation.morphMap()`.
+///
+/// ```
+/// @MorphTo()
+/// Model<dynamic>? commentable;
+/// ```
+class MorphTo {
+  /// the morph name, default the field name in snake_case
+  final String? name;
+
+  /// the type column, default `<name>_type`
+  final String? typeColumn;
+
+  /// the id column, default `<name>_id`
+  final String? idColumn;
+
+  /// the key of the related model that `<name>_id` points to, default
+  /// its primary key
+  final String? ownerKey;
+  final Function? onQuery;
+  final bool? eager;
+
+  const MorphTo({
+    this.name,
+    this.typeColumn,
+    this.idColumn,
+    this.ownerKey,
+    this.onQuery,
+    this.eager,
+  });
+}
