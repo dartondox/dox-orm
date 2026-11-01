@@ -100,12 +100,25 @@ void main() {
     });
   });
 
+  test('FileQueryPrinter writes each line before log() returns', () async {
+    Directory dir = await Directory.systemTemp.createTemp('dox_log');
+    File file = File('${dir.path}/sub/query.log');
+    FileQueryPrinter printer = FileQueryPrinter(file: file);
+    printer.log('q1', <String>['1']);
+    printer.log('q2', <String>['2']);
+    // no flush: the lines are already in the file
+    List<String> lines = file.readAsLinesSync();
+    expect(lines.length, 2);
+    expect(lines.last, contains('"q2"'));
+    await dir.delete(recursive: true);
+  });
+
   test(
-    'FileQueryPrinter writes every line, in order, without blocking',
+    'FileQueryPrinter buffered writes every line, in order, without blocking',
     () async {
       Directory dir = await Directory.systemTemp.createTemp('dox_log');
       File file = File('${dir.path}/sub/query.log');
-      FileQueryPrinter printer = FileQueryPrinter(file: file);
+      FileQueryPrinter printer = FileQueryPrinter(file: file, buffered: true);
       for (int i = 0; i < 500; i++) {
         printer.log('q$i', <String>['$i']);
       }

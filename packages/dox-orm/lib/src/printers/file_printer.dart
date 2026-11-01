@@ -6,14 +6,19 @@ import 'package:dox_orm/dox_orm.dart';
 // coverage:ignore-file
 /// writes each query as one json line to [file].
 ///
-/// the lines are kept in memory and written to the file in the background,
-/// in order, so a query does not wait for the disk. call [flush] to wait
-/// until every line is in the file, eg. before `exit()`.
+/// by default each line is in the file before `log()` returns, and a write
+/// error is thrown. with [buffered] the lines are kept in memory and
+/// written in the background, in order, so a query does not wait for the
+/// disk. then call [flush] to wait until every line is in the file, eg.
+/// before `exit()`, or the last lines are lost.
 class FileQueryPrinter implements QueryPrinter {
   Function(String)? filter;
   final File file;
 
-  FileQueryPrinter({required this.file, this.filter});
+  /// write in the background, see [flush]. default false.
+  final bool buffered;
+
+  FileQueryPrinter({required this.file, this.filter, this.buffered = false});
 
   /// lines not written yet
   final StringBuffer _pending = StringBuffer();
@@ -38,6 +43,17 @@ class FileQueryPrinter implements QueryPrinter {
       stringToPrint = filter!(stringToPrint);
     }
 
+    if (!buffered) {
+      Directory directory = file.parent;
+      if (!directory.existsSync()) {
+        directory.createSync(recursive: true);
+      }
+      RandomAccessFile fileToWrite = file.openSync(mode: FileMode.append);
+      fileToWrite.writeStringSync('$stringToPrint\n');
+      fileToWrite.closeSync();
+      return;
+    }
+
     _pending.writeln(stringToPrint);
     if (!_scheduled) {
       _scheduled = true;
@@ -45,7 +61,8 @@ class FileQueryPrinter implements QueryPrinter {
     }
   }
 
-  /// wait until every logged line is in the file
+  /// wait until every logged line is in the file. only needed with
+  /// [buffered].
   Future<void> flush() => _writing;
 
   /// write all pending lines in one append
