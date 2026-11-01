@@ -89,6 +89,9 @@ abstract class DBDriver {
     } catch (_) {
       try {
         await execute('ROLLBACK TO SAVEPOINT $name');
+        // ROLLBACK TO keeps the savepoint open. Release it, so caught
+        // errors do not pile up open savepoints until the end.
+        await execute('RELEASE SAVEPOINT $name');
       } catch (_) {
         // keep the first error: it tells what went wrong
       }

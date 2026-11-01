@@ -164,4 +164,37 @@ void main() {
     });
     expect(other, 422);
   });
+
+  group('fluent schemas use the ORM as the PresenceVerifier |', () {
+    test('setting the driver sets the verifier', () {
+      expect(PresenceVerifier.instance, isA<orm.RowFinder>());
+    });
+
+    test('unique and exists read the table', () async {
+      StringSchema email = v.string().unique('members', column: 'email');
+      expect((await email.safeParseAsync('new@dox.dev')).success, isTrue);
+      ParseResult<String> taken = await email.safeParseAsync('taken@dox.dev');
+      expect(taken.issues.single.message, 'The value has already been taken');
+      // the row with id 1 is skipped
+      expect(
+        (await v
+                .string()
+                .unique('members', column: 'email', ignore: 1)
+                .safeParseAsync('taken@dox.dev'))
+            .success,
+        isTrue,
+      );
+      expect((await v.int().exists('teams').safeParseAsync(1)).success, isTrue);
+      expect(
+        (await v.int().exists('teams').safeParseAsync(9)).success,
+        isFalse,
+      );
+    });
+
+    test('values are bound, not put into the SQL', () async {
+      StringSchema email = v.string().exists('members', column: 'email');
+      ParseResult<String> result = await email.safeParseAsync("x' OR '1'='1");
+      expect(result.success, isFalse);
+    });
+  });
 }
