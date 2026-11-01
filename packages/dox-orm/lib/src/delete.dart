@@ -34,7 +34,7 @@ mixin Delete<T> implements SharedMixin<T> {
     withTrashed = true;
     String q;
     q = "DELETE FROM ${helper.wrap(tableName)}";
-    q += helper.getCommonQuery();
+    q += helper.getWriteQuery();
     return await runAffectingQuery(queryBuilder, q);
   }
 }

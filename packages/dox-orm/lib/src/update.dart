@@ -87,7 +87,7 @@ mixin Update<T> implements SharedMixin<T> {
     if (columnToUpdate.isEmpty) return 0;
     String q =
         "UPDATE ${helper.wrap(tableName)} SET ${columnToUpdate.join(',')}";
-    q += helper.getCommonQuery();
+    q += helper.getWriteQuery();
     return await runAffectingQuery(queryBuilder, q);
   }
 }

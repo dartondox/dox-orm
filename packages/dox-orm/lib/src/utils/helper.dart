@@ -81,6 +81,29 @@ class QueryBuilderHelper<T> {
     return query;
   }
 
+  /// the part after `UPDATE t SET ...` or `DELETE FROM t`.
+  ///
+  /// Postgres and SQLite do not take JOIN, GROUP BY, ORDER BY or LIMIT
+  /// in an UPDATE or DELETE. When the query has one of them, the rows are
+  /// picked by their primary key in a sub query. The sub query is wrapped
+  /// once more, so MySQL can also read the table it changes and use LIMIT.
+  String getWriteQuery() {
+    String join = queryBuilder.getJoinQuery();
+    String groupBy = queryBuilder.getGroupByQuery();
+    String orderBy = queryBuilder.getOrderByQuery();
+    String limit = queryBuilder.getLimitQuery();
+    String where = queryBuilder.getWhereQuery();
+    if (join.isEmpty && groupBy.isEmpty && orderBy.isEmpty && limit.isEmpty) {
+      return where;
+    }
+    String table = queryBuilder.tableName;
+    String key = wrap(queryBuilder.primaryKey);
+    String rows =
+        'SELECT ${wrap('$table.${queryBuilder.primaryKey}')} AS $key '
+        'FROM ${wrap(table)}$join$where$groupBy$orderBy$limit';
+    return ' WHERE $key IN (SELECT $key FROM ($rows) AS dox_rows)';
+  }
+
   /// run [query] with [values], or with the values of this query
   Future<List<Map<String, dynamic>>> runQuery(
     String query, [
