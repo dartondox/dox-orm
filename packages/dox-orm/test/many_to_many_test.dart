@@ -326,12 +326,16 @@ void main() async {
         expect(await artist.detach('songs', <dynamic>['01']), 1);
         expect(await songIds(), <int>[]);
 
-        /// sync and toggle return the normalized id
+        /// a whole double is an int in the result. A text id stays text
+        /// unless it is the plain text of an int, so `'01'` stays `'01'`
+        /// (it could be a text key)
         PivotSyncResult r = await artist.sync('songs', <dynamic>['01', 2.0]);
-        expect(r.attached, <int>[1, 2]);
+        expect(r.attached, <dynamic>['01', 2]);
         expect(await songIds(), <int>[1, 2]);
-        r = await artist.toggle('songs', <dynamic>['03', 2.0]);
-        expect(r.attached, <int>[3]);
+
+        /// a stored number key matches a text of the same number
+        r = await artist.toggle('songs', <dynamic>['03', '02']);
+        expect(r.attached, <dynamic>['03']);
         expect(r.detached, <int>[2]);
         expect(await songIds(), <int>[1, 3]);
       });
@@ -485,6 +489,30 @@ void main() async {
       });
     });
 
+    test('a double that is not a whole number id throws', () async {
+      Artist artist = await Artist().create(<String, dynamic>{'name': 'A'});
+      await artist.attach('songs', 1);
+      for (dynamic id in <dynamic>[1.5, double.nan, double.infinity, 1e20]) {
+        await expectLater(
+          artist.attach('songs', <dynamic>[id]),
+          throwsA(isA<ArgumentError>()),
+        );
+        await expectLater(
+          artist.sync('songs', <dynamic>[id]),
+          throwsA(isA<ArgumentError>()),
+        );
+        await expectLater(
+          artist.detach('songs', <dynamic>[id]),
+          throwsA(isA<ArgumentError>()),
+        );
+      }
+
+      /// nothing changed
+      List<Map<String, dynamic>> rows = await QueryBuilder.table('artist_song')
+          .get();
+      expect(rows.map((Map<String, dynamic> r) => r['song_id']), <int>[1]);
+    });
+
     group('pivot ids |', () {
       test('intId', () {
         expect(intId(1), 1);
@@ -508,7 +536,11 @@ void main() async {
       test('sameId', () {
         expect(sameId(1, '01'), isTrue);
         expect(sameId(' 1', 1.0), isTrue);
-        expect(sameId('007', '7'), isTrue);
+        expect(sameId(1, ' 01 '), isTrue);
+
+        /// two texts only match by the exact text: it can be a text key
+        expect(sameId('007', '7'), isFalse);
+        expect(sameId('1', '01'), isFalse);
         expect(sameId('1.5', 1.5), isFalse);
         expect(sameId('abc', 'abc'), isTrue);
         expect(sameId('abc', 'ABC'), isFalse);

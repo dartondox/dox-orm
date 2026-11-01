@@ -197,8 +197,9 @@ class _Pivot {
   ///
   /// Like Laravel, null means no ids, and a null id (or a model without
   /// a key) is skipped. A whole number like `2.0` becomes the int `2`,
-  /// because Postgres does not take `2.0` for an integer column. An id is
-  /// kept once, by [sameId]: `[1, '01', 1.0]` gives one id, the first
+  /// because Postgres does not take `2.0` for an integer column. Any other
+  /// double (`1.5`, NaN, infinity, `1e20`) throws an [ArgumentError]. An id
+  /// is kept once, by [sameId]: `[1, '01', 1.0]` gives one id, the first
   /// one wins. Every write uses these ids, so they all match the same way.
   Map<dynamic, Map<String, dynamic>> records(
     dynamic ids, [
@@ -234,7 +235,9 @@ class _Pivot {
 
   dynamic _id(dynamic id) {
     if (id is Model) id = relationKey(id, relatedKey);
-    return id is double ? intId(id) ?? id : id;
+    if (id is! double) return id;
+    return intId(id) ??
+        (throw ArgumentError.value(id, 'ids', 'is not a whole number id'));
   }
 
   /// adds a pivot row for each of [records]
@@ -482,10 +485,14 @@ extension ManyToManyWrites<T> on Model<T> {
   }
 }
 
-/// [ids] with one type, like Laravel: a number id is an int. `4`, `4.0`,
-/// `'4'`, `'04'` and `' 4'` all give `4`. Other ids stay as they are.
+/// [ids] with one type: a number id is an int. A text id becomes an int
+/// only when it is the plain text of that int (`'4'`), so a text key like
+/// `'04'` or `'007'` stays text. Other ids stay as they are.
 List<dynamic> _keys(Iterable<dynamic> ids) {
-  return <dynamic>[for (dynamic id in ids) intId(id) ?? id];
+  return <dynamic>[
+    for (dynamic id in ids)
+      if (id is String && '${int.tryParse(id)}' == id) int.parse(id) else id,
+  ];
 }
 
 /// the default of [ManyToManyWrites.detach]: no ids given, detach all

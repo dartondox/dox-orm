@@ -26,12 +26,19 @@ const double _intLimit = 9223372036854775808.0;
 
 final RegExp _digits = RegExp(r'^-?[0-9]+$');
 
-/// true when the ids [a] and [b] are the same. Two number ids (see
-/// [intId]) are the same when their int is the same, so `'01'`, `1.0`
-/// and `1` are the same id. Any other ids must be equal, so `'1.5'` or
-/// `'abc'` only match the same text.
+/// true when the ids [a] and [b] are the same.
+///
+/// When one of them is a number (`int` or `double`), the number rule of
+/// [intId] is used: `1`, `1.0`, `'01'` and `' 1'` are the same id. The
+/// database reads a number key as a number, so this is how it matches.
+///
+/// Two texts only match by the exact text, so `'007'` and `'7'` are two
+/// ids. The ORM does not know the type of the key column, and on a text
+/// key they are two rows. The cost: `['1', '01']` on a number key gives
+/// two ids.
 bool sameId(dynamic a, dynamic b) {
   if (a == b) return true;
+  if (a is! num && b is! num) return false;
   int? x = intId(a);
   return x != null && x == intId(b);
 }
