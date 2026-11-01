@@ -8,7 +8,7 @@
 - Fix: the debug query log now lists the values in the order of the `?` in the query. Before, it used the order the values were added, so `where(...).update(...)` showed the WHERE value first. Only the log changes.
 - New: `FileQueryPrinter(file: f, buffered: true)` keeps the log lines in memory and writes them in the background, in order, so a query does not wait for the disk. Call the new `flush()` to wait until every line is in the file, eg. before `exit()`. The default does not change: each line is written before `log()` returns.
 - Fix: `Logger.warn` now prints yellow, as its docs say. Before, it printed blue.
-- Fix: a digit in a model or relation name no longer gets its own `_`. `Address2` now gives `address2`, the same as dox_builder. Before, the ORM gave `address_2`, so the default table name, the default foreign key (`address_2_id`) and the `withCount` key did not match the generated code. If you have a model with a digit in its name and use the default names, rename the table or column, or set `tableName` / `foreignKey` by hand.
+- Fix: a digit in a model or relation name no longer gets its own `_`. `Address2` now gives `address2`, the same as dox_builder. Before, the ORM gave `address_2`. This changes the default names for a model or relation with a digit in its name: the table name (`address2`), the foreign key (`address2_id`), the many-to-many pivot table (`address2_tag`) and the `withCount` key (`address2_count`). If you use these default names today, rename the table or column. Or keep the old names by setting them by hand: `tableName`, `foreignKey`, `pivotTable` and `pivotForeignKey`.
 
 ## 3.0.1
 
