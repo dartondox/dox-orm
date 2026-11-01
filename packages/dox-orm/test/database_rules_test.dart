@@ -133,6 +133,67 @@ void main() async {
       );
     });
 
+    test('an ignore value that does not fit the column is dropped', () async {
+      // `/members/abc`: the id param is not a number
+      RuleContext withParam = RuleContext(
+        state: ParseState(
+          root: <String, dynamic>{},
+          params: <String, String>{'id': 'abc'},
+        ),
+        path: const <Object>['email'],
+      );
+      Unique rule = const Unique(
+        'rule_emails',
+        column: 'email',
+        ignoreParam: 'id',
+      );
+      expect(await rule.checkAsync('taken@dox.dev', withParam), isFalse);
+      expect(await rule.checkAsync('new@dox.dev', withParam), isTrue);
+      expect(
+        await rule.failedItems(<Object?>[
+          'new@dox.dev',
+          'taken@dox.dev',
+        ], withParam),
+        <int>[1],
+      );
+      expect(
+        (await v
+                .string()
+                .unique('rule_emails', column: 'email', ignore: 'abc')
+                .safeParseAsync('taken@dox.dev'))
+            .success,
+        isFalse,
+      );
+      // an ignore value that fits still skips its row
+      expect(
+        (await v
+                .string()
+                .unique('rule_emails', column: 'email', ignore: 1)
+                .safeParseAsync('taken@dox.dev'))
+            .success,
+        isTrue,
+      );
+    });
+
+    test('text with a NUL byte is not found', () async {
+      expect(
+        (await v
+                .string()
+                .exists('rule_emails', column: 'email')
+                .safeParseAsync('a\u0000b'))
+            .success,
+        isFalse,
+      );
+      expect(
+        (await v
+                .string()
+                .unique('rule_emails', column: 'email')
+                .safeParseAsync('a\u0000b'))
+            .success,
+        isTrue,
+      );
+    });
+
     test('values are bound, not put into the SQL', () async {
       expect(
         await const Exists(

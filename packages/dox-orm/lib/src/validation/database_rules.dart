@@ -37,11 +37,18 @@ class RowFinder extends PresenceVerifier {
     try {
       rows = await query.get();
     } on PgServerException catch (error) {
-      // a value that does not fit the column type, like `abc` or `1.0`
-      // for a bigint (22P02) or a number that is too big (22003), can not
-      // be in the column. Other errors, like a lost connection, still
-      // throw. MySQL and SQLite give no error for these, only no rows.
-      if (error.code != '22P02' && error.code != '22003') rethrow;
+      // A value that does not fit the column type can not be in the
+      // column: `abc` or `1.0` for a bigint (22P02), a number that is too
+      // big (22003), or text with a NUL byte (22021). Other errors, like a
+      // lost connection, still throw. MySQL and SQLite give no error for
+      // these, only no rows.
+      if (!_notFit(error)) rethrow;
+      // The ignore value can be the bad one (it comes from the URL). Then
+      // no row has it, so there is nothing to skip: drop it and ask again.
+      if (exceptColumn != null &&
+          !await _fits(table, exceptColumn, exceptValue, connection)) {
+        return this.found(table, column, values, connection: connection);
+      }
       if (values.length == 1) return <String>{};
       // one bad item fails the whole query: ask for each item alone
       Set<String> found = <String>{};
@@ -64,6 +71,33 @@ class RowFinder extends PresenceVerifier {
       if (row is Map) found.add('${row[column]}');
     }
     return found;
+  }
+
+  static bool _notFit(PgServerException error) {
+    return error.code == '22P02' ||
+        error.code == '22003' ||
+        error.code == '22021';
+  }
+
+  /// `false` when [value] does not fit [column] of [table] (Postgres).
+  Future<bool> _fits(
+    String table,
+    String column,
+    Object? value,
+    String? connection,
+  ) async {
+    QueryBuilder<dynamic> query = QueryBuilder.table(table)
+        .select(column)
+        .where(column, value)
+        .limit(1);
+    if (connection != null) query = query.withConnection(connection);
+    try {
+      await query.get();
+      return true;
+    } on PgServerException catch (error) {
+      if (_notFit(error)) return false;
+      rethrow;
+    }
   }
 }
 
