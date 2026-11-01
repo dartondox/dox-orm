@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:dox_orm/dox_orm.dart';
 import 'package:dox_orm/src/utils/logger.dart';
 import 'package:test/test.dart';
@@ -96,4 +98,27 @@ void main() {
       );
     });
   });
+
+  test(
+    'FileQueryPrinter writes every line, in order, without blocking',
+    () async {
+      Directory dir = await Directory.systemTemp.createTemp('dox_log');
+      File file = File('${dir.path}/sub/query.log');
+      FileQueryPrinter printer = FileQueryPrinter(file: file);
+      for (int i = 0; i < 500; i++) {
+        printer.log('q$i', <String>['$i']);
+      }
+      // nothing is written yet: the query did not wait for the disk
+      expect(file.existsSync(), isFalse);
+      await printer.flush();
+      printer.log('last', <String>[]);
+      await printer.flush();
+      List<String> lines = file.readAsLinesSync();
+      expect(lines.length, 501);
+      expect(lines.first, contains('"q0"'));
+      expect(lines[499], contains('"q499"'));
+      expect(lines.last, contains('"last"'));
+      await dir.delete(recursive: true);
+    },
+  );
 }
