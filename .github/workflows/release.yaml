@@ -18,7 +18,13 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # All CI tests must pass on the tag before anything is published.
+  # On a tag they use pub.dev only.
+  test:
+    uses: ./.github/workflows/ci.yaml
+
   publish:
+    needs: test
     runs-on: ubuntu-latest
     environment: pub.dev
     permissions:
