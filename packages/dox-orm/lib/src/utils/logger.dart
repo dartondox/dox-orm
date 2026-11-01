@@ -12,12 +12,28 @@ class Logger {
   List<String> _parseParams(dynamic params) {
     List<String> list = <String>[];
     if (params != null && (params as Map<String, dynamic>).isNotEmpty) {
+      List<String> redact = SqlQueryBuilder().logRedact;
       params.forEach((String key, dynamic value) {
-        list.add(value.toString());
+        list.add(_hidden(key, redact) ? '***' : value.toString());
       });
     }
     return list;
   }
+
+  /// true when [key] (eg. `old_password_p3`) ends with a name in [redact]
+  static bool _hidden(String key, List<String> redact) {
+    if (redact.isEmpty) return false;
+    String name = key.replaceFirst(_paramIndex, '').toLowerCase();
+    for (String r in redact) {
+      String word = r.replaceAll(_notWord, '').toLowerCase();
+      if (word.isNotEmpty && name.endsWith(word)) return true;
+    }
+    return false;
+  }
+
+  /// the `_p12` that the query builder adds to each key
+  static final RegExp _paramIndex = RegExp(r'_p\d+$');
+  static final RegExp _notWord = RegExp(r'[^\w]');
 
   /// log the text using info color (lightblue)
   /// ```

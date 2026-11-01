@@ -22,6 +22,14 @@ class ConnectionConfig {
   /// `QueryPrinter` interface
   QueryPrinter? printer;
 
+  /// names of values to hide in the debug query log. off by default: the
+  /// log shows every value. a value is shown as `***` when its key ends
+  /// with one of these names (case does not matter). eg. `['password',
+  /// 'token']` hides `password`, `users.password`, `old_password` and
+  /// `remember_token`. only the log changes, the query still gets the
+  /// real values.
+  List<String> logRedact;
+
   /// database host
   String host;
 
@@ -75,6 +83,7 @@ class ConnectionConfig {
     required this.debug,
     this.printer,
     this.driverFactory,
+    this.logRedact = const <String>[],
   });
 
   /// Makes a config from a database url, like `DATABASE_URL`.
@@ -110,6 +119,7 @@ class ConnectionConfig {
     bool debug = false,
     QueryPrinter? printer,
     Map<String, dynamic> extra = const <String, dynamic>{},
+    List<String> logRedact = const <String>[],
   }) {
     url = url.trim();
     int colon = url.indexOf(':');
@@ -125,6 +135,7 @@ class ConnectionConfig {
         database: Uri.decodeComponent(path),
         debug: debug,
         printer: printer,
+        logRedact: logRedact,
         extra: extra,
       );
     }
@@ -184,6 +195,7 @@ class ConnectionConfig {
       useSSL: useSSL,
       debug: debug,
       printer: printer,
+      logRedact: logRedact,
       extra: options,
     );
   }

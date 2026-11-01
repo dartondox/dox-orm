@@ -3,6 +3,7 @@
 - Breaking: models are guarded from mass assignment by default, like Laravel. `guarded` is now `['*']`. A model with no `fillable` throws `MassAssignmentException` when `create()`, `insert()`, `insertMultiple()`, `upsert()`, `update()`, `firstOrCreate()`, `firstOrNew()` or `updateOrCreate()` gets a map with keys. Before, it took every key, so `User().create(req.body)` could set `id` or `is_admin`. To fix: add `fillable` with the columns that may be set from a map, or set `guarded` to `const <String>[]` to take every key as before. `save()` and fields set in code are not changed.
 - Fix: `update()` and `delete()` with `join()`, `orderBy()` or `limit()` now work on Postgres and SQLite. The rows are picked by primary key in a sub query. MySQL with no join and no offset keeps its own `ORDER BY ... LIMIT`. `groupBy()` and `having()` with `update()` or `delete()` now throw an `ArgumentError`, because the SQL was never valid.
 - Warning: Postgres with `useSSL: true` (or `sslmode=require`) uses TLS mode `require`. It encrypts the data but does not check the server certificate. The app now prints one warning to stderr when it connects this way. The mode does not change. To check the certificate, set `extra['sslMode'] = 'verify-full'`.
+- New: `ConnectionConfig.logRedact` (and `SqlQueryBuilder().logRedact`) hides values in the debug query log. It is a list of names, like `['password', 'token']`. A value whose key ends with one of the names is shown as `***`. It is off by default, so the log does not change unless you set it.
 
 ## 3.0.1
 

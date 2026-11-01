@@ -32,6 +32,10 @@ class SqlQueryBuilder {
 
   QueryPrinter printer = PrettyQueryPrinter();
 
+  /// names of values to hide in the debug query log, see
+  /// [ConnectionConfig.logRedact]. empty by default: nothing is hidden.
+  List<String> logRedact = <String>[];
+
   DatabaseConfig? databaseConfig;
 
   /// initialize with DatabaseConfig class.
@@ -44,6 +48,7 @@ class SqlQueryBuilder {
 
     sql.dbDriver = connConfig.createDriver();
     sql.debug = connConfig.debug;
+    sql.logRedact = connConfig.logRedact;
     if (connConfig.printer != null) {
       sql.printer = connConfig.printer!;
     }
