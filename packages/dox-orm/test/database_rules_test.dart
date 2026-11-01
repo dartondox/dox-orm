@@ -395,6 +395,33 @@ void main() async {
       expect(releaseError, isNotNull);
     });
 
+    test('a dotted column name reads the right key', () async {
+      Exists exists = const Exists('rule_emails', column: 'rule_emails.email');
+      expect(
+        await exists.failedItems(<Object?>[
+          'taken@dox.dev',
+          'nope@dox.dev',
+        ], context()),
+        <int>[1],
+      );
+      // before, the found text was `null`, so the item `null` passed
+      expect(await exists.failedItems(<Object?>['null'], context()), <int>[0]);
+      expect(await exists.checkAsync('taken@dox.dev', context()), isTrue);
+      Unique unique = const Unique('rule_emails', column: 'rule_emails.email');
+      expect(
+        await unique.failedItems(<Object?>['new@dox.dev'], context()),
+        <int>[],
+      );
+      expect(
+        await unique.failedItems(<Object?>[
+          'new@dox.dev',
+          'taken@dox.dev',
+        ], context()),
+        <int>[0, 1],
+      );
+      expect(await unique.checkAsync('taken@dox.dev', context()), isFalse);
+    });
+
     test('values are bound, not put into the SQL', () async {
       expect(
         await const Exists(

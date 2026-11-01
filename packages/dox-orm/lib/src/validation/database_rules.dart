@@ -62,7 +62,10 @@ class RowFinder extends PresenceVerifier {
     }
     Set<String> found = <String>{};
     for (dynamic row in rows) {
-      if (row is Map) found.add('${row[column]}');
+      // a row has the key `name` for the column `t.name`
+      if (row is Map) {
+        found.add('${row[column.substring(column.lastIndexOf('.') + 1)]}');
+      }
     }
     return found;
   }
