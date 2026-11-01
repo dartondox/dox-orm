@@ -42,9 +42,11 @@ class RowFinder extends PresenceVerifier {
       // Postgres says so with a "data exception" (SQLSTATE class 22):
       // `abc` or `1.0` for a bigint (22P02), a number that is too big
       // (22003), text with a NUL byte (22021), a bad date (22007, 22008).
-      // In this query they can only come from the bound values. Other
-      // errors, like a lost connection, still throw. MySQL and SQLite give
-      // no error for these, only no rows.
+      // In this query they almost always come from the bound values.
+      // (A view that divides by zero gives one too: it is then "not
+      // found", which is rare.) Other errors, like a lost connection,
+      // still throw. MySQL and SQLite give no error for these, only no
+      // rows.
       if (!_notFit(error)) rethrow;
       // The ignore value can be the bad one (it comes from the URL). Then
       // no row has it, so there is nothing to skip: drop it and ask again.
@@ -53,26 +55,9 @@ class RowFinder extends PresenceVerifier {
         return this.found(table, column, values, connection: connection);
       }
       if (values.length == 1) return <String>{};
-      // one bad item fails the whole query: split the list in two halves
-      // and ask again, so a bad item costs about 2 * log2(n) queries
-      int mid = values.length ~/ 2;
-      Set<String> found = <String>{};
-      for (List<Object?> half in <List<Object?>>[
-        values.sublist(0, mid),
-        values.sublist(mid),
-      ]) {
-        found.addAll(
-          await this.found(
-            table,
-            column,
-            half,
-            exceptColumn: exceptColumn,
-            exceptValue: exceptValue,
-            connection: connection,
-          ),
-        );
-      }
-      return found;
+      // one bad value fails the whole query, so it is not known which
+      // items are in the table. The list rules then fail every item.
+      throw PresenceUnknown('${error.code}: ${error.message}');
     }
     Set<String> found = <String>{};
     for (dynamic row in rows) {
@@ -129,8 +114,8 @@ class RowFinder extends PresenceVerifier {
 /// @Unique('users', column: 'email', ignoreParam: 'id')
 /// final String email;
 /// ```
-/// [column] defaults to the input key. On a `List` field each item is
-/// checked, all in one query.
+/// [column] defaults to the input key. On a `List` field the whole list
+/// is one query.
 class Unique extends AsyncRule<Object?> {
   const Unique(
     this.table, {
@@ -166,18 +151,14 @@ class Unique extends AsyncRule<Object?> {
     return (await _found(<Object?>[value], context)).isEmpty;
   }
 
-  /// Many values: see [PresenceVerifier.foundItems]. MySQL ignores
-  /// case, so an item is asked again alone when the text does not match.
+  /// Many values: one query for the whole list, like Laravel. See
+  /// [PresenceVerifier.takenItems].
   @override
-  Future<List<int>> failedItems(
-    List<Object?> values,
-    RuleContext context,
-  ) async {
-    Set<int> taken = await PresenceVerifier.foundItems(
+  Future<List<int>> failedItems(List<Object?> values, RuleContext context) {
+    return PresenceVerifier.takenItems(
       values,
       (List<Object?> items) => _found(items, context),
     );
-    return taken.toList()..sort();
   }
 
   Future<Set<String>> _found(List<Object?> values, RuleContext context) {
@@ -196,7 +177,7 @@ class Unique extends AsyncRule<Object?> {
 
 /// A row in [table] has this value: `@Exists('teams')`.
 /// [column] defaults to `id`.
-/// On a `List` field each item is checked, all in one query.
+/// On a `List` field the whole list is one query.
 class Exists extends AsyncRule<Object?> {
   const Exists(
     this.table, {
@@ -230,17 +211,10 @@ class Exists extends AsyncRule<Object?> {
     return finder.found(table, column, values, connection: connection);
   }
 
-  /// Many values: see [PresenceVerifier.foundItems]. MySQL ignores
-  /// case, so an item is asked again alone when the text does not match.
+  /// Many values: one query for the whole list, like Laravel. See
+  /// [PresenceVerifier.missingItems].
   @override
-  Future<List<int>> failedItems(
-    List<Object?> values,
-    RuleContext context,
-  ) async {
-    Set<int> found = await PresenceVerifier.foundItems(values, _found);
-    return <int>[
-      for (int i = 0; i < values.length; i++)
-        if (!found.contains(i)) i,
-    ];
+  Future<List<int>> failedItems(List<Object?> values, RuleContext context) {
+    return PresenceVerifier.missingItems(values, _found);
   }
 }

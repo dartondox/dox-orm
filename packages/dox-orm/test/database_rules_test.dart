@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:dox_orm/dox_orm.dart';
 import 'package:dox_validation/dox_validation.dart' hide Schema;
 import 'package:test/test.dart';
@@ -95,35 +97,34 @@ void main() async {
       }
     });
 
-    test('a list: the database match decides for each item', () async {
-      List<String> values = <String>[
-        'new@dox.dev',
-        'TAKEN@dox.dev',
-        'taken@dox.dev',
-      ];
-      List<int> inDb = <int>[];
-      for (int i = 0; i < values.length; i++) {
-        int count = await QueryBuilder.table('rule_emails')
-            .where('email', values[i])
-            .count();
-        if (count > 0) inDb.add(i);
+    test('a list is one query, the database does the matching', () async {
+      // what the database says for TAKEN@ (MySQL and MariaDB ignore case)
+      bool caseFree =
+          (await QueryBuilder.table('rule_emails')
+              .where('email', 'TAKEN@dox.dev')
+              .count()) >
+          0;
+      Unique unique = const Unique('rule_emails', column: 'email');
+      Exists exists = const Exists('rule_emails', column: 'email');
+      Future<List<int>> u(List<Object?> values) {
+        return unique.failedItems(values, context());
       }
+
+      Future<List<int>> e(List<Object?> values) {
+        return exists.failedItems(values, context());
+      }
+
+      expect(await u(<Object?>['new@dox.dev', 'taken@dox.dev']), <int>[1]);
+      expect(await e(<Object?>['taken@dox.dev', 'nope@dox.dev']), <int>[1]);
+      expect(await e(<Object?>['taken@dox.dev', 'taken@dox.dev']), <int>[]);
+      // only the database matched: it can not tell which, so all fail
       expect(
-        await const Unique(
-          'rule_emails',
-          column: 'email',
-        ).failedItems(values, context()),
-        inDb,
+        await u(<Object?>['new@dox.dev', 'TAKEN@dox.dev']),
+        caseFree ? <int>[0, 1] : <int>[],
       );
       expect(
-        await const Exists(
-          'rule_emails',
-          column: 'email',
-        ).failedItems(values, context()),
-        <int>[
-          for (int i = 0; i < values.length; i++)
-            if (!inDb.contains(i)) i,
-        ],
+        await e(<Object?>['TAKEN@dox.dev', 'TAKEN@dox.dev']),
+        caseFree ? <int>[] : <int>[0, 1],
       );
     });
 
@@ -145,10 +146,20 @@ void main() async {
         await const Exists('rule_emails').checkAsync(1.5, context()),
         isFalse,
       );
+      // a list with a bad value: Postgres can not compare it, so every
+      // item fails (the safe side). The others just do not find `abc`.
+      bool postgres = Platform.environment['DRIVER'] == 'postgres';
       expect(
         await const Exists('rule_emails')
             .failedItems(<Object?>['abc', 1], context()),
-        <int>[0],
+        postgres ? <int>[0, 1] : <int>[0],
+      );
+      expect(
+        await const Unique(
+          'rule_emails',
+          column: 'id',
+        ).failedItems(<Object?>['abc', 1], context()),
+        postgres ? <int>[0, 1] : <int>[1],
       );
       // too big for an int column (Postgres 22003)
       expect(
@@ -221,28 +232,11 @@ void main() async {
       );
     });
 
-    test('a long list needs a few queries, not one per item', () async {
+    test('a long list is one query', () async {
       List<String> many = <String>[
         for (int i = 0; i < 499; i++) 'new$i@dox.dev',
-      ]..insert(250, 'TAKEN@dox.dev');
-      bool inDb =
-          (await QueryBuilder.table('rule_emails')
-              .where('email', 'TAKEN@dox.dev')
-              .count()) >
-          0;
+      ]..insert(250, 'taken@dox.dev');
       CountingFinder finder = CountingFinder();
-      expect(
-        await Unique(
-          'rule_emails',
-          column: 'email',
-          finder: finder,
-        ).failedItems(many, context()),
-        inDb ? <int>[250] : <int>[],
-      );
-      expect(finder.calls, lessThanOrEqualTo(22));
-      // one exact hit and 499 new items: 2 queries at most
-      many[250] = 'taken@dox.dev';
-      finder.calls = 0;
       expect(
         await Unique(
           'rule_emails',
@@ -251,19 +245,34 @@ void main() async {
         ).failedItems(many, context()),
         <int>[250],
       );
-      expect(finder.calls, lessThanOrEqualTo(2));
+      List<int> missing = await Exists(
+        'rule_emails',
+        column: 'email',
+        finder: finder,
+      ).failedItems(many, context());
+      expect(missing, hasLength(499));
+      expect(missing.contains(250), isFalse);
+      expect(
+        await Exists(
+          'rule_emails',
+          column: 'email',
+          finder: finder,
+        ).failedItems(List<String>.filled(500, 'taken@dox.dev'), context()),
+        <int>[],
+      );
       // a bad value for a number id in a long list (Postgres)
       List<Object?> ids = <Object?>[for (int i = 1; i <= 499; i++) i]
         ..insert(300, 'abc');
-      finder.calls = 0;
-      List<int> missing = await Exists(
+      List<int> idsMissing = await Exists(
         'rule_emails',
         finder: finder,
       ).failedItems(ids, context());
-      expect(missing.contains(0), isFalse); // the row with id 1
-      expect(missing.contains(300), isTrue);
-      expect(missing, hasLength(499));
-      expect(finder.calls, lessThanOrEqualTo(40));
+      // Postgres can not compare `abc` with a number: every item fails.
+      // The others find the row with id 1.
+      bool postgres = Platform.environment['DRIVER'] == 'postgres';
+      expect(idsMissing, hasLength(postgres ? 500 : 499));
+      expect(idsMissing.contains(300), isTrue);
+      expect(finder.calls, 4);
     });
 
     test('a bad date for a date column is not found', () async {
@@ -312,6 +321,12 @@ void main() async {
           ),
           isFalse,
         );
+        // a list with a bad value too
+        expect(
+          await const Exists('rule_emails')
+              .failedItems(<Object?>['abc', 1], context()),
+          isNotEmpty,
+        );
         // the next query of the app still works
         await QueryBuilder.table('rule_emails')
             .insert(<String, dynamic>{'email': 'in-tx@dox.dev'});
@@ -319,6 +334,30 @@ void main() async {
       });
       expect(count, 2);
       expect(await QueryBuilder.table('rule_emails').count(), 2);
+    });
+
+    test('a caught error does not leave its savepoint open', () async {
+      Object? releaseError;
+      try {
+        await QueryBuilder.transaction(() async {
+          try {
+            await QueryBuilder.transaction(() async {
+              throw StateError('undo this');
+            });
+          } on StateError {
+            // caught, like RowFinder does
+          }
+          try {
+            // sp_1 must be gone: ROLLBACK TO is followed by RELEASE
+            await QueryBuilder.query('RELEASE SAVEPOINT sp_1');
+          } catch (error) {
+            releaseError = error;
+          }
+        });
+      } catch (_) {
+        // Postgres may end the transaction after the failed RELEASE
+      }
+      expect(releaseError, isNotNull);
     });
 
     test('values are bound, not put into the SQL', () async {
