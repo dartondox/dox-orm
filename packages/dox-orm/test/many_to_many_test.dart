@@ -1,4 +1,5 @@
 import 'package:dox_orm/dox_orm.dart';
+import 'package:dox_orm/src/relationships/pivot_ids.dart';
 import 'package:test/test.dart';
 
 import 'connection.dart';
@@ -335,6 +336,28 @@ void main() async {
         expect(await songIds(), <int>[1, 3]);
       });
 
+      test('a number id with spaces is the same id', () async {
+        await artist.attach('songs', <dynamic>[1, 3]);
+        await artist.updateExistingPivot('songs', 3, <String, dynamic>{
+          'role': 'bass',
+        });
+
+        /// sync keeps the row of 3 and its role
+        PivotSyncResult r = await artist.sync('songs', <dynamic>[1, ' 3 ']);
+        expect(r.attached, isEmpty);
+        expect(r.detached, isEmpty);
+        List<Map<String, dynamic>> rows = await QueryBuilder.table(
+          'artist_song',
+        ).where('artist_id', artist.id).where('song_id', 3).get();
+        expect(rows.single['role'], 'bass');
+
+        /// toggle removes the link, it does not add a second row
+        r = await artist.toggle('songs', <dynamic>[' 1']);
+        expect(r.detached, <int>[1]);
+        expect(r.attached, isEmpty);
+        expect(await songIds(), <int>[3]);
+      });
+
       test('detach(null) deletes nothing, detach() deletes all', () async {
         await artist.attach('songs', <int>[1, 2]);
         expect(await artist.detach('songs', null), 0);
@@ -459,6 +482,36 @@ void main() async {
       test('errors', () async {
         expect(() => artist.attach('nope', 1), throwsA(isA<ArgumentError>()));
         expect(() => Artist().attach('songs', 1), throwsA(isA<StateError>()));
+      });
+    });
+
+    group('pivot ids |', () {
+      test('intId', () {
+        expect(intId(1), 1);
+        expect(intId(1.0), 1);
+        expect(intId('01'), 1);
+        expect(intId(' 1 '), 1);
+        expect(intId('-2'), -2);
+        expect(intId('1.5'), isNull);
+        expect(intId(1.5), isNull);
+        expect(intId('abc'), isNull);
+        expect(intId(''), isNull);
+
+        /// out of the int range: not clamped to the max int
+        expect(intId(1e20), isNull);
+        expect(intId(-1e20), isNull);
+        expect(intId(double.infinity), isNull);
+        expect(intId(double.nan), isNull);
+        expect(sameId(1e20, 9223372036854775807), isFalse);
+      });
+
+      test('sameId', () {
+        expect(sameId(1, '01'), isTrue);
+        expect(sameId(' 1', 1.0), isTrue);
+        expect(sameId('007', '7'), isTrue);
+        expect(sameId('1.5', 1.5), isFalse);
+        expect(sameId('abc', 'abc'), isTrue);
+        expect(sameId('abc', 'ABC'), isFalse);
       });
     });
   });

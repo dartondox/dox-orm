@@ -1,6 +1,7 @@
 import 'package:dox_orm/dox_orm.dart';
 
 import 'keys.dart';
+import 'pivot_ids.dart';
 
 /// local key used by each query, so the result can be matched to owners
 final Expando<String> _localKeys = Expando<String>();
@@ -183,10 +184,10 @@ class _Pivot {
   /// the pivot rows of the owner
   Future<List<Map<String, dynamic>>> rows() => query().get();
 
-  /// the row of [rows] whose related id is [id] by value, see [_sameId]
+  /// the row of [rows] whose related id is [id] by value, see [sameId]
   Map<String, dynamic>? match(List<Map<String, dynamic>> rows, dynamic id) {
     for (Map<String, dynamic> r in rows) {
-      if (_sameId(r[relatedForeignKey], id)) return r;
+      if (sameId(r[relatedForeignKey], id)) return r;
     }
     return null;
   }
@@ -197,7 +198,7 @@ class _Pivot {
   /// Like Laravel, null means no ids, and a null id (or a model without
   /// a key) is skipped. A whole number like `2.0` becomes the int `2`,
   /// because Postgres does not take `2.0` for an integer column. An id is
-  /// kept once, by [_sameId]: `[1, '01', 1.0]` gives one id, the first
+  /// kept once, by [sameId]: `[1, '01', 1.0]` gives one id, the first
   /// one wins. Every write uses these ids, so they all match the same way.
   Map<dynamic, Map<String, dynamic>> records(
     dynamic ids, [
@@ -233,7 +234,7 @@ class _Pivot {
 
   dynamic _id(dynamic id) {
     if (id is Model) id = relationKey(id, relatedKey);
-    return id is double ? _intId(id) ?? id : id;
+    return id is double ? intId(id) ?? id : id;
   }
 
   /// adds a pivot row for each of [records]
@@ -482,32 +483,9 @@ extension ManyToManyWrites<T> on Model<T> {
 }
 
 /// [ids] with one type, like Laravel: a number id is an int. `4`, `4.0`,
-/// `'4'` and `'04'` all give `4`. Other ids stay as they are.
+/// `'4'`, `'04'` and `' 4'` all give `4`. Other ids stay as they are.
 List<dynamic> _keys(Iterable<dynamic> ids) {
-  return <dynamic>[for (dynamic id in ids) _intId(id) ?? id];
-}
-
-/// [id] as an int when it is a whole number or a text of only digits
-/// (with an optional `-`), else null
-int? _intId(dynamic id) {
-  if (id is int) return id;
-  if (id is double && id.isFinite && id == id.truncateToDouble()) {
-    return id.toInt();
-  }
-  if (id is String && _digits.hasMatch(id)) return int.tryParse(id);
-  return null;
-}
-
-final RegExp _digits = RegExp(r'^-?[0-9]+$');
-
-/// true when the ids [a] and [b] are the same. Two number ids (see
-/// [_intId]) are the same when their int is the same, so `'01'`, `1.0`
-/// and `1` are the same id. Any other ids must be equal, so `'1.5'`,
-/// `' 1'` or `'abc'` only match the same text.
-bool _sameId(dynamic a, dynamic b) {
-  if (a == b) return true;
-  int? x = _intId(a);
-  return x != null && x == _intId(b);
+  return <dynamic>[for (dynamic id in ids) intId(id) ?? id];
 }
 
 /// the default of [ManyToManyWrites.detach]: no ids given, detach all
@@ -516,7 +494,7 @@ const Object _allIds = Object();
 /// true when [ids] has an id that is the same as [id] by value
 bool _hasSame(Iterable<dynamic> ids, dynamic id) {
   for (dynamic i in ids) {
-    if (_sameId(i, id)) return true;
+    if (sameId(i, id)) return true;
   }
   return false;
 }
