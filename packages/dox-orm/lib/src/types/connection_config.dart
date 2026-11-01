@@ -42,10 +42,9 @@ class ConnectionConfig {
   /// - mysql: the server certificate is checked. set
   ///   `extra['verifyCertificate']` to false to skip the check, eg. for a
   ///   self-signed certificate in development.
-  /// - postgres: TLS mode `verify-full`: the certificate and the host
-  ///   name are checked. set `extra['sslMode']` to `require` to encrypt
-  ///   without the check (not safe: a man in the middle can read the
-  ///   traffic). see [postgresSslMode].
+  /// - postgres: TLS mode `require` (encrypt, no certificate check, like
+  ///   libpq). set `extra['sslMode']` to `verify-full` to also check the
+  ///   certificate. see [postgresSslMode].
   bool useSSL;
 
   /// extra configuration for the connection
@@ -96,8 +95,7 @@ class ConnectionConfig {
   ///   `allow` and `prefer` use TLS only when the server has it (Postgres)
   ///   and set no [useSSL]. Any other value (eg. `require`, `true`) turns
   ///   TLS on. For Postgres, `require` does not check the certificate (like
-  ///   libpq), `verify-ca` and `verify-full` check it. Other values, like
-  ///   `true`, mean `verify-full`. For MySQL the
+  ///   libpq), `verify-ca` and `verify-full` check it. For MySQL the
   ///   certificate is checked, add `verifyCertificate=false` to skip the
   ///   check (eg. a self-signed certificate in development).
   /// - `sslrootcert=/path/ca.pem` (Postgres): the CA certificates to trust
@@ -152,8 +150,8 @@ class ConnectionConfig {
             'disable' || 'disabled' || 'false' || '0' => 'disable',
             'allow' || 'prefer' || 'preferred' => 'prefer',
             'verify-ca' => 'verify-ca',
-            'require' || 'required' => 'require',
-            _ => 'verify-full',
+            String m when m.startsWith('verify') => 'verify-full',
+            _ => 'require',
           };
           useSSL = mode == 'require' || mode.startsWith('verify');
           // like libpq: `require` encrypts but does not check the
@@ -201,11 +199,10 @@ class ConnectionConfig {
   bool get verifyCertificate => extra['verifyCertificate'] as bool? ?? true;
 
   /// the Postgres TLS mode: `disable`, `prefer`, `require`, `verify-ca`
-  /// (checks the certificate, not the host name) or `verify-full`. it is
-  /// `extra['sslMode']` when set, else `verify-full` with [useSSL], else
-  /// `disable`.
+  /// (checks the certificate, not the host name) or `verify-full`. it is `extra['sslMode']` when set, else `require`
+  /// with [useSSL], else `disable`.
   String get postgresSslMode =>
-      extra['sslMode'] as String? ?? (useSSL ? 'verify-full' : 'disable');
+      extra['sslMode'] as String? ?? (useSSL ? 'require' : 'disable');
 
   /// the path of a PEM file with the CA certificates that Postgres TLS
   /// trusts for `verify-ca` and `verify-full`, eg. the CA of a cloud database. it is

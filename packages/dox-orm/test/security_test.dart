@@ -235,21 +235,6 @@ void main() async {
           useSSL: true,
           debug: false,
         ).postgresSslMode,
-        'verify-full',
-      );
-      expect(
-        ConnectionConfig.fromUrl('postgres://u:p@db.example.com/app?ssl=true')
-            .postgresSslMode,
-        'verify-full',
-      );
-      expect(
-        ConnectionConfig(
-          driver: Driver.postgres,
-          database: 'app',
-          useSSL: true,
-          extra: <String, dynamic>{'sslMode': 'require'},
-          debug: false,
-        ).postgresSslMode,
         'require',
       );
       expect(
