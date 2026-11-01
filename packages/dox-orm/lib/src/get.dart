@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:dox_orm/dox_orm.dart';
 
@@ -85,6 +86,7 @@ mixin Get<T> implements SharedMixin<T> {
         !qb.hasLock &&
         qb.getSelectQuery() == '*' &&
         !qb.hasAggregates &&
+        !qb.trashedOnly &&
         !qb.hasGlobalScopes;
   }
 
@@ -124,9 +126,7 @@ mixin Get<T> implements SharedMixin<T> {
     required int currentPage,
     required int perPage,
   }) async {
-    if (perPage < 1) {
-      throw ArgumentError.value(perPage, 'perPage', 'must be 1 or more');
-    }
+    _checkPerPage(perPage);
     if (currentPage < 1) currentPage = 1;
     int offset = (currentPage - 1) * perPage;
     QueryBuilder<T> qb = queryBuilder;
@@ -167,6 +167,166 @@ mixin Get<T> implements SharedMixin<T> {
       currentPage: currentPage,
       data: data,
     );
+  }
+
+  /// a page of rows without the total count, so it runs one query, not
+  /// two. It reads one row more to know if there is a next page.
+  ///
+  /// ```
+  /// SimplePagination<Blog> page = await Blog().simplePaginate(
+  ///   currentPage: 2,
+  ///   perPage: 10,
+  /// );
+  /// page.hasMorePages;
+  /// ```
+  /// [perPage] must be 1 or more, else it throws an [ArgumentError].
+  /// a [currentPage] below 1 is read as page 1.
+  Future<SimplePagination<T>> simplePaginate({
+    required int currentPage,
+    required int perPage,
+  }) async {
+    _checkPerPage(perPage);
+    if (currentPage < 1) currentPage = 1;
+    List<T> rows = await queryBuilder
+        .limit(perPage + 1)
+        .offset((currentPage - 1) * perPage)
+        .get();
+    bool more = rows.length > perPage;
+    return SimplePagination<T>(
+      perPage: perPage,
+      currentPage: currentPage,
+      hasMorePages: more,
+      data: more ? rows.sublist(0, perPage) : rows,
+    );
+  }
+
+  /// a page of rows after (or before) a cursor. It is fast on big
+  /// tables, because it uses `WHERE column > value`, not OFFSET.
+  ///
+  /// ```
+  /// CursorPagination<Blog> page = await Blog().cursorPaginate(
+  ///   perPage: 10,
+  ///   cursor: req.input('cursor'),
+  /// );
+  /// page.nextCursor; // give it back as cursor to read the next page
+  /// ```
+  ///
+  /// The rows are ordered by [column] (the primary key by default) in
+  /// [direction] (`asc` or `desc`). The column must be unique and not
+  /// null, and it must be in the select. Do not add orderBy(), it
+  /// throws a [StateError].
+  ///
+  /// The cursor is a base64 text from [CursorPagination.nextCursor] or
+  /// [CursorPagination.prevCursor]. It is safe to take it from a user:
+  /// its value only goes in as a query param, and a cursor that is not
+  /// valid (or made for another column) gives the first page.
+  ///
+  /// ponytail: one column only. For a column that is not unique, like
+  /// created_at, rows with the same value can be skipped.
+  Future<CursorPagination<T>> cursorPaginate({
+    required int perPage,
+    String? cursor,
+    String? column,
+    String direction = 'asc',
+  }) async {
+    _checkPerPage(perPage);
+    String dir = direction.toLowerCase();
+    if (dir != 'asc' && dir != 'desc') {
+      throw ArgumentError.value(direction, 'direction', 'must be asc or desc');
+    }
+    QueryBuilder<T> qb = queryBuilder;
+    if (qb.getOrderByQuery().isNotEmpty) {
+      throw StateError(
+        'cursorPaginate() sets the order itself. '
+        'Remove orderBy() and use column and direction.',
+      );
+    }
+    String name = column ?? primaryKey;
+    String qualified = _qualified(name);
+    String key = name.split('.').last;
+    (dynamic, bool)? at = _readCursor(cursor, name);
+    bool forward = at?.$2 ?? true;
+    if (at != null) {
+      /// put the conditions so far in brackets, so an OR in them can not
+      /// skip the cursor condition
+      qb.applyGlobalScopes();
+      qb.groupWheres(0);
+      String op = (dir == 'asc') == forward ? '>' : '<';
+      qb.whereRaw(
+        '${helper.wrap(qualified)} $op @$_cursorKey',
+        <String, dynamic>{_cursorKey: at.$1},
+      );
+    }
+    String order = forward ? dir : (dir == 'asc' ? 'desc' : 'asc');
+    List<T> rows = await qb.orderBy(qualified, order).limit(perPage + 1).get();
+    bool more = rows.length > perPage;
+    if (more) rows = rows.sublist(0, perPage);
+
+    /// going back, the rows come in the other order
+    if (!forward) rows = rows.reversed.toList();
+    bool hasNext = forward ? more : at != null;
+    bool hasPrev = forward ? at != null : more;
+    return CursorPagination<T>(
+      perPage: perPage,
+      nextCursor: hasNext && rows.isNotEmpty
+          ? _makeCursor(rows.last, key, name, true)
+          : null,
+      prevCursor: hasPrev && rows.isNotEmpty
+          ? _makeCursor(rows.first, key, name, false)
+          : null,
+      data: rows,
+    );
+  }
+
+  /// param name of the cursor value of cursorPaginate()
+  static const String _cursorKey = 'dox_cursor';
+
+  static void _checkPerPage(int perPage) {
+    if (perPage < 1) {
+      throw ArgumentError.value(perPage, 'perPage', 'must be 1 or more');
+    }
+  }
+
+  /// the cursor of [row]: base64 of `{"c": column, "v": value, "n": next}`.
+  /// a date has `"t": true` and its value as an iso text.
+  static String _makeCursor(dynamic row, String key, String name, bool next) {
+    dynamic value = _valueOfRow(row, key);
+    Map<String, dynamic> data = <String, dynamic>{'c': name, 'n': next};
+    if (value is DateTime) {
+      data['v'] = value.toIso8601String();
+      data['t'] = true;
+    } else if (value is num || value is String) {
+      data['v'] = value;
+    } else {
+      throw StateError(
+        'cursorPaginate() needs the "$key" column in each row, '
+        'as a number, a text or a date, never null',
+      );
+    }
+    return base64Url.encode(utf8.encode(jsonEncode(data))).replaceAll('=', '');
+  }
+
+  /// the value and the direction (true is next) in [cursor], or null
+  /// when [cursor] is empty, not valid, or made for another column.
+  /// the value is only used as a query param, never in the sql.
+  static (dynamic, bool)? _readCursor(String? cursor, String name) {
+    if (cursor == null || cursor.isEmpty || cursor.length > 1024) return null;
+    try {
+      Object? data = jsonDecode(
+        utf8.decode(base64Url.decode(base64Url.normalize(cursor))),
+      );
+      if (data is! Map || data['c'] != name) return null;
+      dynamic next = data['n'];
+      dynamic value = data['v'];
+      if (next is! bool) return null;
+      if (data['t'] == true) {
+        return value is String ? (DateTime.parse(value), next) : null;
+      }
+      if (value is num || value is String) return (value, next);
+      return null;
+    } on FormatException {
+      return null;
+    }
   }
 
   /// Get records

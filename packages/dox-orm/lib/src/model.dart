@@ -486,6 +486,69 @@ class Model<T> extends QueryBuilder<T> {
     return true;
   }
 
+  /// set updated_at (or [column]) to now, and return how many rows
+  /// changed.
+  ///
+  /// ```
+  /// Blog? blog = await Blog().find(1);
+  /// await blog!.touch();
+  /// await blog.touch('published_at');
+  ///
+  /// await Blog().where('status', 'draft').touch();
+  /// ```
+  ///
+  /// On a model from the table it changes only that row, and it sets
+  /// the field too. As a query it changes every row of the query. It
+  /// returns 0 when the model has no updated_at column and no [column]
+  /// is given. It fires no model events.
+  @override
+  Future<int> touch([String? column]) async {
+    String? updatedAtColumn = timestampsColumn['updated_at'];
+    column ??= updatedAtColumn;
+    if (column == null) return 0;
+    if (tempIdValue == null) return await super.touch(column);
+    Map<String, dynamic> values = <String, dynamic>{column: now()};
+    int count = await _thisRecord().update(values);
+    if (count == 0) return count;
+    if (column == updatedAtColumn) updatedAt = values[column];
+    _setSavedColumns(values);
+    return count;
+  }
+
+  /// a new model with the column values of this model, not saved yet.
+  /// It has no primary key, created_at and updated_at, so save()
+  /// inserts a new row. The [except] columns are left out (set to
+  /// null). Relations are not copied.
+  ///
+  /// ```
+  /// Blog? blog = await Blog().find(1);
+  /// Blog copy = blog!.replicate()..title = 'Copy of ${blog.title}';
+  /// await copy.save();
+  ///
+  /// Blog other = blog.replicate(<String>['slug']);
+  /// ```
+  ///
+  /// It throws an [ArgumentError] when a column in [except] can not be
+  /// null, or is not a column of the model.
+  T replicate([List<String> except = const <String>[]]) {
+    Model<T> model = fromMap(_dateTimesToString(columnsToMap())) as Model<T>
+      ..tempIdValue = null
+      ..createdAt = null
+      ..updatedAt = null;
+    for (String column in except) {
+      if (!model.setColumnValue(column, null)) {
+        throw ArgumentError.value(
+          column,
+          'except',
+          'is not a column of $runtimeType that can be null',
+        );
+      }
+    }
+    model.debug(_debug);
+    model.connection = connection;
+    return model as T;
+  }
+
   /// start ********** events
 
   /// true when the model class declares an on... hook.
@@ -670,11 +733,12 @@ class Model<T> extends QueryBuilder<T> {
     return row;
   }
 
-  /// values of withCount(), withSum() and withMax(), by result key
+  /// values of withCount(), withSum(), withMax() and the other with...()
+  /// aggregates, by result key
   Map<String, dynamic>? _aggregates;
 
-  /// sets a value of withCount(), withSum() or withMax(). a number in a
-  /// text (like a MySQL decimal) becomes a number.
+  /// sets a value of withCount(), withSum(), withMax() and the others.
+  /// a number in a text (like a MySQL decimal) becomes a number.
   void setAggregate(String key, dynamic value) {
     (_aggregates ??= <String, dynamic>{})[key] = value is String
         ? num.tryParse(value) ?? value
@@ -692,8 +756,9 @@ class Model<T> extends QueryBuilder<T> {
     return value is num ? value.toInt() : 0;
   }
 
-  /// a value of withCount(), withSum() or withMax() by its result key,
-  /// like `posts_count` or `posts_sum_views`
+  /// a value of withCount(), withSum(), withAvg(), withMin(), withMax()
+  /// or withExists() by its result key, like `posts_count`,
+  /// `posts_sum_views` or `posts_exists`
   dynamic aggregate(String key) => _aggregates?[key];
 
   /// adds the @Computed getters to [map].

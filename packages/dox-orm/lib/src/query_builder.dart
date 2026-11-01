@@ -81,6 +81,10 @@ class QueryBuilder<T>
   @override
   bool withTrashed = false;
 
+  /// true after onlyTrashed()
+  @override
+  bool trashedOnly = false;
+
   @override
   String tableName = '';
 
@@ -149,6 +153,28 @@ class QueryBuilder<T>
   QueryBuilder<T> withTrash([bool withTrashed = true]) {
     this.withTrashed = withTrashed;
     return queryBuilder;
+  }
+
+  /// only the soft deleted rows (this function can be used with
+  /// SoftDeletes only)
+  ///
+  /// ```
+  /// List<Blog> blogs = await Blog().onlyTrashed().get();
+  /// ```
+  QueryBuilder<T> onlyTrashed() {
+    trashedOnly = true;
+    return queryBuilder;
+  }
+
+  /// set [column] of the rows of this query to now, and return how many
+  /// rows changed
+  ///
+  /// ```
+  /// await QueryBuilder.table('blog').where('status', 'draft').touch();
+  /// ```
+  Future<int> touch([String? column]) {
+    /// super.update(): a model does not check the column against fillable
+    return super.update(<String, dynamic>{column ?? 'updated_at': now()});
   }
 
   /// **** global scopes

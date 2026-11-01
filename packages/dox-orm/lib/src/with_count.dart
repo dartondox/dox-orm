@@ -3,7 +3,8 @@ import 'package:dox_orm/dox_orm.dart';
 import 'relationships/keys.dart';
 import 'shared_mixin.dart';
 
-/// one withCount(), withSum() or withMax() of a query
+/// one withCount(), withSum(), withAvg(), withMin(), withMax() or
+/// withExists() of a query
 class _Aggregate {
   final String relation;
   final String function;
@@ -23,13 +24,20 @@ class _Aggregate {
 mixin WithCount<T> implements SharedMixin<T> {
   List<_Aggregate>? _aggregates;
 
-  /// true when the query has a withCount(), withSum() or withMax()
+  /// true when the query has a withCount(), withSum(), withAvg(),
+  /// withMin(), withMax() or withExists()
   bool get hasAggregates => _aggregates != null;
 
   /// the result keys, like `posts_count`
   List<String> get aggregateKeys => <String>[
     for (_Aggregate a in _aggregates ?? const <_Aggregate>[]) a.key,
   ];
+
+  /// the result keys of withExists(), their values become a bool
+  Set<String> get existsKeys => <String>{
+    for (_Aggregate a in _aggregates ?? const <_Aggregate>[])
+      if (a.function == 'exists') a.key,
+  };
 
   /// adds `<relation>_count`, the number of related rows, with a
   /// subquery. Works with hasOne, hasMany and manyToMany relations.
@@ -79,6 +87,45 @@ mixin WithCount<T> implements SharedMixin<T> {
     return _add(relation, 'max', column, where);
   }
 
+  /// adds `<relation>_avg_<column>`, the average of [column] of the
+  /// related rows. It is null when there is no related row.
+  ///
+  /// ```
+  /// User? user = await User().withAvg('posts', 'views').find(1);
+  /// user?.aggregate('posts_avg_views');
+  /// ```
+  QueryBuilder<T> withAvg(
+    String relation,
+    String column, [
+    void Function(QueryBuilder<dynamic> query)? where,
+  ]) {
+    return _add(relation, 'avg', column, where);
+  }
+
+  /// adds `<relation>_min_<column>`, the smallest [column] of the
+  /// related rows. It is null when there is no related row.
+  QueryBuilder<T> withMin(
+    String relation,
+    String column, [
+    void Function(QueryBuilder<dynamic> query)? where,
+  ]) {
+    return _add(relation, 'min', column, where);
+  }
+
+  /// adds `<relation>_exists`, true when there is at least one related
+  /// row. [where] adds conditions to the related rows.
+  ///
+  /// ```
+  /// User? user = await User().withExists('posts').find(1);
+  /// user?.aggregate('posts_exists'); // true or false
+  /// ```
+  QueryBuilder<T> withExists(
+    String relation, [
+    void Function(QueryBuilder<dynamic> query)? where,
+  ]) {
+    return _add(relation, 'exists', '*', where);
+  }
+
   QueryBuilder<T> _add(
     String relation,
     String function,
@@ -90,8 +137,8 @@ mixin WithCount<T> implements SharedMixin<T> {
     String snake = helper.toSnakeCase(name);
     String key = parts.length > 1
         ? parts[1].trim()
-        : function == 'count'
-        ? '${snake}_count'
+        : function == 'count' || function == 'exists'
+        ? '${snake}_$function'
         : '${snake}_${function}_$column';
     (_aggregates ??= <_Aggregate>[]).add(
       _Aggregate(name, function, column, key, where),
@@ -123,12 +170,14 @@ mixin WithCount<T> implements SharedMixin<T> {
           : q.helper.wrap(
               a.column.contains('.') ? a.column : '${tableRef(q)}.${a.column}',
             );
-      String inner =
-          'SELECT ${a.function.toUpperCase()}($column) '
+      String from =
           'FROM ${fromTable(q)}'
           '${q.helper.getCommonQuery(isCountQuery: true)}';
       substitutionValues.addAll(q.substitutionValues);
-      sql += ', ($inner) AS ${helper.wrap(a.key)}';
+      String value = a.function == 'exists'
+          ? 'EXISTS (SELECT 1 $from)'
+          : '(SELECT ${a.function.toUpperCase()}($column) $from)';
+      sql += ', $value AS ${helper.wrap(a.key)}';
     }
     return sql;
   }
