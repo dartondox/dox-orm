@@ -130,6 +130,52 @@ void main() async {
         expect((await Song().find(2))!.pivot, isEmpty);
       });
 
+      test('a plain relation selects the same columns as before', () async {
+        await artist.attach('songs', 1);
+        Song? song = await Song().preload('artists').find(1);
+
+        /// pivot still has both keys, made without more SQL
+        Map<String, dynamic> pivot = song!.artists.first.pivot;
+        expect('${pivot['artist_id']}', '${artist.id}');
+        expect('${pivot['song_id']}', '1');
+
+        expect(song.artists.first.toMap(original: true).keys.toSet(), <String>{
+          'id',
+          'name',
+          'created_at',
+          'updated_at',
+          '_owner_id',
+        });
+
+        /// the same select as before the pivot columns came
+        Song one = (await Song().find(1))!;
+        String sql = one.related<Artist>('artists')!.toSql();
+        String w(String n) => Artist().helper.wrap(n);
+        expect(
+          sql,
+          contains(
+            'SELECT ${w('artist.*')},'
+            '${w('artist_song.song_id as _owner_id')} FROM',
+          ),
+        );
+      });
+
+      test('sync compares pivot values by type', () async {
+        await artist.attach('songs', 1, <String, dynamic>{'role': '1'});
+        SyncResult r = await artist.sync('songs', <int, Map<String, dynamic>>{
+          1: <String, dynamic>{'role': 1},
+        });
+        expect(r.updated, isEmpty);
+        r = await artist.sync('songs', <int, Map<String, dynamic>>{
+          1: <String, dynamic>{'role': true},
+        });
+        expect(r.updated, isEmpty);
+        r = await artist.sync('songs', <int, Map<String, dynamic>>{
+          1: <String, dynamic>{'role': 'x'},
+        });
+        expect(r.updated, <int>[1]);
+      });
+
       test('detach some ids or all', () async {
         await artist.attach('songs', <int>[1, 2, 3]);
         expect(await artist.detach('songs', <int>[1, 3]), 2);
@@ -178,6 +224,20 @@ void main() async {
         expect(r.attached, <int>[3]);
         expect(r.detached, <int>[2]);
         expect(await songIds(), <int>[1, 3]);
+      });
+
+      test('updateExistingPivot with a list', () async {
+        await artist.attach('songs', <int>[1, 2, 3]);
+        expect(
+          await artist.updateExistingPivot(
+            'songs',
+            <int>[1, 2],
+            <String, dynamic>{'role': 'bass'},
+          ),
+          2,
+        );
+        Artist? a = await Artist().preload('songs').find(artist.id);
+        expect(a!.songs.where((Song s) => s.pivot['role'] == 'bass').length, 2);
       });
 
       test('updateExistingPivot', () async {

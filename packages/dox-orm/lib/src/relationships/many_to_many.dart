@@ -41,21 +41,22 @@ M? manyToMany<T, M>(
 
   List<dynamic> ids = relationKeys(list, localKey);
 
-  /// the pivot columns to read, see [ManyToManyWrites.pivot]
-  List<String> pivotColumns = <String>[
-    pivotForeignKey,
-    pivotRelatedForeignKey,
+  /// the extra pivot columns to read, see [ManyToManyWrites.pivot].
+  /// with no withPivot and no withTimestamps the select is the same as
+  /// before, so an `onQuery` with groupBy() keeps working.
+  /// select() quotes each name.
+  List<String> pivotColumns = <String>{
     ...?withPivot,
     if (withTimestamps) ...<String>['created_at', 'updated_at'],
-  ];
+  }.toList();
   String pivotSelect = <String>[
-    for (String c in pivotColumns.toSet()) '$pivotTable.$c as $_pivotPrefix$c',
-  ].join(', ');
+    for (String c in pivotColumns) ', $pivotTable.$c as $_pivotPrefix$c',
+  ].join();
 
   QueryBuilder<M> q = related
       .debug(local.shouldDebug)
       .select(
-        '$relatedTable.*, $pivotTable.$pivotForeignKey as _owner_id, '
+        '$relatedTable.*, $pivotTable.$pivotForeignKey as _owner_id'
         '$pivotSelect',
       )
       .leftJoin(
@@ -107,8 +108,11 @@ Future<Map<String, List<M>>> getManyToMany<T, M>(
 
   Map<String, List<M>> ret = <String, List<M>>{};
 
+  _Pivot? pivot = _pivots[q as Object];
+
   /// filter matched values with local id value
   for (M r in results) {
+    if (pivot != null) _pivotKeys[r as Object] = pivot;
     String ownerId = (r as Model<M>).originalMap['_owner_id'].toString();
     if (ret[ownerId] == null) {
       ret[ownerId] = <M>[];
@@ -132,6 +136,10 @@ const String _pivotPrefix = '_pivot_';
 
 /// the pivot table of each many to many query, for the write methods
 final Expando<_Pivot> _pivots = Expando<_Pivot>();
+
+/// the pivot of each model that a many to many relation read, so
+/// [ManyToManyWrites.pivot] can give the two keys without more SQL
+final Expando<_Pivot> _pivotKeys = Expando<_Pivot>();
 
 class _Pivot {
   final Model<dynamic> owner;
@@ -238,13 +246,16 @@ class _Pivot {
     return await q.delete();
   }
 
-  /// sets [values] on the pivot row of [id]
-  Future<int> update(dynamic id, Map<String, dynamic> values) async {
-    return await query().where(relatedForeignKey, id).update(<String, dynamic>{
-      ...values,
-      if (withTimestamps && !values.containsKey('updated_at'))
-        'updated_at': now(),
-    });
+  /// sets [values] on the pivot rows of [ids]
+  Future<int> update(List<dynamic> ids, Map<String, dynamic> values) async {
+    if (ids.isEmpty) return 0;
+    return await query().whereIn(relatedForeignKey, ids).update(
+      <String, dynamic>{
+        ...values,
+        if (withTimestamps && !values.containsKey('updated_at'))
+          'updated_at': now(),
+      },
+    );
   }
 }
 
@@ -300,11 +311,20 @@ extension ManyToManyWrites<T> on Model<T> {
   /// Artist artist = await Artist().preload('songs').find(1);
   /// print(artist.songs.first.pivot['role']);
   /// ```
-  Map<String, dynamic> get pivot => <String, dynamic>{
-    for (MapEntry<String, dynamic> e in originalMap.entries)
-      if (e.key.startsWith(_pivotPrefix))
-        e.key.substring(_pivotPrefix.length): e.value,
-  };
+  Map<String, dynamic> get pivot {
+    _Pivot? p = _pivotKeys[this];
+    return <String, dynamic>{
+      /// the join makes `_owner_id` the owner key and the related key
+      /// the pivot related key, so they are not read again
+      if (p != null) ...<String, dynamic>{
+        p.foreignKey: originalMap['_owner_id'],
+        p.relatedForeignKey: relationKey(this, p.relatedKey),
+      },
+      for (MapEntry<String, dynamic> e in originalMap.entries)
+        if (e.key.startsWith(_pivotPrefix))
+          e.key.substring(_pivotPrefix.length): e.value,
+    };
+  }
 
   _Pivot _pivotOf(String relation) {
     _Pivot? p;
@@ -338,14 +358,15 @@ extension ManyToManyWrites<T> on Model<T> {
     return await p.delete(ids == null ? null : p.records(ids).keys.toList());
   }
 
-  /// sets the pivot values of one related row
+  /// sets the pivot values of the related rows of [ids]. It returns
+  /// how many rows changed.
   Future<int> updateExistingPivot(
     String relation,
-    dynamic id,
+    dynamic ids,
     Map<String, dynamic> values,
   ) async {
     _Pivot p = _pivotOf(relation);
-    return await p.update(p.records(id).keys.first, values);
+    return await p.update(p.records(ids).keys.toList(), values);
   }
 
   /// makes the pivot rows match [ids]: it adds the missing rows, deletes
@@ -376,7 +397,7 @@ extension ManyToManyWrites<T> on Model<T> {
       if (row == null) {
         attach[e.key] = e.value;
       } else if (_changes(row, e.value)) {
-        await p.update(e.key, e.value);
+        await p.update(<dynamic>[e.key], e.value);
         updated.add(e.key);
       }
     }
@@ -416,7 +437,27 @@ extension ManyToManyWrites<T> on Model<T> {
 /// true when [values] has a value that is not the same in [row]
 bool _changes(Map<String, dynamic> row, Map<String, dynamic> values) {
   for (MapEntry<String, dynamic> e in values.entries) {
-    if ('${row[e.key]}' != '${e.value}') return true;
+    if (!_same(row[e.key], e.value)) return true;
   }
   return false;
+}
+
+/// true when the database value [stored] is the same as [value]. MySQL
+/// and SQLite read a bool as 1 or 0, and a date can come back as text.
+bool _same(dynamic stored, dynamic value) {
+  if (stored == value) return true;
+  if (stored == null || value == null) return false;
+  if (value is bool) value = value ? 1 : 0;
+  if (stored is bool) stored = stored ? 1 : 0;
+  if (value is DateTime || stored is DateTime) {
+    DateTime? a = stored is DateTime ? stored : DateTime.tryParse('$stored');
+    DateTime? b = value is DateTime ? value : DateTime.tryParse('$value');
+    return a != null && b != null && a.isAtSameMomentAs(b);
+  }
+  if (value is num || stored is num) {
+    num? a = stored is num ? stored : num.tryParse('$stored');
+    num? b = value is num ? value : num.tryParse('$value');
+    return a != null && a == b;
+  }
+  return '$stored' == '$value';
 }
