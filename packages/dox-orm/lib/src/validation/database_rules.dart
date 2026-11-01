@@ -1,3 +1,5 @@
+import 'package:dox_postgres_native/dox_postgres_native.dart'
+    show PgServerException;
 import 'package:dox_validation/dox_validation.dart';
 
 import '../query_builder.dart';
@@ -9,7 +11,7 @@ import '../query_builder.dart';
 ///
 /// The values are bound as query parameters. Table and column names are
 /// quoted by the driver, which refuses unsafe names.
-class RowFinder implements PresenceVerifier {
+class RowFinder extends PresenceVerifier {
   const RowFinder();
 
   /// The values of [values] that are in [column] of [table], as text.
@@ -31,7 +33,32 @@ class RowFinder implements PresenceVerifier {
       query = query.where(exceptColumn, '!=', exceptValue);
     }
     if (connection != null) query = query.withConnection(connection);
-    List<dynamic> rows = await query.get();
+    List<dynamic> rows;
+    try {
+      rows = await query.get();
+    } on PgServerException catch (error) {
+      // a value that does not fit the column type, like `abc` or `1.0`
+      // for a bigint (22P02) or a number that is too big (22003), can not
+      // be in the column. Other errors, like a lost connection, still
+      // throw. MySQL and SQLite give no error for these, only no rows.
+      if (error.code != '22P02' && error.code != '22003') rethrow;
+      if (values.length == 1) return <String>{};
+      // one bad item fails the whole query: ask for each item alone
+      Set<String> found = <String>{};
+      for (Object? value in values) {
+        found.addAll(
+          await this.found(
+            table,
+            column,
+            <Object?>[value],
+            exceptColumn: exceptColumn,
+            exceptValue: exceptValue,
+            connection: connection,
+          ),
+        );
+      }
+      return found;
+    }
     Set<String> found = <String>{};
     for (dynamic row in rows) {
       if (row is Map) found.add('${row[column]}');
@@ -87,17 +114,18 @@ class Unique extends AsyncRule<Object?> {
     return (await _found(<Object?>[value], context)).isEmpty;
   }
 
-  /// Many values: the found values are matched to the items as text.
+  /// Many values: see [PresenceVerifier.foundItems]. MySQL ignores
+  /// case, so an item is asked again alone when the text does not match.
   @override
   Future<List<int>> failedItems(
     List<Object?> values,
     RuleContext context,
   ) async {
-    Set<String> taken = await _found(values, context);
-    return <int>[
-      for (int i = 0; i < values.length; i++)
-        if (taken.contains('${values[i]}')) i,
-    ];
+    Set<int> taken = await PresenceVerifier.foundItems(
+      values,
+      (List<Object?> items) => _found(items, context),
+    );
+    return taken.toList()..sort();
   }
 
   Future<Set<String>> _found(List<Object?> values, RuleContext context) {
@@ -150,16 +178,17 @@ class Exists extends AsyncRule<Object?> {
     return finder.found(table, column, values, connection: connection);
   }
 
-  /// Many values: the found values are matched to the items as text.
+  /// Many values: see [PresenceVerifier.foundItems]. MySQL ignores
+  /// case, so an item is asked again alone when the text does not match.
   @override
   Future<List<int>> failedItems(
     List<Object?> values,
     RuleContext context,
   ) async {
-    Set<String> found = await _found(values);
+    Set<int> found = await PresenceVerifier.foundItems(values, _found);
     return <int>[
       for (int i = 0; i < values.length; i++)
-        if (!found.contains('${values[i]}')) i,
+        if (!found.contains(i)) i,
     ];
   }
 }

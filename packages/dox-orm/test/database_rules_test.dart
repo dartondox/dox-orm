@@ -21,6 +21,7 @@ void main() async {
       await Schema().create('rule_emails', (Table table) {
         table.id();
         table.string('email');
+        table.integer('n').withDefault(1);
       });
       await QueryBuilder.table('rule_emails')
           .insert(<String, dynamic>{'email': 'taken@dox.dev'});
@@ -65,6 +66,71 @@ void main() async {
             .safeParseAsync(value);
         expect(fluent.success, !inDb, reason: 'unique() $value');
       }
+    });
+
+    test('a list: the database match decides for each item', () async {
+      List<String> values = <String>[
+        'new@dox.dev',
+        'TAKEN@dox.dev',
+        'taken@dox.dev',
+      ];
+      List<int> inDb = <int>[];
+      for (int i = 0; i < values.length; i++) {
+        int count = await QueryBuilder.table('rule_emails')
+            .where('email', values[i])
+            .count();
+        if (count > 0) inDb.add(i);
+      }
+      expect(
+        await const Unique(
+          'rule_emails',
+          column: 'email',
+        ).failedItems(values, context()),
+        inDb,
+      );
+      expect(
+        await const Exists(
+          'rule_emails',
+          column: 'email',
+        ).failedItems(values, context()),
+        <int>[
+          for (int i = 0; i < values.length; i++)
+            if (!inDb.contains(i)) i,
+        ],
+      );
+    });
+
+    test('a value that does not fit the column is not found', () async {
+      // `abc` and `1.0` for a bigint id, and a number too big for it
+      expect(
+        (await v.string().exists('rule_emails').safeParseAsync('abc')).success,
+        isFalse,
+      );
+      expect(
+        (await v
+                .string()
+                .unique('rule_emails', column: 'id')
+                .safeParseAsync('abc'))
+            .success,
+        isTrue,
+      );
+      expect(
+        await const Exists('rule_emails').checkAsync(1.5, context()),
+        isFalse,
+      );
+      expect(
+        await const Exists('rule_emails')
+            .failedItems(<Object?>['abc', 1], context()),
+        <int>[0],
+      );
+      // too big for an int column (Postgres 22003)
+      expect(
+        await const Exists(
+          'rule_emails',
+          column: 'n',
+        ).checkAsync(99999999999, context()),
+        isFalse,
+      );
     });
 
     test('values are bound, not put into the SQL', () async {
