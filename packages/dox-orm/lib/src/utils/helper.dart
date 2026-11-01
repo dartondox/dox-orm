@@ -83,24 +83,39 @@ class QueryBuilderHelper<T> {
 
   /// the part after `UPDATE t SET ...` or `DELETE FROM t`.
   ///
-  /// Postgres and SQLite do not take JOIN, GROUP BY, ORDER BY or LIMIT
-  /// in an UPDATE or DELETE. When the query has one of them, the rows are
-  /// picked by their primary key in a sub query. The sub query is wrapped
-  /// once more, so MySQL can also read the table it changes and use LIMIT.
+  /// Postgres and SQLite do not take JOIN, ORDER BY or LIMIT in an UPDATE
+  /// or DELETE. When the query has one of them, the rows are picked by
+  /// their primary key in a sub query, so the table needs that column. The
+  /// sub query is wrapped once more, so MySQL can also read the table it
+  /// changes and use LIMIT. MySQL keeps its own `ORDER BY ... LIMIT` when
+  /// there is no JOIN and no OFFSET, so a table with no primary key works
+  /// there as before.
+  ///
+  /// GROUP BY and HAVING mean nothing in an UPDATE or DELETE, so they throw
+  /// an [ArgumentError].
   String getWriteQuery() {
+    if (queryBuilder.getGroupByQuery().isNotEmpty) {
+      throw ArgumentError(
+        'groupBy() and having() can not be used with update() or delete()',
+      );
+    }
     String join = queryBuilder.getJoinQuery();
-    String groupBy = queryBuilder.getGroupByQuery();
     String orderBy = queryBuilder.getOrderByQuery();
     String limit = queryBuilder.getLimitQuery();
     String where = queryBuilder.getWhereQuery();
-    if (join.isEmpty && groupBy.isEmpty && orderBy.isEmpty && limit.isEmpty) {
+    if (join.isEmpty && orderBy.isEmpty && limit.isEmpty) {
       return where;
+    }
+    if (join.isEmpty &&
+        !limit.contains('OFFSET') &&
+        queryBuilder.dbDriver.getName() == Driver.mysql) {
+      return '$where$orderBy$limit';
     }
     String table = queryBuilder.tableName;
     String key = wrap(queryBuilder.primaryKey);
     String rows =
         'SELECT ${wrap('$table.${queryBuilder.primaryKey}')} AS $key '
-        'FROM ${wrap(table)}$join$where$groupBy$orderBy$limit';
+        'FROM ${wrap(table)}$join$where$orderBy$limit';
     return ' WHERE $key IN (SELECT $key FROM ($rows) AS dox_rows)';
   }
 

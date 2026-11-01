@@ -82,6 +82,37 @@ void main() async {
       expect(await _names(), <String>['b', 'c']);
     });
 
+    test('groupBy in update or delete throws', () {
+      expect(
+        () => _items().groupBy('name').update(<String, dynamic>{'name': 'x'}),
+        throwsArgumentError,
+      );
+      expect(() => _items().groupBy('name').delete(), throwsArgumentError);
+    });
+
+    test('a table with no id: orderBy and limit work on MySQL', () async {
+      if (SqlQueryBuilder().dbDriver.getName() != Driver.mysql) return;
+      await Schema().create('wolj_pairs', (Table table) {
+        table.integer('a');
+        table.integer('b');
+      });
+      QueryBuilder<Map<String, dynamic>> pairs() =>
+          QueryBuilder.table('wolj_pairs');
+      await pairs().insertMultiple(<Map<String, dynamic>>[
+        <String, dynamic>{'a': 1, 'b': 1},
+        <String, dynamic>{'a': 2, 'b': 1},
+        <String, dynamic>{'a': 3, 'b': 1},
+      ]);
+      expect(await pairs().orderBy('a', 'desc').limit(1).delete(), 1);
+      expect(
+        await pairs().orderBy('a').limit(1).update(<String, dynamic>{'b': 9}),
+        1,
+      );
+      List<Map<String, dynamic>> rows = await pairs().orderBy('a').get();
+      expect(rows.map((Map<String, dynamic> r) => r['b']), <int>[9, 1]);
+      await Schema().dropIfExists('wolj_pairs');
+    });
+
     test('a plain where has no sub query', () async {
       int count = await _items().where('name', 'a').delete();
       expect(count, 1);
