@@ -72,6 +72,19 @@ void main() async {
       await Schema().dropIfExists('wc_user');
     });
 
+    test('@name inside a string or a comment is not a param', () async {
+      expect(
+        await names(
+          people().whereRaw(
+            "(name = @who OR name = '@who' OR name = 'it''s @who') "
+            '/* @who */ AND age > @age -- @who\n',
+            <String, dynamic>{'who': 'bob', 'age': 1},
+          ),
+        ),
+        <String>['bob'],
+      );
+    });
+
     group('where with null |', () {
       test('3 args with = and null is IS NULL', () async {
         expect(

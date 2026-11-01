@@ -189,25 +189,29 @@ DBDriver getDatabaseDriver(
 
 /// mysql and sqlite use `?` placeholders. replace each known `@key` in the
 /// order it shows in [sql], and add its value (after [convert]) in the same
-/// order. unknown `@word` (eg. 'a@b.com' inside a string) is kept as it is.
+/// order. unknown `@word` (eg. `@@sql_mode`) is kept as it is. `@word`
+/// inside a quoted string, a quoted name or a comment is not a parameter,
+/// like in the Postgres driver. set [mysql] for the MySQL rules: `\` escapes
+/// a quote in a string, and `#` starts a comment.
 (String, List<Object?>) toPositionalParams(
   String sql,
   Map<String, dynamic>? values,
-  Object? Function(dynamic value) convert,
-) {
+  Object? Function(dynamic value) convert, {
+  bool mysql = false,
+}) {
   if (values == null || values.isEmpty) {
     return (sql, <Object?>[]);
   }
 
   /// fast path: the sql was seen before and every `@key` has a value
-  _QuestionSql q = _QuestionSql.of(sql);
+  _QuestionSql q = _QuestionSql.of(sql, mysql);
   List<String> names = q.names;
   List<Object?> params = List<Object?>.filled(names.length, null);
   for (int i = 0; i < names.length; i++) {
     String key = names[i];
     dynamic value = values[key];
     if (value == null && !values.containsKey(key)) {
-      return _toPositionalSlow(sql, values, convert);
+      return _toPositionalSlow(sql, values, convert, mysql);
     }
     params[i] = convert(value);
   }
@@ -218,20 +222,106 @@ DBDriver getDatabaseDriver(
   String sql,
   Map<String, dynamic> values,
   Object? Function(dynamic value) convert,
+  bool mysql,
 ) {
   List<Object?> params = <Object?>[];
-  sql = sql.replaceAllMapped(_paramPattern, (Match m) {
-    String key = m.group(1)!;
-    if (!values.containsKey(key)) {
-      return m.group(0)!;
-    }
-    params.add(convert(values[key]));
-    return '?';
-  });
-  return (sql, params);
+  StringBuffer out = StringBuffer();
+  int copied = 0;
+  for (SqlParam p in findSqlParams(sql, mysql: mysql)) {
+    if (!values.containsKey(p.name)) continue;
+    out
+      ..write(sql.substring(copied, p.start))
+      ..write('?');
+    copied = p.end;
+    params.add(convert(values[p.name]));
+  }
+  out.write(sql.substring(copied));
+  return (out.toString(), params);
 }
 
-final RegExp _paramPattern = RegExp(r'@(\w+)');
+/// one `@name` in a sql text: `sql.substring(start, end)` is `@name`
+class SqlParam {
+  final int start;
+  final int end;
+  final String name;
+
+  const SqlParam(this.start, this.end, this.name);
+}
+
+const int _quote = 0x27; // '
+const int _doubleQuote = 0x22; // "
+const int _backtick = 0x60; // `
+const int _backslash = 0x5c;
+const int _minus = 0x2d;
+const int _slash = 0x2f;
+const int _star = 0x2a;
+const int _hash = 0x23;
+const int _atSign = 0x40;
+
+/// a letter, a digit or `_`, like `\w`
+bool _isWord(int c) =>
+    (c >= 0x30 && c <= 0x39) ||
+    (c >= 0x41 && c <= 0x5a) ||
+    (c >= 0x61 && c <= 0x7a) ||
+    c == 0x5f;
+
+/// every `@name` of [sql] that is not inside a quoted string ('' and ""),
+/// a quoted name (``) or a comment (`--`, `/* */`, and `#` for [mysql]).
+/// in [mysql] mode `\` escapes the next char in a string, and `--` is a
+/// comment only when a space follows, like MySQL.
+List<SqlParam> findSqlParams(String sql, {bool mysql = false}) {
+  List<SqlParam> found = <SqlParam>[];
+  int n = sql.length;
+  int i = 0;
+  while (i < n) {
+    int c = sql.codeUnitAt(i);
+    if (c == _quote || c == _doubleQuote || c == _backtick) {
+      // '' inside a string is a close and an open: still inside
+      bool escapes = mysql && c != _backtick;
+      i++;
+      while (i < n) {
+        int d = sql.codeUnitAt(i++);
+        if (escapes && d == _backslash) {
+          i++;
+        } else if (d == c) {
+          break;
+        }
+      }
+    } else if (c == _minus &&
+        i + 1 < n &&
+        sql.codeUnitAt(i + 1) == _minus &&
+        (!mysql || i + 2 >= n || sql.codeUnitAt(i + 2) <= 0x20)) {
+      i = _lineEnd(sql, i);
+    } else if (c == _hash && mysql) {
+      i = _lineEnd(sql, i);
+    } else if (c == _slash && i + 1 < n && sql.codeUnitAt(i + 1) == _star) {
+      int end = sql.indexOf('*/', i + 2);
+      i = end < 0 ? n : end + 2;
+    } else if (c == _atSign) {
+      int j = i + 1;
+      while (j < n && _isWord(sql.codeUnitAt(j))) {
+        j++;
+      }
+      if (j > i + 1) {
+        found.add(SqlParam(i, j, sql.substring(i + 1, j)));
+      }
+      i = j;
+    } else {
+      i++;
+    }
+  }
+  return found;
+}
+
+/// index of the line break after [i], or the end of [sql]
+int _lineEnd(String sql, int i) {
+  while (i < sql.length &&
+      sql.codeUnitAt(i) != 0x0a &&
+      sql.codeUnitAt(i) != 0x0d) {
+    i++;
+  }
+  return i;
+}
 
 /// sql with every `@key` changed to `?`, made once per sql text
 class _QuestionSql {
@@ -244,21 +334,29 @@ class _QuestionSql {
 
   /// ponytail: cleared when full, an LRU is not needed for sql texts
   static final Map<String, _QuestionSql> _cache = <String, _QuestionSql>{};
+  static final Map<String, _QuestionSql> _mysqlCache = <String, _QuestionSql>{};
 
-  static _QuestionSql of(String sql) {
-    _QuestionSql? q = _cache[sql];
+  static _QuestionSql of(String sql, bool mysql) {
+    Map<String, _QuestionSql> cache = mysql ? _mysqlCache : _cache;
+    _QuestionSql? q = cache[sql];
     if (q != null) {
       return q;
     }
-    if (_cache.length >= 2000) {
-      _cache.clear();
+    if (cache.length >= 2000) {
+      cache.clear();
     }
     List<String> names = <String>[];
-    String converted = sql.replaceAllMapped(_paramPattern, (Match m) {
-      names.add(m.group(1)!);
-      return '?';
-    });
-    return _cache[sql] = _QuestionSql(converted, names);
+    StringBuffer out = StringBuffer();
+    int copied = 0;
+    for (SqlParam p in findSqlParams(sql, mysql: mysql)) {
+      names.add(p.name);
+      out
+        ..write(sql.substring(copied, p.start))
+        ..write('?');
+      copied = p.end;
+    }
+    out.write(sql.substring(copied));
+    return cache[sql] = _QuestionSql(out.toString(), names);
   }
 }
 
