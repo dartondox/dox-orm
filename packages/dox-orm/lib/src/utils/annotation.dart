@@ -118,6 +118,14 @@ class ManyToMany {
   /// song_artist table
   final String? pivotTable;
 
+  /// extra pivot columns to read, like `['role']`. Read them with
+  /// `song.pivot['role']`.
+  final List<String>? withPivot;
+
+  /// true when the pivot table has `created_at` and `updated_at`.
+  /// attach() and sync() then set them, and `pivot` reads them.
+  final bool withTimestamps;
+
   const ManyToMany(
     this.model, {
     this.eager,
@@ -127,5 +135,7 @@ class ManyToMany {
     this.pivotForeignKey,
     this.pivotRelatedForeignKey,
     this.pivotTable,
+    this.withPivot,
+    this.withTimestamps = false,
   });
 }
