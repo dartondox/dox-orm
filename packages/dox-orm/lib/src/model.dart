@@ -17,9 +17,9 @@ class Model<T> extends QueryBuilder<T> {
   /// from a map.
   ///
   /// A model is guarded by default, like Laravel: with no [fillable] and
-  /// the default [guarded], no key is taken from a map, so
-  /// `User().create(req.body)` can not set `id` or `is_admin`. List the
-  /// columns that users may set:
+  /// the default [guarded], a map with keys throws a
+  /// [MassAssignmentException], so `User().create(req.body)` can not set
+  /// `id` or `is_admin`. List the columns that users may set:
   ///
   /// ```
   /// @override
@@ -46,7 +46,10 @@ class Model<T> extends QueryBuilder<T> {
     List<String> blocked = guarded;
     if (allowed.isEmpty && blocked.isEmpty) return data;
     bool blockAll = blocked.contains('*');
-    if (allowed.isEmpty && blockAll) return <String, dynamic>{};
+    if (allowed.isEmpty && blockAll) {
+      if (data.isEmpty) return data;
+      throw MassAssignmentException('$runtimeType', data.keys.toList());
+    }
     return <String, dynamic>{
       for (MapEntry<String, dynamic> e in data.entries)
         if (!blocked.contains(e.key) &&

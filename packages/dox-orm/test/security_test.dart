@@ -137,13 +137,47 @@ void main() async {
         'is_admin': 1,
       };
 
-      /// no key is taken from the map, so id, name and is_admin are not set
+      /// a map with keys throws, so no empty row is saved and no row is
+      /// changed
       await QueryBuilder.table('users').insert(<String, dynamic>{'name': 'z'});
-      int count = await DefaultUser().where('name', 'z').update(body);
-      expect(count, 0);
-      Map<String, dynamic>? row = await QueryBuilder.table('users').getFirst();
-      expect(row!['is_admin'], 0);
+      Matcher massAssignment = throwsA(
+        isA<MassAssignmentException>()
+            .having(
+              (MassAssignmentException e) => e.model,
+              'model',
+              'DefaultUser',
+            )
+            .having(
+              (MassAssignmentException e) => '$e',
+              'message',
+              contains('fillable'),
+            ),
+      );
+      await expectLater(DefaultUser().create(body), massAssignment);
+      await expectLater(
+        DefaultUser().where('name', 'z').update(body),
+        massAssignment,
+      );
+      await expectLater(
+        DefaultUser().firstOrCreate(<String, dynamic>{'name': 'new'}),
+        massAssignment,
+      );
+      await expectLater(
+        DefaultUser().insertMultiple(<Map<String, dynamic>>[body]),
+        massAssignment,
+      );
+      List<Map<String, dynamic>> before = await QueryBuilder.table('users')
+          .get();
+      expect(before, hasLength(1));
+      expect(before.first['name'], 'z');
+      expect(before.first['is_admin'], 0);
       await QueryBuilder.table('users').forceDelete();
+
+      /// an empty map is fine
+      expect(
+        await DefaultUser().where('name', 'z').update(<String, dynamic>{}),
+        0,
+      );
 
       /// only the fillable columns are taken, id and is_admin are not
       await DefaultFillableUser().create(body);

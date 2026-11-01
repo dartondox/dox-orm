@@ -13,6 +13,7 @@ export 'src/drivers/postgres_native_driver.dart';
 export 'src/drivers/statement_cache.dart';
 export 'src/main.dart';
 export 'src/model.dart';
+export 'src/mass_assignment_exception.dart';
 export 'src/model_events.dart';
 export 'src/model_not_found_exception.dart';
 export 'src/printers/console_printer.dart';
