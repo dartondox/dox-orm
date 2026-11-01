@@ -10,6 +10,16 @@ class _Missing {
 
 const _Missing _missing = _Missing();
 
+/// removes the last where condition of [qb]. cursorPaginate() uses it to
+/// drop its cursor condition. it is a function, not a query method, so
+/// it can not clash with a model field.
+void dropLastWhere(QueryBuilder<dynamic> qb) {
+  List<String>? wheres = qb._wheres;
+  if (wheres == null) return;
+  wheres.removeLast();
+  if (wheres.isEmpty) qb._wheres = null;
+}
+
 mixin Where<T> implements SharedMixin<T> {
   /// made on the first where, most rows never need it
   List<String>? _wheres;

@@ -5,6 +5,8 @@ import 'package:dox_orm/dox_orm.dart';
 
 import 'count.dart';
 import 'limit.dart';
+import 'order_by.dart';
+import 'where.dart';
 import 'shared_mixin.dart';
 
 mixin Get<T> implements SharedMixin<T> {
@@ -200,29 +202,32 @@ mixin Get<T> implements SharedMixin<T> {
     );
   }
 
-  /// a page of rows after (or before) a cursor. It is fast on big
-  /// tables, because it uses `WHERE column > value`, not OFFSET.
+  /// a page of rows after (or before) a cursor, like Laravel. It is
+  /// fast on big tables, because it uses `WHERE column > value`, not
+  /// OFFSET.
   ///
   /// ```
-  /// CursorPagination<Blog> page = await Blog().cursorPaginate(
-  ///   perPage: 10,
-  ///   cursor: req.input('cursor'),
-  /// );
+  /// CursorPagination<Blog> page = await Blog()
+  ///     .orderBy('created_at', 'desc')
+  ///     .cursorPaginate(perPage: 10, cursor: req.input('cursor'));
   /// page.nextCursor; // give it back as cursor to read the next page
   /// ```
   ///
-  /// The rows are ordered by [column] (the primary key by default) in
-  /// [direction] (`asc` or `desc`). The column must be unique and not
-  /// null, and it must be in the select. Do not add orderBy(), it
-  /// throws a [StateError].
+  /// The rows are ordered by the orderBy() columns (asc and desc can
+  /// be mixed). With no orderBy(), [column] (the primary key by default)
+  /// and [direction] (`asc` or `desc`) give the order. The primary key
+  /// is added last when it is not in the order, so rows with the same
+  /// values are never skipped. The order columns must be in the select
+  /// and have no null values. orderByRaw(), inRandomOrder(), or
+  /// orderBy() together with [column] throw a [StateError].
   ///
   /// The cursor is a base64 text from [CursorPagination.nextCursor] or
   /// [CursorPagination.prevCursor]. It is safe to take it from a user:
-  /// its value only goes in as a query param, and a cursor that is not
-  /// valid (or made for another column) gives the first page.
-  ///
-  /// ponytail: one column only. For a column that is not unique, like
-  /// created_at, rows with the same value can be skipped.
+  /// the columns and the order come from the code, and its values are
+  /// only sent as query values. A cursor that is not valid gives the
+  /// first page: bad base64 or JSON, made for other columns, or values
+  /// that do not fit the columns (checked against the rows, and a
+  /// Postgres "data exception" is caught).
   Future<CursorPagination<T>> cursorPaginate({
     required int perPage,
     String? cursor,
@@ -235,30 +240,33 @@ mixin Get<T> implements SharedMixin<T> {
       throw ArgumentError.value(direction, 'direction', 'must be asc or desc');
     }
     QueryBuilder<T> qb = queryBuilder;
-    if (qb.getOrderByQuery().isNotEmpty) {
+    List<(String, bool)>? order = orderColumnsOf(qb);
+    if (order == null) {
       throw StateError(
-        'cursorPaginate() sets the order itself. '
-        'Remove orderBy() and use column and direction.',
+        'cursorPaginate() can not use orderByRaw() or inRandomOrder(). '
+        'Use orderBy().',
       );
     }
-    String name = column ?? primaryKey;
-    String qualified = _qualified(name);
-    String key = name.split('.').last;
-    (dynamic, bool)? at = _readCursor(cursor, name);
+    if (order.isNotEmpty && column != null) {
+      throw StateError(
+        'cursorPaginate(): give the order with orderBy() or with column, '
+        'not both.',
+      );
+    }
+    List<(String, bool)> columns = order.isEmpty
+        ? <(String, bool)>[(column ?? primaryKey, dir == 'desc')]
+        : <(String, bool)>[...order];
+    bool hasKey = false;
+    for ((String, bool) c in columns) {
+      if (_keyOf(c.$1) == _keyOf(primaryKey)) hasKey = true;
+    }
+    if (!hasKey) columns.add((primaryKey, false));
+    List<String> names = <String>[for ((String, bool) c in columns) c.$1];
+
+    (List<dynamic>, bool)? at = _readCursor(cursor, names);
+    List<T> rows;
+    (rows, at) = await _cursorRows(qb, columns, at, perPage);
     bool forward = at?.$2 ?? true;
-    if (at != null) {
-      /// put the conditions so far in brackets, so an OR in them can not
-      /// skip the cursor condition
-      qb.applyGlobalScopes();
-      qb.groupWheres(0);
-      String op = (dir == 'asc') == forward ? '>' : '<';
-      qb.whereRaw(
-        '${helper.wrap(qualified)} $op @$_cursorKey',
-        <String, dynamic>{_cursorKey: at.$1},
-      );
-    }
-    String order = forward ? dir : (dir == 'asc' ? 'desc' : 'asc');
-    List<T> rows = await qb.orderBy(qualified, order).limit(perPage + 1).get();
     bool more = rows.length > perPage;
     if (more) rows = rows.sublist(0, perPage);
 
@@ -269,16 +277,94 @@ mixin Get<T> implements SharedMixin<T> {
     return CursorPagination<T>(
       perPage: perPage,
       nextCursor: hasNext && rows.isNotEmpty
-          ? _makeCursor(rows.last, key, name, true)
+          ? _makeCursor(rows.last, names, true)
           : null,
       prevCursor: hasPrev && rows.isNotEmpty
-          ? _makeCursor(rows.first, key, name, false)
+          ? _makeCursor(rows.first, names, false)
           : null,
       data: rows,
     );
   }
 
-  /// param name of the cursor value of cursorPaginate()
+  /// the rows of one cursor page, one more than [perPage], and the
+  /// cursor that was used: null when [at] did not fit, then it is the
+  /// first page
+  Future<(List<T>, (List<dynamic>, bool)?)> _cursorRows(
+    QueryBuilder<T> qb,
+    List<(String, bool)> columns,
+    (List<dynamic>, bool)? at,
+    int perPage,
+  ) async {
+    bool forward = at?.$2 ?? true;
+
+    /// going back, read the rows in the other order
+    setOrderOf(qb, <(String, bool)>[
+      for ((String, bool) c in columns)
+        (_qualified(c.$1), forward ? c.$2 : !c.$2),
+    ]);
+    qb.limit(perPage + 1);
+    if (at == null) return (await qb.get(), null);
+
+    /// put the conditions so far in brackets, so an OR in them can not
+    /// skip the cursor condition
+    qb.applyGlobalScopes();
+    qb.groupWheres(0);
+    qb.whereRaw(_cursorWhere(columns, forward), <String, dynamic>{
+      for (int i = 0; i < at.$1.length; i++) '$_cursorKey$i': at.$1[i],
+    });
+    List<T>? rows;
+    try {
+      rows = await _getInSavepoint(qb);
+      if (rows.isNotEmpty && _cursorFits(rows, columns, at.$1)) {
+        return (rows, at);
+      }
+    } on PgServerException catch (error) {
+      /// a value that does not fit its column, like `abc` for an int
+      if (!error.code.startsWith('22')) rethrow;
+    }
+
+    /// the cursor does not fit, or the page is empty: drop the cursor,
+    /// and read the first page
+    dropLastWhere(qb);
+    for (int i = 0; i < at.$1.length; i++) {
+      substitutionValues.remove('$_cursorKey$i');
+    }
+    (List<T>, Object?) first = await _cursorRows(qb, columns, null, perPage);
+
+    /// an empty page is real when the cursor fits the rows of the first
+    /// page. ponytail: one more query, only for an empty page.
+    if (rows != null && _cursorFits(first.$1, columns, at.$1)) {
+      return (rows, at);
+    }
+    return (first.$1, null);
+  }
+
+  /// get() in a savepoint on Postgres in a transaction, so a failed
+  /// query does not break the transaction of the app
+  Future<List<T>> _getInSavepoint(QueryBuilder<T> qb) {
+    if (!DBDriver.inTransaction || dbDriver.getName() != Driver.postgres) {
+      return qb.get();
+    }
+    return QueryBuilder.transaction(qb.get, connection: connection);
+  }
+
+  /// `(a > @c0) OR (a = @c0 AND b < @c1) OR ...`: the rows after the
+  /// cursor, by the order of [columns]
+  String _cursorWhere(List<(String, bool)> columns, bool forward) {
+    List<String> ors = <String>[];
+    for (int i = 0; i < columns.length; i++) {
+      List<String> ands = <String>[
+        for (int j = 0; j < i; j++)
+          '${helper.wrap(_qualified(columns[j].$1))} = @$_cursorKey$j',
+      ];
+      String op = columns[i].$2 != forward ? '>' : '<';
+      ands.add('${helper.wrap(_qualified(columns[i].$1))} $op @$_cursorKey$i');
+      ors.add('(${ands.join(' AND ')})');
+    }
+    return '(${ors.join(' OR ')})';
+  }
+
+  /// param name start of the cursor values of cursorPaginate()
   static const String _cursorKey = 'dox_cursor';
 
   static void _checkPerPage(int perPage) {
@@ -287,43 +373,97 @@ mixin Get<T> implements SharedMixin<T> {
     }
   }
 
-  /// the cursor of [row]: base64 of `{"c": column, "v": value, "n": next}`.
-  /// a date has `"t": true` and its value as an iso text.
-  static String _makeCursor(dynamic row, String key, String name, bool next) {
-    dynamic value = _valueOfRow(row, key);
-    Map<String, dynamic> data = <String, dynamic>{'c': name, 'n': next};
-    if (value is DateTime) {
-      data['v'] = value.toIso8601String();
-      data['t'] = true;
-    } else if (value is num || value is String) {
-      data['v'] = value;
-    } else {
-      throw StateError(
-        'cursorPaginate() needs the "$key" column in each row, '
-        'as a number, a text or a date, never null',
-      );
+  /// the column name without the table, like `id` for `blog.id`
+  static String _keyOf(String column) => column.split('.').last;
+
+  /// the kind of a cursor value: n (number), s (text), d (date), or
+  /// null when it can not be in a cursor
+  static String? _kindOf(dynamic value) {
+    if (value is num) return 'n';
+    if (value is String) return 's';
+    if (value is DateTime) return 'd';
+    return null;
+  }
+
+  /// true when each cursor value has the kind of the same column in the
+  /// rows. no rows: nothing to check.
+  static bool _cursorFits(
+    List<dynamic> rows,
+    List<(String, bool)> columns,
+    List<dynamic> values,
+  ) {
+    if (rows.isEmpty) return true;
+    for (int i = 0; i < columns.length; i++) {
+      dynamic value = _valueOfRow(rows.first, _keyOf(columns[i].$1));
+      if (_kindOf(value) != _kindOf(values[i])) return false;
     }
+    return true;
+  }
+
+  /// the cursor of [row]: base64 of
+  /// `{"c": [columns], "v": [values], "t": "kinds", "n": next}`.
+  /// a date value is an iso text with the kind `d`.
+  static String _makeCursor(dynamic row, List<String> names, bool next) {
+    List<dynamic> values = <dynamic>[];
+    String kinds = '';
+    for (String name in names) {
+      dynamic value = _valueOfRow(row, _keyOf(name));
+      String? kind = _kindOf(value);
+      if (kind == null) {
+        throw StateError(
+          'cursorPaginate() needs the "${_keyOf(name)}" column in each row, '
+          'as a number, a text or a date, never null',
+        );
+      }
+      values.add(value is DateTime ? value.toIso8601String() : value);
+      kinds += kind;
+    }
+    Map<String, dynamic> data = <String, dynamic>{
+      'c': names,
+      'v': values,
+      't': kinds,
+      'n': next,
+    };
     return base64Url.encode(utf8.encode(jsonEncode(data))).replaceAll('=', '');
   }
 
-  /// the value and the direction (true is next) in [cursor], or null
-  /// when [cursor] is empty, not valid, or made for another column.
-  /// the value is only used as a query param, never in the sql.
-  static (dynamic, bool)? _readCursor(String? cursor, String name) {
+  /// the values and the direction (true is next) in [cursor], or null
+  /// when [cursor] is empty, not valid, or made for other columns.
+  /// the values are only used as query params, never in the sql.
+  static (List<dynamic>, bool)? _readCursor(
+    String? cursor,
+    List<String> names,
+  ) {
     if (cursor == null || cursor.isEmpty || cursor.length > 1024) return null;
     try {
       Object? data = jsonDecode(
         utf8.decode(base64Url.decode(base64Url.normalize(cursor))),
       );
-      if (data is! Map || data['c'] != name) return null;
+      if (data is! Map) return null;
+      dynamic c = data['c'];
+      dynamic v = data['v'];
+      dynamic t = data['t'];
       dynamic next = data['n'];
-      dynamic value = data['v'];
-      if (next is! bool) return null;
-      if (data['t'] == true) {
-        return value is String ? (DateTime.parse(value), next) : null;
+      if (next is! bool || c is! List || v is! List || t is! String) {
+        return null;
       }
-      if (value is num || value is String) return (value, next);
-      return null;
+      int n = names.length;
+      if (c.length != n || v.length != n || t.length != n) return null;
+      List<dynamic> values = <dynamic>[];
+      for (int i = 0; i < n; i++) {
+        dynamic value = v[i];
+        if (c[i] != names[i]) return null;
+        switch (t[i]) {
+          case 'n' when value is num:
+          case 's' when value is String:
+            values.add(value);
+          case 'd' when value is String:
+            values.add(DateTime.parse(value));
+          default:
+            return null;
+        }
+      }
+      return (values, next);
     } on FormatException {
       return null;
     }

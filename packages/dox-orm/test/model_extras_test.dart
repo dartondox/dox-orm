@@ -10,6 +10,17 @@ import 'models/blog/blog.model.dart';
 import 'models/blog_info/blog_info.model.dart';
 import 'models/song/song.model.dart';
 
+class _Recorder extends ModelObserver<Blog> {
+  final List<ModelEvent> events = <ModelEvent>[];
+
+  @override
+  void handle(ModelEvent event, Blog model) => events.add(event);
+}
+
+String _cursor(Map<String, dynamic> data) {
+  return base64Url.encode(utf8.encode(jsonEncode(data)));
+}
+
 const List<String> _tables = <String>[
   'blog',
   'blog_info',
@@ -94,6 +105,13 @@ void main() async {
       expect((await Blog().onlyTrashed().find(1))?.title, 't1');
       expect(await Blog().onlyTrashed().find(3), isNull);
       expect(await Blog().find(1), isNull);
+    });
+
+    test('throws without soft deletes, so no row is deleted', () async {
+      await Artist().create(<String, dynamic>{'name': 'x'});
+      expect(() => Artist().onlyTrashed(), throwsStateError);
+      expect(() => QueryBuilder.table('blog').onlyTrashed(), throwsStateError);
+      expect(await Artist().count(), 1);
     });
 
     test('forceDelete only removes trashed rows', () async {
@@ -289,31 +307,35 @@ void main() async {
       expect(titles(back.data), <String>['t7', 't6']);
     });
 
-    test('a bad cursor gives the first page, never sql', () async {
-      String evil = base64Url.encode(
-        utf8.encode(
-          jsonEncode(<String, dynamic>{
-            'c': 'uid',
-            'v': "1; DROP TABLE blog; --",
-            'n': true,
-          }),
-        ),
-      );
+    test('a bad cursor gives the first page', () async {
       for (String? c in <String?>[
         'not base64 !!',
+        _cursor(<String, dynamic>{'c': 'uid'}),
         base64Url.encode(utf8.encode('[1,2]')),
-        base64Url.encode(
-          utf8.encode(jsonEncode(<String, dynamic>{'c': 'title', 'v': 1})),
-        ),
-        base64Url.encode(
-          utf8.encode(
-            jsonEncode(<String, dynamic>{
-              'c': 'uid',
-              'v': <int>[1],
+        _cursor(<String, dynamic>{
+          'c': <String>['title'],
+          'v': <int>[1],
+          't': 'n',
+          'n': true,
+        }),
+        _cursor(<String, dynamic>{
+          'c': <String>['uid'],
+          'v': <dynamic>[
+            <int>[1],
+          ],
+          't': 'n',
+          'n': true,
+        }),
+        // a text, a date, and a SQL text for an int column: on Postgres
+        // a "data exception", on the others a value of the wrong kind
+        for (String t in <String>['s', 'd'])
+          for (String v in <String>['abc', '2020-01-01', '1; DROP TABLE blog'])
+            _cursor(<String, dynamic>{
+              'c': <String>['uid'],
+              'v': <String>[v],
+              't': t,
               'n': true,
             }),
-          ),
-        ),
         'a' * 2000,
       ]) {
         CursorPagination<Blog> p = await Blog().cursorPaginate(
@@ -321,20 +343,86 @@ void main() async {
           cursor: c,
         );
         expect(titles(p.data), <String>['t1', 't2'], reason: '$c');
-      }
-
-      /// a text value is only a param: no row matches, the table stays
-      try {
-        await Blog().cursorPaginate(perPage: 2, cursor: evil);
-      } on Object {
-        /// postgres can not compare an int column to a text
+        expect(p.prevCursor, isNull);
       }
       expect(await Blog().count(), 7);
     });
 
+    test('a bad cursor in a transaction keeps the transaction', () async {
+      String bad = _cursor(<String, dynamic>{
+        'c': <String>['uid'],
+        'v': <String>['abc'],
+        't': 's',
+        'n': true,
+      });
+      await QueryBuilder.transaction(() async {
+        CursorPagination<Blog> p = await Blog().cursorPaginate(
+          perPage: 2,
+          cursor: bad,
+        );
+        expect(titles(p.data), <String>['t1', 't2']);
+        expect(await Blog().count(), 7);
+      });
+    });
+
+    /// reads every page forward, then every page back from the end
+    Future<void> walk(
+      QueryBuilder<Blog> Function() query,
+      List<String> expected,
+    ) async {
+      List<String?> seen = <String?>[];
+      List<String?> cursors = <String?>[null];
+      CursorPagination<Blog> page;
+      do {
+        page = await query().cursorPaginate(perPage: 2, cursor: cursors.last);
+        seen.addAll(titles(page.data));
+        cursors.add(page.nextCursor);
+      } while (page.nextCursor != null);
+      expect(seen, expected);
+
+      List<String?> back = titles(page.data);
+      while (page.prevCursor != null) {
+        page = await query().cursorPaginate(
+          perPage: 2,
+          cursor: page.prevCursor,
+        );
+        back.insertAll(0, titles(page.data));
+      }
+      expect(back, expected);
+    }
+
+    test('ties on a column that is not unique are not skipped', () async {
+      for (int i = 1; i <= 7; i++) {
+        await Blog().where('uid', i).update(<String, dynamic>{
+          'status': i.isEven ? 'b' : 'a',
+        });
+      }
+      await walk(() => Blog().orderBy('status', 'desc'), <String>[
+        't2',
+        't4',
+        't6',
+        't1',
+        't3',
+        't5',
+        't7',
+      ]);
+      await walk(
+        () => Blog().orderBy('status').orderBy('uid', 'desc'),
+        <String>['t7', 't5', 't3', 't1', 't6', 't4', 't2'],
+      );
+      await walk(
+        () => Blog().where('uid', '>', 1).orderBy('status').orderBy('slug'),
+        <String>['t3', 't5', 't7', 't2', 't4', 't6'],
+      );
+    });
+
     test('checks its input', () async {
       expect(
-        () => Blog().orderBy('uid').cursorPaginate(perPage: 2),
+        () => Blog().orderBy('uid').cursorPaginate(perPage: 2, column: 'uid'),
+        throwsStateError,
+      );
+      expect(
+        () => Blog().orderByRaw('uid').cursorPaginate(perPage: 2),
         throwsStateError,
       );
       expect(
@@ -360,6 +448,29 @@ void main() async {
 
       /// save() after touch() sends nothing
       expect(await Blog().where('updated_at', '>', old).count(), 1);
+    });
+
+    test('a model fires the save events, touchQuietly() does not', () async {
+      _Recorder recorder = _Recorder();
+      Model.observe<Blog>(recorder);
+      addTearDown(Model.forgetObservers<Blog>);
+      Blog blog = (await Blog().find(1))!;
+      expect(await blog.touch(), 1);
+      expect(recorder.events, <ModelEvent>[
+        ModelEvent.saving,
+        ModelEvent.updating,
+        ModelEvent.updated,
+        ModelEvent.saved,
+      ]);
+      recorder.events.clear();
+
+      /// mysql counts a row as changed only when its value changes
+      await Blog().where('uid', '>', 0).update(<String, dynamic>{
+        'updated_at': DateTime.utc(2020),
+      });
+      expect(await blog.touchQuietly(), 1);
+      expect(await Blog().where('uid', 2).touch(), 1);
+      expect(recorder.events, isEmpty);
     });
 
     test('a query touches its rows, and another column', () async {

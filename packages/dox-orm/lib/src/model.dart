@@ -498,27 +498,57 @@ class Model<T> extends QueryBuilder<T> {
   /// ```
   ///
   /// On a model from the table it changes only that row, and it sets
-  /// the field too. As a query it changes every row of the query. It
-  /// returns 0 when the model has no updated_at column and no [column]
-  /// is given. It fires no model events.
+  /// the field too. It fires saving, updating, updated and saved, like
+  /// save(). It returns 0 when a hook throws [CancelModelEvent]. Use
+  /// [touchQuietly] for no events.
+  ///
+  /// As a query (also on a new model that has no primary key value) it
+  /// changes every row of the query, and fires no events.
+  ///
+  /// It returns 0 when the model has no updated_at column and no
+  /// [column] is given.
   @override
   Future<int> touch([String? column]) async {
     String? updatedAtColumn = timestampsColumn['updated_at'];
     column ??= updatedAtColumn;
     if (column == null) return 0;
     if (tempIdValue == null) return await super.touch(column);
+    bool events = _eventsOn;
+    if (events) {
+      try {
+        await _fire(ModelEvent.saving);
+        await _fire(ModelEvent.updating);
+      } on CancelModelEvent {
+        return 0;
+      }
+    }
     Map<String, dynamic> values = <String, dynamic>{column: now()};
     int count = await _thisRecord().update(values);
-    if (count == 0) return count;
-    if (column == updatedAtColumn) updatedAt = values[column];
-    _setSavedColumns(values);
+    if (count > 0) {
+      if (column == updatedAtColumn) updatedAt = values[column];
+      _setSavedColumns(values);
+    }
+    if (events) {
+      await _fire(ModelEvent.updated);
+      await _fire(ModelEvent.saved);
+    }
     return count;
+  }
+
+  /// [touch] without model events
+  ///
+  /// ```
+  /// await blog.touchQuietly();
+  /// ```
+  Future<int> touchQuietly([String? column]) {
+    return withoutEvents(() => touch(column));
   }
 
   /// a new model with the column values of this model, not saved yet.
   /// It has no primary key, created_at and updated_at, so save()
   /// inserts a new row. The [except] columns are left out (set to
-  /// null). Relations are not copied.
+  /// null). Relations are not copied. Like Laravel, it copies
+  /// deleted_at, so a copy of a soft deleted model is soft deleted too.
   ///
   /// ```
   /// Blog? blog = await Blog().find(1);

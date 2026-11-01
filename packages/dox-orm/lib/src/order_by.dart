@@ -2,9 +2,32 @@ import 'drivers/db_driver.dart';
 import 'query_builder.dart';
 import 'shared_mixin.dart';
 
+/// the orderBy() columns of [qb] as (column, desc), or null when it has
+/// an orderByRaw() or inRandomOrder(). cursorPaginate() uses it. it is a
+/// function, not a query method, so it can not clash with a model field.
+List<(String, bool)>? orderColumnsOf(QueryBuilder<dynamic> qb) {
+  return qb._rawOrder ? null : (qb._orderColumns ?? const <(String, bool)>[]);
+}
+
+/// sets the order of [qb] to [columns], (column, desc), in place of the
+/// order it had
+void setOrderOf(QueryBuilder<dynamic> qb, List<(String, bool)> columns) {
+  qb._orderBy = null;
+  qb._orderColumns = null;
+  for ((String, bool) c in columns) {
+    qb.orderBy(c.$1, c.$2 ? 'desc' : 'asc');
+  }
+}
+
 mixin OrderBy<T> implements SharedMixin<T> {
   /// made on the first orderBy(), most rows never need it
   List<String>? _orderBy;
+
+  /// the orderBy() columns as (column, desc), for cursorPaginate()
+  List<(String, bool)>? _orderColumns;
+
+  /// true after orderByRaw()
+  bool _rawOrder = false;
 
   String getOrderByQuery() {
     List<String>? orderBy = _orderBy;
@@ -28,6 +51,10 @@ mixin OrderBy<T> implements SharedMixin<T> {
     }
     String name = helper.wrap(column.toString());
     (_orderBy ??= <String>[]).add(type == null ? name : '$name $type');
+    (_orderColumns ??= <(String, bool)>[]).add((
+      column.toString(),
+      type.toString().toLowerCase() == 'desc',
+    ));
     return queryBuilder;
   }
 
@@ -38,6 +65,7 @@ mixin OrderBy<T> implements SharedMixin<T> {
   /// ```
   QueryBuilder<T> orderByRaw(String query) {
     (_orderBy ??= <String>[]).add(query);
+    _rawOrder = true;
     return queryBuilder;
   }
 

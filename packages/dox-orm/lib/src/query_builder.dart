@@ -155,13 +155,20 @@ class QueryBuilder<T>
     return queryBuilder;
   }
 
-  /// only the soft deleted rows (this function can be used with
-  /// SoftDeletes only)
+  /// only the soft deleted rows. On a model without soft deletes (or
+  /// a QueryBuilder.table() query) it throws a [StateError], so
+  /// `onlyTrashed().forceDelete()` can never delete every row.
   ///
   /// ```
   /// List<Blog> blogs = await Blog().onlyTrashed().get();
   /// ```
   QueryBuilder<T> onlyTrashed() {
+    if (!isSoftDeletes) {
+      throw StateError(
+        'onlyTrashed() needs a model with soft deletes, like '
+        '@DoxModel(softDelete: true).',
+      );
+    }
     trashedOnly = true;
     return queryBuilder;
   }
