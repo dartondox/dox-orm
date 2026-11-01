@@ -179,6 +179,39 @@ void main() async {
         expect(rows.first.pivot, isEmpty);
       });
 
+      /// an untyped map literal like `{1: {'role': 'singer'}, 2: {}}` has
+      /// `Map<dynamic, dynamic>` values. The lint wants types, so the test
+      /// writes that type.
+      test('untyped map literals work', () async {
+        await artist.attach('songs', <dynamic, dynamic>{
+          1: <dynamic, dynamic>{'role': 'singer'},
+          2: <dynamic, dynamic>{},
+        });
+        Artist? a = await Artist().preload('songs').find(artist.id);
+        expect(
+          a!.songs.firstWhere((Song s) => s.id == 1).pivot['role'],
+          'singer',
+        );
+
+        SyncResult r = await artist.sync('songs', <dynamic, dynamic>{
+          1: <dynamic, dynamic>{'role': 'bass'},
+          3: <dynamic, dynamic>{},
+        });
+        expect(r.updated, <int>[1]);
+        expect(r.attached, <int>[3]);
+
+        r = await artist.syncWithoutDetaching('songs', <dynamic, dynamic>{
+          2: <dynamic, dynamic>{'role': 'drums'},
+        });
+        expect(r.attached, <int>[2]);
+
+        r = await artist.toggle('songs', <dynamic, dynamic>{
+          2: <dynamic, dynamic>{},
+          1: <dynamic, dynamic>{'role': 'x'},
+        });
+        expect(r.detached, <int>[2, 1]);
+      });
+
       test('sync compares pivot values by type', () async {
         await artist.attach('songs', 1, <String, dynamic>{'role': '1'});
         SyncResult r = await artist.sync('songs', <int, Map<String, dynamic>>{

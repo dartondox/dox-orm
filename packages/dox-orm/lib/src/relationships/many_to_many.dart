@@ -195,7 +195,9 @@ class _Pivot {
         for (MapEntry<dynamic, dynamic> e in ids.entries)
           _id(e.key): <String, dynamic>{
             ...values,
-            ...(e.value as Map<String, dynamic>? ?? <String, dynamic>{}),
+
+            /// an untyped map literal like `{1: {'role': 'x'}}` works too
+            ...?(e.value as Map<dynamic, dynamic>?)?.cast<String, dynamic>(),
           },
       };
     }
