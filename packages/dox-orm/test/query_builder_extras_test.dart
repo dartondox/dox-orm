@@ -146,6 +146,11 @@ void main() async {
           .where('age', '>=', 30)
           .union(users().select(<String>['name', 'age']).where('age', 40));
       expect(await distinct.sum('age'), 70);
+
+      /// like Laravel: orderBy(), limit() and offset() are kept
+      expect(await q().orderBy('age').limit(2).sum('age'), 50);
+      expect(await q().orderBy('age').limit(2).offset(1).max('age'), 40);
+      expect(await q().orderBy('age').limit(2).count(), 4);
       expect(
         await users()
             .select('age')
@@ -184,6 +189,14 @@ void main() async {
         <String>['Alice', 'Bob', 'Carol'],
       );
       expect(() => users().whereIn('id', 'x'), throwsArgumentError);
+      expect(await names(users().whereIn('id', <int>{1, 2})), <String>[
+        'Alice',
+        'Bob',
+      ]);
+      expect(
+        await names(users().whereNotIn('id', <int>[1, 2].map(_same))),
+        <String>['Carol'],
+      );
     });
 
     test('joinSub and leftJoinSub', () async {
@@ -269,6 +282,51 @@ void main() async {
         await names(users().whereTime('joined_at', '>', '12:00')),
         <String>['Bob', 'Carol'],
       );
+    });
+
+    test('whereTime with hours that look like a year', () async {
+      /// MySQL 8.4 reads a bound `03:00:00` in `CAST(? AS time)` as a date
+      await Schema().dropIfExists('qx_time');
+      await Schema().create('qx_time', (Table table) {
+        table.id();
+        table.string('name');
+        table.dateTime('at');
+      });
+      QueryBuilder<Map<String, dynamic>> times() =>
+          QueryBuilder.table('qx_time');
+      await times().insertMultiple(<Map<String, dynamic>>[
+        <String, dynamic>{'name': 'three', 'at': DateTime.utc(2024, 3, 10, 3)},
+        <String, dynamic>{
+          'name': 'six',
+          'at': DateTime.utc(2024, 3, 10, 18, 5, 10),
+        },
+        <String, dynamic>{'name': 'noon', 'at': DateTime.utc(2024, 3, 10, 12)},
+      ]);
+      try {
+        expect(await names(times().whereTime('at', '03:00:00')), <String>[
+          'three',
+        ]);
+        expect(await names(times().whereTime('at', '18:05:10')), <String>[
+          'six',
+        ]);
+        expect(
+          await names(times().whereTime('at', DateTime.utc(2000, 1, 1, 3))),
+          <String>['three'],
+        );
+        expect(await names(times().whereTime('at', '>', '18:00:00')), <String>[
+          'six',
+        ]);
+        expect(await names(times().whereTime('at', '<', '12:00:00')), <String>[
+          'three',
+        ]);
+        expect(await names(times().whereDate('at', '2024-03-10')), <String>[
+          'noon',
+          'six',
+          'three',
+        ]);
+      } finally {
+        await Schema().dropIfExists('qx_time');
+      }
     });
 
     test('whereYear, whereMonth and whereDay', () async {
@@ -361,6 +419,8 @@ void main() async {
     });
   });
 }
+
+int _same(int value) => value;
 
 String _name(Map<String, dynamic> row) => row['name'] as String;
 

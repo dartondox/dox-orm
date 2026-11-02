@@ -373,8 +373,9 @@ mixin Where<T> implements SharedMixin<T> {
     return _like('OR', column, value, caseSensitive, true);
   }
 
-  /// where in condition. [values] is a list, or a sub query that
-  /// selects one column. an empty list match no rows.
+  /// where in condition. [values] is a list (or any other Iterable, like
+  /// a Set), or a sub query that selects one column. an empty list match
+  /// no rows.
   /// the sub query is built when it is added: a change to it after this
   /// call is not used. MySQL and MariaDB do not allow LIMIT in it.
   ///
@@ -431,7 +432,9 @@ mixin Where<T> implements SharedMixin<T> {
   /// same way the driver binds it in where(): in UTC on SQLite and
   /// Postgres (Dox stores dates in UTC there, and Postgres reads a
   /// `timestamptz` in the session time zone, UTC by default), and as the
-  /// wall clock on MySQL and MariaDB.
+  /// wall clock on MySQL and MariaDB. a Postgres connection with another
+  /// session `timeZone` reads a `timestamptz` in that zone, so a
+  /// `DateTime` value does not match there.
   QueryBuilder<T> whereDate(
     String column,
     dynamic arg2, [
@@ -455,6 +458,8 @@ mixin Where<T> implements SharedMixin<T> {
   /// ```
   /// List blogs = await Blog().whereTime('created_at', '>', '18:00:00').get();
   /// ```
+  /// on Postgres a column with fractions of a second (eg. `10:00:00.5`)
+  /// is not equal to `10:00:00`, like Laravel.
   QueryBuilder<T> whereTime(
     String column,
     dynamic arg2, [
@@ -554,7 +559,8 @@ mixin Where<T> implements SharedMixin<T> {
   /// - Postgres: `@>` on `jsonb`.
   /// - MySQL and MariaDB: `JSON_CONTAINS()`.
   /// - SQLite: `json_each()`. [value] must be a string, a number, a bool
-  ///   or a list of them, else it throws an [ArgumentError].
+  ///   or a list of them, else it throws an [ArgumentError]. SQLite
+  ///   stores `true` as `1`, so `true`, `1` and `1.0` match each other.
   ///
   /// ponytail: like Laravel, whereJsonDoesntContain() on a row without the
   /// key differs per database: SQLite and MariaDB match the row, Postgres
@@ -654,9 +660,14 @@ mixin Where<T> implements SharedMixin<T> {
         "(${helper.subQuery(values)})",
       );
     }
-    if (values is! List) {
-      throw ArgumentError.value(values, 'values', 'must be a List or a query');
+    if (values is! Iterable) {
+      throw ArgumentError.value(
+        values,
+        'values',
+        'must be a List, another Iterable or a query',
+      );
     }
+    if (values is! List) values = values.toList();
 
     /// `in ()` is not valid sql, so an empty list becomes
     /// "no rows" for IN and "all rows" for NOT IN
@@ -891,9 +902,13 @@ mixin Where<T> implements SharedMixin<T> {
         /// `9:00` match too
         switch (driver) {
           case Driver.postgres:
-          case Driver.mysql:
             left = 'CAST($col AS $sqlType)';
             right = 'CAST($key AS $sqlType)';
+
+          /// like Laravel: MySQL 8.4 reads a bound `03:00:00` in
+          /// `CAST(? AS time)` as a date, so the value is not cast
+          case Driver.mysql:
+            left = '${sqlType.toUpperCase()}($col)';
           case Driver.sqlite:
             left = '$sqlType($col)';
             right = '$sqlType($key)';

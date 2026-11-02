@@ -30,6 +30,7 @@ mixin Union<T> implements SharedMixin<T> {
   ///   `table.column`. [query] can have its own orderBy() and limit().
   /// - count(), paginate(), sum(), avg(), min() and max() use the whole
   ///   result, like Laravel: `SELECT SUM(col) FROM (<union>) AS ...`.
+  ///   sum() and the others keep limit() and offset(), count() does not.
   /// - [query] is built when it is added: a change to it after this call
   ///   is not used.
   QueryBuilder<T> union(QueryBuilder<dynamic> query) {

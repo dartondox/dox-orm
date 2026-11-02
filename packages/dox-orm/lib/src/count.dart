@@ -121,15 +121,18 @@ mixin Count<T> implements SharedMixin<T> {
         ? 'DISTINCT '
         : '';
 
-    /// like Laravel: the aggregate of the whole union result. a groupBy()
-    /// here is on the first part of the union.
+    /// like Laravel: the aggregate of the whole union result, after its
+    /// orderBy(), limit() and offset(). a groupBy() here is on the first
+    /// part of the union.
     if (queryBuilder.hasUnion) {
+      /// the count query part drops the LIMIT values, so it goes first
+      String common = helper.getCommonQuery(isCountQuery: true);
       return _first(
         "SELECT $function($distinct${helper.wrap(column)}) as dox_aggregate"
         " FROM (SELECT ${queryBuilder.getSelectQuery()}"
-        " FROM ${queryBuilder.getFromQuery()}"
-        "${helper.getCommonQuery(isCountQuery: true)}"
-        "${queryBuilder.getUnionQuery()}) as dox_union_aggregate",
+        " FROM ${queryBuilder.getFromQuery()}$common"
+        "${queryBuilder.getUnionQuery()}${queryBuilder.getOrderByQuery()}"
+        "${queryBuilder.getLimitQuery()}) as dox_union_aggregate",
       );
     }
     if (queryBuilder.getGroupByQuery().isNotEmpty) {

@@ -103,7 +103,7 @@ In a Dox app, start the ORM in a `DoxProvider`, so each isolate gets its own poo
 - Query builder: `where` (a `null` value is `IS NULL` or `IS NOT NULL`), `whereIn` (also with a sub query), `whereBetween`, `whereColumn`, `whereLike`, `whereExists`, `whereDate`, `whereYear`, `whereJsonContains`, `whereGroup`, `whereNot`, `when`, `join`, `joinSub`, `fromSub`, `union`, `groupBy`, `having`, `distinct`, `latest`, `paginate`, raw SQL with bound values.
 - Read helpers: `firstOrFail` and `findOrFail` (throw `ModelNotFoundException`), `hasRows`, `pluck`, `pluckMap`, `valueOf`, `chunk` and `chunkById`.
 - Aggregates: `count`, `sum`, `avg`, `min`, `max`, and `withCount`, `withSum`, `withMax` for relations.
-- Writes: `create` and `insert` return the new model or map. `update`, `delete`, `increment`, `decrement` `upsert` and `insertOrIgnore` return the number of changed rows. `firstOrCreate`, `firstOrNew` and `updateOrCreate`.
+- Writes: `create` and `insert` return the new model or map. `update`, `delete`, `increment`, `decrement`, `upsert` and `insertOrIgnore` return the number of changed rows. `firstOrCreate`, `firstOrNew` and `updateOrCreate`.
 - Transactions with `QueryBuilder.transaction()`, nested with savepoints, and row locks with `lockForUpdate()` and `sharedLock()`.
 - Schema builder for migrations (used by `dox_migration`).
 - DTO rules `@Unique` and `@Exists` that check the database.
