@@ -330,41 +330,96 @@ class _Pivot {
     return await q.delete();
   }
 
+  /// [delete] of the [detached] ids of the rows [current], and returns
+  /// the ids whose row is really gone. A column that compares without
+  /// case keeps `'abc'` when `'ABC'` is kept, so when the database
+  /// deleted another number of rows, the rows are read again.
+  Future<List<dynamic>> deleteDetached(
+    List<Map<String, dynamic>> current,
+    List<dynamic> detached,
+    Iterable<dynamic> keep,
+  ) async {
+    int count = await delete(detached, keep: keep);
+    if (count == detached.length) return detached;
+    Set<String> left = await _stored(query());
+    return <dynamic>[
+      for (Map<String, dynamic> r in current)
+        if (!left.contains('${r[relatedForeignKey]}')) r[relatedForeignKey],
+    ];
+  }
+
   /// the rows of [current] that the database sees as the same as each
   /// text id of [ids], as `id => rows`. An id that the database sees as
   /// no row is not in the map.
   ///
   /// The ids were not matched in Dart. A column that compares without
   /// case or without end spaces (MySQL, MariaDB, SQLite `COLLATE NOCASE`)
-  /// can still see `'abc'` as the row `'ABC'`. One query checks all ids,
-  /// and only when it finds a row is each id checked on its own.
+  /// can still see `'abc'` as the row `'ABC'`. The database does the
+  /// compare, not Dart: one query has a part for each id
+  /// (`WHERE key = id`, joined by `UNION ALL`), and each part tells
+  /// which id found the row.
   Future<Map<dynamic, List<Map<String, dynamic>>>> sameInDatabase(
     List<Map<String, dynamic>> current,
     Iterable<dynamic> ids,
   ) async {
     Map<dynamic, List<Map<String, dynamic>>> out =
         <dynamic, List<Map<String, dynamic>>>{};
-    List<dynamic> texts = <dynamic>[
+    List<String> texts = <String>[
       for (dynamic id in ids)
         if (id is String) id,
     ];
     if (current.isEmpty || texts.isEmpty) return out;
-    if (await query().whereIn(relatedForeignKey, texts).count() == 0) {
-      return out;
-    }
-    for (dynamic id in texts) {
-      Set<String> found = <String>{
-        for (Map<String, dynamic> r
-            in await query().where(relatedForeignKey, id).get())
-          '${r[relatedForeignKey]}',
-      };
-      List<Map<String, dynamic>> rows = <Map<String, dynamic>>[
-        for (Map<String, dynamic> c in current)
-          if (found.contains('${c[relatedForeignKey]}')) c,
-      ];
-      if (rows.isNotEmpty) out[id] = rows;
+
+    // ponytail: 100 ids per query. SQLite allows 500 parts in one UNION.
+    for (int start = 0; start < texts.length; start += 100) {
+      List<String> part = texts.sublist(
+        start,
+        start + 100 < texts.length ? start + 100 : texts.length,
+      );
+      QueryBuilder<Map<String, dynamic>> q = _rowsOf(part[0], 0);
+      for (int i = 1; i < part.length; i++) {
+        q.unionAll(_rowsOf(part[i], i));
+      }
+      Map<int, Set<String>> found = <int, Set<String>>{};
+      for (Map<String, dynamic> r in await q.get()) {
+        found
+            .putIfAbsent(int.parse('${r['dox_i']}'), () => <String>{})
+            .add('${r[relatedForeignKey]}');
+      }
+      for (int i = 0; i < part.length; i++) {
+        _put(out, current, part[i], found[i] ?? const <String>{});
+      }
     }
     return out;
+  }
+
+  /// the rows that the database sees as the id [id], with the number [i]
+  /// as the column `dox_i`
+  QueryBuilder<Map<String, dynamic>> _rowsOf(String id, int i) {
+    QueryBuilder<Map<String, dynamic>> q = query().where(relatedForeignKey, id);
+    return q.selectRaw('${q.helper.wrap(relatedForeignKey)}, $i AS dox_i');
+  }
+
+  /// the related key texts of the rows of [q]
+  Future<Set<String>> _stored(QueryBuilder<Map<String, dynamic>> q) async {
+    return <String>{
+      for (Map<String, dynamic> r in await q.get()) '${r[relatedForeignKey]}',
+    };
+  }
+
+  /// puts the rows of [current] whose key text is in [found] into [out]
+  /// as the rows of [id], when there is such a row
+  void _put(
+    Map<dynamic, List<Map<String, dynamic>>> out,
+    List<Map<String, dynamic>> current,
+    String id,
+    Set<String> found,
+  ) {
+    List<Map<String, dynamic>> rows = <Map<String, dynamic>>[
+      for (Map<String, dynamic> c in current)
+        if (found.contains('${c[relatedForeignKey]}')) c,
+    ];
+    if (rows.isNotEmpty) out[id] = rows;
   }
 
   /// sets [values] on the pivot rows of [ids]
@@ -584,13 +639,10 @@ extension ManyToManyWrites<T> on Model<T> {
     /// links. The delete keeps the new and the kept ids, so a database
     /// that sees two ids as one does not delete them.
     await p.insert(attach);
-    await p.delete(
-      detached,
-      keep: <dynamic>[
-        ...attach.keys,
-        for (Map<String, dynamic> r in used) r[p.relatedForeignKey],
-      ],
-    );
+    detached = await p.deleteDetached(current, detached, <dynamic>[
+      ...attach.keys,
+      for (Map<String, dynamic> r in used) r[p.relatedForeignKey],
+    ]);
     return PivotSyncResult(
       attached: _keys(attach.keys),
       detached: _keys(detached),
@@ -641,7 +693,7 @@ extension ManyToManyWrites<T> on Model<T> {
     /// insert first, so a failed insert keeps the old links. The delete
     /// keeps the new ids, see [_Pivot.delete].
     await p.insert(attach);
-    await p.delete(detached, keep: attach.keys);
+    detached = await p.deleteDetached(current, detached, attach.keys);
     return PivotSyncResult(
       attached: _keys(attach.keys),
       detached: _keys(detached),

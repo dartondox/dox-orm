@@ -206,9 +206,75 @@ void main() async {
     test('sync does not delete a row that is the same as a kept row', () async {
       await artist.attach('songs', <dynamic>['ABC']);
       await artist.attach('songs', <dynamic>['abc']);
-      await artist.sync('songs', <dynamic>['ABC']);
-      expect(await keys(), isNotEmpty);
+      PivotSyncResult r = await artist.sync('songs', <dynamic>['ABC']);
+
+      /// the database keeps 'abc' with 'ABC', so it is not detached
+      expect(r.detached, isEmpty);
+      expect(await keys(), <String>['ABC', 'abc']);
     });
+
+    test('a case-only match of many ids reads the rows once', () async {
+      await artist.attach('songs', <dynamic>['ABC', 'DEF', 'x']);
+      QueryPrinter old = SqlQueryBuilder().printer;
+      _Selects selects = _Selects();
+      SqlQueryBuilder().printer = selects;
+      PivotSyncResult r;
+      try {
+        artist.debug(true);
+        r = await artist.sync('songs', <dynamic>['abc', 'def']);
+      } finally {
+        artist.debug(false);
+        SqlQueryBuilder().printer = old;
+      }
+      expect(r.attached, isEmpty);
+      expect(r.detached, <String>['x']);
+      expect(await keys(), <String>['ABC', 'DEF']);
+
+      /// the pivot rows, then one query for all text ids
+      expect(selects.count, 2);
+    });
+
+    test('the database, not Dart, decides which ids are the same', () async {
+      /// SQLite NOCASE folds only ASCII: 'Äb' is 'ÄB', 'äb' is not.
+      /// MySQL and MariaDB see all three as one.
+      bool sqlite = driver() == 'sqlite';
+      await artist.attach('songs', <dynamic>['ÄB']);
+      PivotSyncResult r = await artist.sync('songs', <dynamic>['Äb', 'äb']);
+      expect(r.attached, sqlite ? <String>['äb'] : isEmpty);
+      expect(r.detached, isEmpty);
+      expect(await keys(), sqlite ? <String>['ÄB', 'äb'] : <String>['ÄB']);
+
+      await QueryBuilder.table('artist_song').where('id', '>', 0).delete();
+      await artist.attach('songs', <dynamic>['ÄB']);
+      r = await artist.toggle('songs', <dynamic>['Äb', 'äb']);
+      expect(r.attached, sqlite ? <String>['äb'] : isEmpty);
+      expect(r.detached, <String>['ÄB']);
+      expect(await keys(), sqlite ? <String>['äb'] : isEmpty);
+    });
+
+    test('toggle reports every row the database deleted', () async {
+      await artist.attach('songs', <dynamic>['ABC']);
+      await artist.attach('songs', <dynamic>['abc']);
+
+      /// the database deletes 'abc' with 'ABC', so both are reported
+      PivotSyncResult r = await artist.toggle('songs', <dynamic>['ABC']);
+      expect(r.detached, unorderedEquals(<String>['ABC', 'abc']));
+      expect(await keys(), isEmpty);
+    });
+
+    test(
+      'an accent-only match keeps the row',
+      () async {
+        await artist.attach('songs', <dynamic>['é', 'ABC']);
+        PivotSyncResult r = await artist.sync('songs', <dynamic>['e', 'abc']);
+        expect(r.attached, isEmpty);
+        expect(r.detached, isEmpty);
+        expect(await keys(), <String>['ABC', 'é']);
+      },
+      skip: driver() == 'mysql'
+          ? false
+          : 'only MySQL and MariaDB ignore accents',
+    );
 
     test('toggle with the other case removes the row', () async {
       await artist.attach('songs', <dynamic>['ABC']);
@@ -221,3 +287,13 @@ void main() async {
 }
 
 String driver() => Platform.environment['DRIVER'] ?? 'mysql';
+
+/// counts the logged SELECT queries on the pivot table
+class _Selects implements QueryPrinter {
+  int count = 0;
+
+  @override
+  void log(String query, List<String> params) {
+    if (query.startsWith('SELECT') && query.contains('artist_song')) count++;
+  }
+}
