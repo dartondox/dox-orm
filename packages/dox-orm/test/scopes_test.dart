@@ -107,6 +107,23 @@ void main() async {
       expect(await ScopedPost().withoutGlobalScopes().count(), 1);
     });
 
+    test('a write with no global scope and no where throws', () async {
+      await expectLater(
+        () => ScopedPost().withoutGlobalScopes().delete(),
+        throwsStateError,
+      );
+      expect(await ScopedPost().withoutGlobalScopes().count(), 4);
+    });
+
+    test(
+      'a model read without its key throws, also with a global scope',
+      () async {
+        ScopedPost post = (await ScopedPost().select('title').getFirst())!;
+        await expectLater(post.delete, throwsStateError);
+        expect(await ScopedPost().withoutGlobalScopes().count(), 4);
+      },
+    );
+
     test('save of a model is not changed by the global scope', () async {
       ScopedPost? post = await ScopedPost().withoutGlobalScopes().find(3);
       post!.views = 99;

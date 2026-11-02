@@ -124,7 +124,16 @@ class QueryBuilderHelper<T> {
   ///
   /// GROUP BY and HAVING mean nothing in an UPDATE or DELETE, so they throw
   /// an [ArgumentError].
+  ///
+  /// A union() query throws a [StateError]: the write would change only
+  /// the rows of the first query (or fail on Postgres).
   String getWriteQuery() {
+    if (queryBuilder.hasUnion) {
+      throw StateError(
+        'update() and delete() can not be used on a union() query. '
+        'Write to each query on its own.',
+      );
+    }
     if (queryBuilder.getGroupByQuery().isNotEmpty) {
       throw ArgumentError(
         'groupBy() and having() can not be used with update() or delete()',

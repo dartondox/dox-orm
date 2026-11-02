@@ -319,7 +319,7 @@ void main() async {
       /// forceDelete also deletes the soft deleted rows
       Note? trashed = await Note().withTrash().where('title', 'a').getFirst();
       expect(await trashed!.forceDelete(), 1);
-      expect(await Note().forceDelete(), 2);
+      expect(await Note().whereRaw('1 = 1').forceDelete(), 2);
       expect(await Note().withTrash().count(), 0);
     });
 
@@ -388,7 +388,7 @@ void main() async {
       expect(await _views('a2'), 4);
 
       /// every row
-      expect(await Counter().increment('views', 10), 3);
+      expect(await Counter().whereRaw('1 = 1').increment('views', 10), 3);
       expect(await _views('b'), 10);
       expect(await Counter().where('name', 'b').decrement('views'), 1);
       expect(await _views('b'), 9);
@@ -664,6 +664,165 @@ void main() async {
       });
       expect(count, 1);
       expect(await _counters().count(), 2);
+    });
+
+    group('no key and no where |', () {
+      setUp(() async {
+        for (String title in <String>['x', 'y']) {
+          await Note().create(<String, dynamic>{'title': title});
+        }
+      });
+
+      /// every counter still has 0 views, and no note was deleted
+      Future<void> expectNoChange() async {
+        expect(await _counters().count(), 3);
+        expect(await _counters().where('views', 0).count(), 3);
+        expect(await Note().withTrash().count(), 2);
+        expect(await Note().count(), 2);
+      }
+
+      test('a new model throws, and no row changes', () async {
+        await expectLater(() => Counter().delete(), throwsStateError);
+        await expectLater(() => Counter().forceDelete(), throwsStateError);
+        await expectLater(
+          () => Counter().update(<String, dynamic>{'views': 0}),
+          throwsStateError,
+        );
+        await expectLater(() => Counter().increment('views'), throwsStateError);
+        await expectLater(() => Counter().decrement('views'), throwsStateError);
+        await expectLater(() => Note().delete(), throwsStateError);
+        await expectLater(() => Note().forceDelete(), throwsStateError);
+        await expectNoChange();
+      });
+
+      test('a model read without its key throws, no row changes', () async {
+        Future<Counter> noKey() async =>
+            (await Counter().select('name').where('name', 'a').getFirst())!;
+        await expectLater((await noKey()).delete, throwsStateError);
+        await expectLater((await noKey()).forceDelete, throwsStateError);
+        Counter c = await noKey();
+        await expectLater(
+          () => c.update(<String, dynamic>{'views': 0}),
+          throwsStateError,
+        );
+        c = await noKey();
+        await expectLater(() => c.increment('views'), throwsStateError);
+        c = await noKey();
+        await expectLater(() => c.decrement('views'), throwsStateError);
+        Note note = (await Note()
+            .select('title')
+            .where('title', 'x')
+            .getFirst())!;
+        await expectLater(note.delete, throwsStateError);
+        await expectNoChange();
+      });
+
+      test(
+        'update() on a model from the table changes only that row',
+        () async {
+          Counter c = (await Counter().where('name', 'a').getFirst())!;
+          expect(await c.update(<String, dynamic>{'views': 7}), 1);
+          expect(c.views, 7);
+          expect(await _views('a'), 7);
+          expect(await _views('b'), 0);
+          expect(await _views('c'), 0);
+        },
+      );
+
+      test("whereRaw('1 = 1') writes every row on purpose", () async {
+        expect(
+          await Counter().whereRaw('1 = 1').update(<String, dynamic>{
+            'views': 2,
+          }),
+          3,
+        );
+        expect(await _counters().where('views', 2).count(), 3);
+        expect(await Counter().whereRaw('1 = 1').increment('views'), 3);
+        expect(await _counters().where('views', 3).count(), 3);
+
+        /// a soft delete model keeps its rows, with deleted_at set
+        expect(await Note().whereRaw('1 = 1').delete(), 2);
+        expect(await Note().count(), 0);
+        expect(await Note().withTrash().count(), 2);
+
+        expect(await Counter().whereRaw('1 = 1').delete(), 3);
+        expect(await _counters().count(), 0);
+      });
+
+      test('the same writes with a where still work', () async {
+        expect(
+          await Counter().where('name', 'a').update(<String, dynamic>{
+            'views': 1,
+          }),
+          1,
+        );
+        expect(await _views('a'), 1);
+        expect(await Counter().where('name', 'a').increment('views'), 1);
+        expect(await Counter().where('name', 'a').decrement('views'), 1);
+        expect(await _views('a'), 1);
+        expect(await Counter().where('name', 'b').delete(), 1);
+        expect(await Counter().where('name', 'c').forceDelete(), 1);
+        expect(await _counters().count(), 1);
+        expect(await Note().where('title', 'x').delete(), 1);
+        expect(await Note().count(), 1);
+        expect(await Note().withTrash().where('title', 'x').forceDelete(), 1);
+        expect(await Note().withTrash().count(), 1);
+      });
+    });
+
+    group('union |', () {
+      setUp(() async {
+        for (String title in <String>['x', 'y']) {
+          await Note().create(<String, dynamic>{'title': title});
+        }
+      });
+
+      Counter counters() =>
+          Counter().where('name', 'a').union(Counter().where('name', 'b'))
+              as Counter;
+
+      test('writes throw, and no row changes', () async {
+        await expectLater(() => counters().delete(), throwsStateError);
+        await expectLater(() => counters().forceDelete(), throwsStateError);
+        await expectLater(
+          () => counters().update(<String, dynamic>{'views': 0}),
+          throwsStateError,
+        );
+        await expectLater(
+          () => counters().increment('views'),
+          throwsStateError,
+        );
+        await expectLater(
+          () => counters().decrement('views'),
+          throwsStateError,
+        );
+        await expectLater(() => counters().touch(), throwsStateError);
+        QueryBuilder<Map<String, dynamic>> table() => _counters()
+            .where('name', 'a')
+            .union(_counters().where('name', 'b'));
+        await expectLater(() => table().delete(), throwsStateError);
+        await expectLater(
+          () => table().update(<String, dynamic>{'views': 0}),
+          throwsStateError,
+        );
+        await expectLater(() => table().increment('views'), throwsStateError);
+        await expectLater(
+          () => Note()
+              .where('title', 'x')
+              .union(Note().where('title', 'y'))
+              .delete(),
+          throwsStateError,
+        );
+        expect(await _counters().count(), 3);
+        expect(await _counters().where('views', 0).count(), 3);
+        expect(await Note().count(), 2);
+      });
+
+      test('all() throws, get() and count() read both queries', () async {
+        await expectLater(() => counters().all(), throwsStateError);
+        expect((await counters().get()).length, 2);
+        expect(await counters().count(), 2);
+      });
     });
   });
 }
