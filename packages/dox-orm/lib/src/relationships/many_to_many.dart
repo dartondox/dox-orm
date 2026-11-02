@@ -218,8 +218,9 @@ class _Pivot {
   /// a key) is skipped. A whole number like `2.0` becomes the int `2`,
   /// because Postgres does not take `2.0` for an integer column. Any other
   /// double (`1.5`, NaN, infinity, or past ±2^53 like `1e20`) throws an
-  /// [ArgumentError]. An id that is the same in Dart (`1` and `1.0`) is
-  /// kept once, the first one wins. Ids that only match by [sameId], like
+  /// [ArgumentError]. An id with the same text (`1`, `1.0` and `'1'`) is
+  /// kept once, the first one wins: it is one row on a text key and on a
+  /// number key. Ids that only match by [sameId], like
   /// `1` and `'01'`, are all kept here, because on a text key they are
   /// two rows. [unique] drops them for an insert.
   Map<dynamic, Map<String, dynamic>> records(
@@ -239,10 +240,11 @@ class _Pivot {
     }
     skipped = false;
     Map<dynamic, Map<String, dynamic>> out = <dynamic, Map<String, dynamic>>{};
+    Set<String> texts = <String>{};
     for (MapEntry<dynamic, dynamic> e in entries) {
       dynamic id = _id(e.key);
       if (id == null) skipped = true;
-      if (id == null || out.containsKey(id)) continue;
+      if (id == null || !texts.add('$id')) continue;
       out[id] = <String, dynamic>{
         ...values,
 
@@ -647,14 +649,15 @@ extension ManyToManyWrites<T> on Model<T> {
   }
 }
 
-/// [ids] with one type: a number id is an int. A text id becomes an int
-/// only when it is the plain text of that int (`'4'`), so a text key like
-/// `'04'` or `'007'` stays text. Other ids stay as they are.
+/// [ids] with one type, each once: a number id is an int. A text id
+/// becomes an int only when it is the plain text of that int (`'4'`), so a
+/// text key like `'04'` or `'007'` stays text. Other ids stay as they are.
+/// Two stored rows of one id (`1` and `1`) give the id once.
 List<dynamic> _keys(Iterable<dynamic> ids) {
-  return <dynamic>[
+  return <dynamic>{
     for (dynamic id in ids)
       if (id is String && '${int.tryParse(id)}' == id) int.parse(id) else id,
-  ];
+  }.toList();
 }
 
 /// the default of [ManyToManyWrites.detach]: no ids given, detach all

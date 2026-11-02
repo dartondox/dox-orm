@@ -443,6 +443,20 @@ void main() async {
         expect(await songIds(), <int>[]);
       });
 
+      test('toggle and sync list an id once with two rows of it', () async {
+        await artist.attach('songs', 1);
+        await artist.attach('songs', 1);
+        PivotSyncResult r = await artist.toggle('songs', <dynamic>['1', '01']);
+        expect(r.detached, <int>[1]);
+        expect(await songIds(), <int>[]);
+
+        await artist.attach('songs', 1);
+        await artist.attach('songs', 1);
+        r = await artist.sync('songs', <dynamic>[2]);
+        expect(r.detached, <int>[1]);
+        expect(await songIds(), <int>[2]);
+      });
+
       test(
         'a stored 1.5 keeps its link on SQLite',
         () async {

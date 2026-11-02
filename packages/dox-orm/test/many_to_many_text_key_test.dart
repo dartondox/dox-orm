@@ -124,6 +124,14 @@ void main() async {
       },
     );
 
+    test("toggle ['1', 1] is one id", () async {
+      await artist.attach('songs', <dynamic>['1', '01']);
+      PivotSyncResult r = await artist.toggle('songs', <dynamic>['1', 1]);
+      expect(r.detached, <int>[1]);
+      expect(r.attached, isEmpty);
+      expect(await keys(), <String>['01']);
+    });
+
     test('a long digit text in the table does not stop sync', () async {
       await artist.attach('songs', <dynamic>['12345678901234567890', '1e20']);
       PivotSyncResult r = await artist.sync('songs', <dynamic>[1]);
