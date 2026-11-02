@@ -1212,11 +1212,18 @@ class Model<T> extends QueryBuilder<T> {
       data = _onlyFillable(data);
       if (data.isEmpty) return 0;
       String? updatedAtColumn = timestampsColumn['updated_at'];
+      DateTime? time;
       if (updatedAtColumn != null && !data.containsKey(updatedAtColumn)) {
-        data = <String, dynamic>{...data, updatedAtColumn: now()};
+        time = now();
+        data = <String, dynamic>{...data, updatedAtColumn: time};
       }
       int count = await _thisRecord().update(data);
-      if (count > 0) _setSavedColumns(data);
+      if (count > 0) {
+        /// like save(): also for a custom column that setColumnValue
+        /// does not know
+        if (time != null) updatedAt = time;
+        _setSavedColumns(data);
+      }
       return count;
     }
     _needKeyOrWhere('update');
