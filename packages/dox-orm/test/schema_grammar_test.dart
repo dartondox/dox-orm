@@ -501,6 +501,33 @@ void main() {
       ]);
     });
 
+    test('every modifier of foreignId keeps constrained()', () {
+      void build(Table t) {
+        t.foreignId('user_id').unique().constrained();
+        t
+            .foreignId('cat_id')
+            .defaultTo(1)
+            .withDefault(1)
+            .unsigned()
+            .constrained('cats');
+        t
+            .foreignId('box_id')
+            .defaultRaw('1')
+            .useCurrentOnUpdate()
+            .constrained();
+        t.foreignId('day_id').useCurrent().primary().constrained();
+      }
+
+      expect(create(pg, build).first, contains('REFERENCES "users" ("id")'));
+      expect(create(pg, build).first, contains('REFERENCES "cats" ("id")'));
+      expect(
+        alter(pg, (Table t) {
+          t.foreignId('user_id').nullable().change().constrained();
+        }).join(' '),
+        contains('REFERENCES "users" ("id")'),
+      );
+    });
+
     test('foreignId references().on()', () {
       void build(Table t) {
         t.foreignId('owner').references('uid').on('people').restrictOnDelete();

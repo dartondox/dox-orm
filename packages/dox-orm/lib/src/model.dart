@@ -321,7 +321,7 @@ class Model<T> extends QueryBuilder<T> {
       _needKeyOrWhere('delete');
       if (isSoftDeletes) {
         /// super.update(): deleted_at is not checked against fillable
-        return await super.update(<String, dynamic>{'deleted_at': now()});
+        return await super.update(_softDeleteValues());
       }
       return await super.delete();
     }
@@ -333,11 +333,34 @@ class Model<T> extends QueryBuilder<T> {
         return 0;
       }
     }
-    int count = isSoftDeletes
-        ? await _thisRecord().update(<String, dynamic>{'deleted_at': now()})
-        : await _thisRecord().forceDelete();
+    int count;
+    if (isSoftDeletes) {
+      Map<String, dynamic> values = _softDeleteValues();
+      count = await _thisRecord().update(values);
+      if (count > 0) _setSoftDeleteFields(values);
+    } else {
+      count = await _thisRecord().forceDelete();
+    }
     if (events) await _fire(ModelEvent.deleted);
     return count;
+  }
+
+  /// the values of a soft delete: deleted_at, and updated_at when the
+  /// model has timestamps, like Laravel
+  Map<String, dynamic> _softDeleteValues() {
+    DateTime time = now();
+    String? updatedAtColumn = timestampsColumn['updated_at'];
+    return <String, dynamic>{'deleted_at': time, ?updatedAtColumn: time};
+  }
+
+  /// set the fields of a soft delete or restore: the deletedAt field (by
+  /// [setColumnValue]) and updatedAt
+  void _setSoftDeleteFields(Map<String, dynamic> values) {
+    String? updatedAtColumn = timestampsColumn['updated_at'];
+    if (values.containsKey(updatedAtColumn)) {
+      updatedAt = values[updatedAtColumn];
+    }
+    _setSavedColumns(values);
   }
 
   /// delete this record from the table, also when soft deleted.
@@ -499,12 +522,27 @@ class Model<T> extends QueryBuilder<T> {
   /// await user!.forceFill({'is_admin': true}).save();
   /// ```
   ///
-  /// It uses [setColumnValue], so a key that is not a column, or a
-  /// value that is not of the field type, is skipped. Do not pass user
-  /// input to it.
+  /// It uses [setColumnValue]. A key that is not in [tableColumns] is
+  /// skipped. An ISO date text sets a `DateTime` field. A value that is
+  /// not of the field type throws an [ArgumentError], and so does every
+  /// column of a model with no [setColumnValue] (a hand-written model, or
+  /// one made by an old dox_builder). Do not pass user input to it.
   Model<T> forceFill(Map<String, dynamic> data) {
+    List<String> columns = tableColumns;
     for (MapEntry<String, dynamic> e in data.entries) {
-      setColumnValue(e.key, e.value);
+      dynamic value = e.value;
+      if (setColumnValue(e.key, value)) continue;
+      DateTime? date = value is String ? DateTime.tryParse(value) : null;
+      if (date != null && setColumnValue(e.key, date)) continue;
+      if (columns.isNotEmpty && !columns.contains(e.key)) continue;
+      throw ArgumentError.value(
+        value,
+        e.key,
+        'forceFill() can not set this column of $runtimeType: the value is '
+        'not of the field type, or the model has no setColumnValue() '
+        '(a hand-written model, or one made by an old dox_builder: run '
+        'build_runner again)',
+      );
     }
     return this;
   }
@@ -564,6 +602,10 @@ class Model<T> extends QueryBuilder<T> {
       _needKeyOrWhere('restore');
       withTrash();
 
+      /// only deleted rows, so every database counts the same rows (MySQL
+      /// counts only changed rows, Postgres and SQLite every matched row)
+      whereNotNull('${tableAlias ?? tableName}.deleted_at');
+
       /// super.update(): deleted_at is not checked against fillable
       return await super.update(<String, dynamic>{'deleted_at': null}) > 0;
     }
@@ -575,7 +617,9 @@ class Model<T> extends QueryBuilder<T> {
         return false;
       }
     }
-    await _thisRecord().update(<String, dynamic>{'deleted_at': null});
+    Map<String, dynamic> values = <String, dynamic>{'deleted_at': null};
+    await _thisRecord().update(values);
+    _setSoftDeleteFields(values);
     if (events) await _fire(ModelEvent.restored);
     return true;
   }

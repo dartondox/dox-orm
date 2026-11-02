@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:dox_migration/dox_migration.dart';
@@ -479,6 +480,48 @@ DROP TABLE IF EXISTS mig_tag
           Migrator(migrations: dartMigrations).migrate(),
           throwsStateError,
         );
+      });
+
+      test('rollback skips a migration whose file is gone', () async {
+        writeMigration('2023_01_01_000000_create_user', '''
+-- up
+CREATE TABLE mig_user (id INTEGER PRIMARY KEY)
+
+-- down
+DROP TABLE IF EXISTS mig_user
+''');
+        writeMigration('2023_01_02_000000_create_tag', '''
+-- up
+CREATE TABLE mig_tag (id INTEGER PRIMARY KEY)
+
+-- down
+DROP TABLE IF EXISTS mig_tag
+''');
+        await Migrator().migrate();
+        File('${tempDir.path}/db/migration/2023_01_02_000000_create_tag.sql')
+            .deleteSync();
+
+        /// like Laravel: it prints the name, rolls back the others, and
+        /// keeps the row of the missing one
+        List<String> printed = <String>[];
+        await runZoned(
+          () => Migrator().rollback(),
+          zoneSpecification: ZoneSpecification(
+            print: (Zone self, ZoneDelegate parent, Zone zone, String line) {
+              printed.add(line);
+            },
+          ),
+        );
+        expect(
+          printed.join('\n'),
+          contains('Migration not found: 2023_01_02_000000_create_tag'),
+        );
+        expect(await tableExists('mig_user'), false);
+        expect(
+          (await migrations()).map((Map<String, dynamic> r) => r['migration']),
+          <String>['2023_01_02_000000_create_tag'],
+        );
+        await db.execute('DROP TABLE IF EXISTS mig_tag');
       });
 
       test('status shows a missing file', () async {

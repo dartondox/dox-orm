@@ -218,8 +218,9 @@ class _Pivot {
   /// a key) is skipped. A whole number like `2.0` becomes the int `2`,
   /// because Postgres does not take `2.0` for an integer column. Any other
   /// double (`1.5`, NaN, infinity, or past ±2^53 like `1e20`) throws an
-  /// [ArgumentError]. An id that is the same in Dart (`1` and `1.0`) is
-  /// kept once, the first one wins. Ids that only match by [sameId], like
+  /// [ArgumentError]. An id with the same text (`1`, `1.0` and `'1'`) is
+  /// kept once, the first one wins: it is one row on a text key and on a
+  /// number key. Ids that only match by [sameId], like
   /// `1` and `'01'`, are all kept here, because on a text key they are
   /// two rows. [unique] drops them for an insert.
   Map<dynamic, Map<String, dynamic>> records(
@@ -239,10 +240,11 @@ class _Pivot {
     }
     skipped = false;
     Map<dynamic, Map<String, dynamic>> out = <dynamic, Map<String, dynamic>>{};
+    Set<String> texts = <String>{};
     for (MapEntry<dynamic, dynamic> e in entries) {
       dynamic id = _id(e.key);
       if (id == null) skipped = true;
-      if (id == null || out.containsKey(id)) continue;
+      if (id == null || !texts.add('$id')) continue;
       out[id] = <String, dynamic>{
         ...values,
 
@@ -307,12 +309,62 @@ class _Pivot {
   }
 
   /// deletes the pivot rows of [ids], or all rows of the owner when
-  /// [ids] is null
-  Future<int> delete(List<dynamic>? ids) async {
+  /// [ids] is null.
+  ///
+  /// [keep] are the ids that must stay. On a text key they are left out
+  /// by the database compare, so a column that compares without case
+  /// (MySQL, MariaDB) does not delete the kept row `'ABC'` when it
+  /// deletes `'abc'`.
+  Future<int> delete(
+    List<dynamic>? ids, {
+    Iterable<dynamic> keep = const <dynamic>[],
+  }) async {
     if (ids != null && ids.isEmpty) return 0;
     QueryBuilder<Map<String, dynamic>> q = query();
-    if (ids != null) q.whereIn(relatedForeignKey, ids);
+    if (ids != null) {
+      q.whereIn(relatedForeignKey, ids);
+      if (keep.isNotEmpty && ids.every(_isText)) {
+        q.whereNotIn(relatedForeignKey, <String>[for (dynamic k in keep) '$k']);
+      }
+    }
     return await q.delete();
+  }
+
+  /// the rows of [current] that the database sees as the same as each
+  /// text id of [ids], as `id => rows`. An id that the database sees as
+  /// no row is not in the map.
+  ///
+  /// The ids were not matched in Dart. A column that compares without
+  /// case or without end spaces (MySQL, MariaDB, SQLite `COLLATE NOCASE`)
+  /// can still see `'abc'` as the row `'ABC'`. One query checks all ids,
+  /// and only when it finds a row is each id checked on its own.
+  Future<Map<dynamic, List<Map<String, dynamic>>>> sameInDatabase(
+    List<Map<String, dynamic>> current,
+    Iterable<dynamic> ids,
+  ) async {
+    Map<dynamic, List<Map<String, dynamic>>> out =
+        <dynamic, List<Map<String, dynamic>>>{};
+    List<dynamic> texts = <dynamic>[
+      for (dynamic id in ids)
+        if (id is String) id,
+    ];
+    if (current.isEmpty || texts.isEmpty) return out;
+    if (await query().whereIn(relatedForeignKey, texts).count() == 0) {
+      return out;
+    }
+    for (dynamic id in texts) {
+      Set<String> found = <String>{
+        for (Map<String, dynamic> r
+            in await query().where(relatedForeignKey, id).get())
+          '${r[relatedForeignKey]}',
+      };
+      List<Map<String, dynamic>> rows = <Map<String, dynamic>>[
+        for (Map<String, dynamic> c in current)
+          if (found.contains('${c[relatedForeignKey]}')) c,
+      ];
+      if (rows.isNotEmpty) out[id] = rows;
+    }
+    return out;
   }
 
   /// sets [values] on the pivot rows of [ids]
@@ -490,12 +542,34 @@ extension ManyToManyWrites<T> on Model<T> {
       }
     }
 
+    /// an id that the database sees as a stored row (`'abc'` and `'ABC'`
+    /// on a column that compares without case) keeps that row
+    Map<dynamic, List<Map<String, dynamic>>> same = await p.sameInDatabase(
+      current,
+      attach.keys,
+    );
+    for (MapEntry<dynamic, List<Map<String, dynamic>>> e in same.entries) {
+      Map<String, dynamic> values = attach.remove(e.key)!;
+      Map<String, dynamic>? row = _firstNotIn(e.value, used);
+      if (row == null) continue;
+      used.add(row);
+      if (_changes(row, values)) {
+        changes.add(
+          MapEntry<dynamic, Map<String, dynamic>>(
+            row[p.relatedForeignKey],
+            values,
+          ),
+        );
+      }
+    }
+
     /// a stored row is deleted only when no given id matches it, so a
     /// row is never deleted by a near match of another id
     List<dynamic> detached = <dynamic>[
       if (detaching)
         for (Map<String, dynamic> r in current)
-          if (!_hasGiven(records.keys, r[p.relatedForeignKey]))
+          if (!used.contains(r) &&
+              !_hasGiven(records.keys, r[p.relatedForeignKey]))
             r[p.relatedForeignKey],
     ];
 
@@ -507,9 +581,16 @@ extension ManyToManyWrites<T> on Model<T> {
     }
 
     /// insert first and delete last, so a failed insert keeps the old
-    /// links. The ids of the two never overlap.
+    /// links. The delete keeps the new and the kept ids, so a database
+    /// that sees two ids as one does not delete them.
     await p.insert(attach);
-    await p.delete(detached);
+    await p.delete(
+      detached,
+      keep: <dynamic>[
+        ...attach.keys,
+        for (Map<String, dynamic> r in used) r[p.relatedForeignKey],
+      ],
+    );
     return PivotSyncResult(
       attached: _keys(attach.keys),
       detached: _keys(detached),
@@ -545,9 +626,22 @@ extension ManyToManyWrites<T> on Model<T> {
       }
     }
 
-    /// insert first, so a failed insert keeps the old links
+    /// an id that the database sees as a stored row (`'abc'` and `'ABC'`
+    /// on a column that compares without case) detaches that row
+    Map<dynamic, List<Map<String, dynamic>>> same = await p.sameInDatabase(
+      current,
+      attach.keys,
+    );
+    for (MapEntry<dynamic, List<Map<String, dynamic>>> e in same.entries) {
+      attach.remove(e.key);
+      Map<String, dynamic>? row = _firstNotIn(e.value, used);
+      if (row != null && used.add(row)) detached.add(row[p.relatedForeignKey]);
+    }
+
+    /// insert first, so a failed insert keeps the old links. The delete
+    /// keeps the new ids, see [_Pivot.delete].
     await p.insert(attach);
-    await p.delete(detached);
+    await p.delete(detached, keep: attach.keys);
     return PivotSyncResult(
       attached: _keys(attach.keys),
       detached: _keys(detached),
@@ -555,18 +649,33 @@ extension ManyToManyWrites<T> on Model<T> {
   }
 }
 
-/// [ids] with one type: a number id is an int. A text id becomes an int
-/// only when it is the plain text of that int (`'4'`), so a text key like
-/// `'04'` or `'007'` stays text. Other ids stay as they are.
+/// [ids] with one type, each once: a number id is an int. A text id
+/// becomes an int only when it is the plain text of that int (`'4'`), so a
+/// text key like `'04'` or `'007'` stays text. Other ids stay as they are.
+/// Two stored rows of one id (`1` and `1`) give the id once.
 List<dynamic> _keys(Iterable<dynamic> ids) {
-  return <dynamic>[
+  return <dynamic>{
     for (dynamic id in ids)
       if (id is String && '${int.tryParse(id)}' == id) int.parse(id) else id,
-  ];
+  }.toList();
 }
 
 /// the default of [ManyToManyWrites.detach]: no ids given, detach all
 const Object _allIds = Object();
+
+/// true when [id] is a text
+bool _isText(dynamic id) => id is String;
+
+/// the first of [rows] that is not in [used], or null
+Map<String, dynamic>? _firstNotIn(
+  List<Map<String, dynamic>> rows,
+  Set<Map<String, dynamic>> used,
+) {
+  for (Map<String, dynamic> r in rows) {
+    if (!used.contains(r)) return r;
+  }
+  return null;
+}
 
 /// true when one of the given [ids] matches the stored value [stored]
 bool _hasGiven(Iterable<dynamic> ids, dynamic stored) {
