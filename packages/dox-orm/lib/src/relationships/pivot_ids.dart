@@ -5,19 +5,34 @@ library;
 /// 2^53: past it, a double can not hold every whole number
 const double _maxSafe = 9007199254740992.0;
 
+/// a `.0` or `.000` at the end of a number text
+final RegExp _zeroEnd = RegExp(r'\.0+$');
+
 /// [id] as an int, or null.
 ///
 /// An int is itself. A double is an int when it is a whole number within
-/// ±2^53. A text is read like the databases read it, with
-/// `int.tryParse` first (`' 1'`, `'+1'`, `'01'`, `'0x1'`), then
-/// `double.tryParse` (`'1.0'`, `'1.'`, `'1e0'`), and the same double rule.
+/// ±2^53. A text is read in Dart: it is trimmed, a `.0` end is dropped,
+/// then `int.tryParse` reads it (`' 1'`, `'+1'`, `'01'`, `'1.0'`,
+/// `'9007199254740993.0'`), else `double.tryParse` with the same double
+/// rule (`'1.'`, `'1e0'`). This is only how Dart matches a text to a
+/// number id. The databases read some texts in other ways: `int.tryParse`
+/// takes `'0x1'` as 1, Postgres does too, MariaDB reads it as 0 and MySQL
+/// throws.
+///
+/// A text that only reads as a double past ±2^53 (like `'1e20'` or
+/// `'9007199254740993.5'`) throws an [ArgumentError]: the double is not
+/// exact, so it could match the wrong row.
 int? intId(dynamic id) {
   if (id is int) return id;
   if (id is String) {
     String text = id.trim();
-    int? i = int.tryParse(text);
+    int? i = int.tryParse(text.replaceFirst(_zeroEnd, ''));
     if (i != null) return i;
-    id = double.tryParse(text);
+    double? d = double.tryParse(text);
+    if (d != null && d.isFinite && d.abs() > _maxSafe) {
+      throw ArgumentError.value(id, 'ids', 'is a number that is not exact');
+    }
+    id = d;
   }
   if (id is double && id == id.truncateToDouble() && id.abs() <= _maxSafe) {
     return id.toInt();
@@ -33,9 +48,9 @@ int? intId(dynamic id) {
 /// ids.
 ///
 /// When one of them is a number (`int` or `double`), the text is read as
-/// a number (see [intId]), so `1`, `1.0`, `'01'`, `'1e0'` and `'0x1'` are
-/// the same id. A number key comes back from the database as a number, so
-/// this is how the database matches it. A number that is not a whole id,
+/// a number (see [intId]), so `1`, `1.0`, `'01'` and `'1e0'` are the same
+/// id. A number key comes back from the database as a number, so this keeps
+/// the stored rows of a number key. A number that is not a whole id,
 /// like a stored `1.5` (SQLite), matches the same finite double.
 bool sameId(dynamic a, dynamic b) {
   /// no `a == b` first: Dart says `9007199254740993 == 9007199254740992.0`

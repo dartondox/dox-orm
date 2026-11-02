@@ -71,6 +71,35 @@ void main() async {
       expect(await keys(), <String>['7']);
     });
 
+    test("sync [1, '01'] keeps the rows '1' and '01'", () async {
+      await artist.attach('songs', <dynamic, Map<String, dynamic>>{
+        '1': <String, dynamic>{'role': 'r0'},
+        '01': <String, dynamic>{'role': 'r1'},
+      });
+      Future<List<String>> roles() async {
+        List<Map<String, dynamic>> rows = await QueryBuilder.table(
+          'artist_song',
+        ).where('artist_id', artist.id).get();
+        return <String>[
+          for (Map<String, dynamic> r in rows) '${r['song_id']}:${r['role']}',
+        ]..sort();
+      }
+
+      for (dynamic ids in <dynamic>[
+        <dynamic>[1, '01'],
+        <dynamic>['01', 1],
+        <dynamic, Map<String, dynamic>>{
+          1: <String, dynamic>{},
+          '01': <String, dynamic>{},
+        },
+      ]) {
+        PivotSyncResult r = await artist.sync('songs', ids);
+        expect(r.detached, isEmpty, reason: '$ids');
+        expect(r.attached, isEmpty, reason: '$ids');
+        expect(await roles(), <String>['01:r1', '1:r0'], reason: '$ids');
+      }
+    });
+
     test('other text keys match by the exact text', () async {
       await artist.attach('songs', <dynamic>['a1b2', 'A1B2', 'abc']);
       PivotSyncResult r = await artist.sync('songs', <dynamic>['abc', 'x']);

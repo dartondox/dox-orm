@@ -600,6 +600,11 @@ void main() async {
         expect(intId('1E0'), 1);
         expect(intId('0x1'), 1);
         expect(intId('1.01'), isNull);
+        expect(intId('9007199254740993.0'), 9007199254740993);
+        expect(intId('9007199254740993'), 9007199254740993);
+        expect(() => intId('9007199254740993.5'), throwsArgumentError);
+        expect(() => intId('1e20'), throwsArgumentError);
+        expect(() => intId('99999999999999999999'), throwsArgumentError);
         expect(intId('++1'), isNull);
         expect(intId('Infinity'), isNull);
         expect(intId('NaN'), isNull);

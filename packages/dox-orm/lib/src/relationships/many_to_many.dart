@@ -145,6 +145,10 @@ class _Pivot {
   /// not saved
   bool skipped = false;
 
+  /// every id of the last [records], before repeated ids were dropped.
+  /// [ManyToManyWrites.sync] keeps a stored row that any of them matches.
+  List<dynamic> given = <dynamic>[];
+
   _Pivot({
     required this.owner,
     required this.ownerKey,
@@ -218,10 +222,12 @@ class _Pivot {
       ];
     }
     skipped = false;
+    given = <dynamic>[];
     Map<dynamic, Map<String, dynamic>> out = <dynamic, Map<String, dynamic>>{};
     for (MapEntry<dynamic, dynamic> e in entries) {
       dynamic id = _id(e.key);
       if (id == null) skipped = true;
+      if (id != null) given.add(id);
       // ponytail: O(n²) scan of the ids of one call, fine for normal lists
       if (id == null || _hasSame(out.keys, id)) continue;
       out[id] = <String, dynamic>{
@@ -424,7 +430,6 @@ extension ManyToManyWrites<T> on Model<T> {
     Map<dynamic, Map<String, dynamic>> attach =
         <dynamic, Map<String, dynamic>>{};
     List<dynamic> updated = <dynamic>[];
-    List<dynamic> kept = <dynamic>[];
     Set<Map<String, dynamic>> used = Set<Map<String, dynamic>>.identity();
     for (MapEntry<dynamic, Map<String, dynamic>> e in records.entries) {
       Map<String, dynamic>? row = p.match(current, e.key);
@@ -433,16 +438,20 @@ extension ManyToManyWrites<T> on Model<T> {
         continue;
       }
       if (!used.add(row)) continue;
-      kept.add(row[p.relatedForeignKey]);
       if (_changes(row, e.value)) {
         await p.update(<dynamic>[row[p.relatedForeignKey]], e.value);
         updated.add(row[p.relatedForeignKey]);
       }
     }
+
+    /// a stored row is deleted only when no given id matches it. The
+    /// list before repeated ids were dropped is used, so on a text key
+    /// `[1, '01']` keeps the rows `'1'` and `'01'`.
     List<dynamic> detached = <dynamic>[
       if (detaching)
         for (Map<String, dynamic> r in current)
-          if (!_hasSame(kept, r[p.relatedForeignKey])) r[p.relatedForeignKey],
+          if (!_hasSame(p.given, r[p.relatedForeignKey]))
+            r[p.relatedForeignKey],
     ];
 
     /// insert first and delete last, so a failed insert keeps the old
