@@ -356,6 +356,23 @@ void main() async {
       expect(await trashed!.restore(), true);
       expect(await Blog().get(), hasLength(3));
     });
+
+    test('find with a column and null finds IS NULL', () async {
+      Blog withSlug = Blog()
+        ..title = 'a'
+        ..description = 'a'
+        ..slug = 'x';
+      await withSlug.save();
+      Blog noSlug = Blog()
+        ..title = 'b'
+        ..description = 'b';
+      await noSlug.save();
+      Blog? found = await Blog().find('slug', null);
+      expect(found?.uid, noSlug.uid);
+      expect((await Blog().find('slug', 'x'))?.uid, withSlug.uid);
+      expect((await Blog().find(withSlug.uid))?.uid, withSlug.uid);
+      expect((await Blog().findOrFail('slug', null)).uid, noSlug.uid);
+    });
   });
 
   group('Schema fixes |', () {

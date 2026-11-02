@@ -33,12 +33,14 @@ mixin Get<T> implements SharedMixin<T> {
   /// ```
   /// If only [arg1] is provided, it will as as id value,
   /// If both [arg1] and [arg2] ar provided, [arg1] is column name and
-  /// [arg2] is value of column
+  /// [arg2] is value of column. `find('email', null)` finds the row
+  /// where email IS NULL.
   /// This cannot be use with other query such as, where, join, delete.
   /// It works with lockForUpdate() and sharedLock().
-  Future<T?> find(dynamic arg1, [dynamic arg2]) {
-    String column = arg2 == null ? primaryKey : arg1;
-    dynamic value = arg2 ?? arg1;
+  Future<T?> find(dynamic arg1, [dynamic arg2 = missingArg]) {
+    bool idOnly = identical(arg2, missingArg);
+    String column = idOnly ? primaryKey : arg1;
+    dynamic value = idOnly ? arg1 : arg2;
     QueryBuilder<T> qb = queryBuilder;
     if (value == null || !_isPlain(qb)) {
       qb.where(column, value).limit(1);
@@ -507,13 +509,14 @@ mixin Get<T> implements SharedMixin<T> {
   /// Blog blog = await Blog().findOrFail(1);
   /// Blog blog = await Blog().findOrFail('slug', 'hello');
   /// ```
-  Future<T> findOrFail(dynamic arg1, [dynamic arg2]) async {
+  Future<T> findOrFail(dynamic arg1, [dynamic arg2 = missingArg]) async {
     T? row = await find(arg1, arg2);
     if (row == null) {
+      bool idOnly = identical(arg2, missingArg);
       throw ModelNotFoundException(
         tableName,
-        id: arg2 ?? arg1,
-        column: arg2 == null ? primaryKey : arg1.toString(),
+        id: idOnly ? arg1 : arg2,
+        column: idOnly ? primaryKey : arg1.toString(),
       );
     }
     return row;
