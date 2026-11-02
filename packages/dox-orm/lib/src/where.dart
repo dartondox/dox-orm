@@ -12,6 +12,15 @@ class _Missing {
 
 const _Missing _missing = _Missing();
 
+/// [_missing] for the other query files, like having() and find(). it is
+/// not exported by the package.
+const Object missingArg = _missing;
+
+/// `IS NULL` for `=` and `IS NOT NULL` for `!=` and `<>`, see where().
+/// It is a function, not a query method, so it can not clash with a
+/// model field.
+String nullCheck(String operator) => Where._nullCheck(operator);
+
 /// removes the last where condition of [qb]. cursorPaginate() uses it to
 /// drop its cursor condition. it is a function, not a query method, so
 /// it can not clash with a model field.

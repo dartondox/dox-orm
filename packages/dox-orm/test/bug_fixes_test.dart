@@ -299,6 +299,29 @@ void main() async {
       expect(await Blog().limit(2).limit(-1).get(), hasLength(2));
       expect(await Blog().take(-1).get(), hasLength(3));
     });
+
+    test('having with null builds IS NULL and IS NOT NULL', () async {
+      await (Blog()
+            ..title = 'a'
+            ..description = 'a'
+            ..slug = 'x')
+          .save();
+      await (Blog()
+            ..title = 'b'
+            ..description = 'b')
+          .save();
+      QueryBuilder<dynamic> notNull() =>
+          QueryBuilder.table('blog').select('slug').groupBy('slug');
+      String sql = notNull().having('slug', '!=', null).toSql();
+      expect(sql, contains('IS NOT NULL'));
+      expect(sql, isNot(contains('!=')));
+      List<dynamic> rows = await notNull().having('slug', '!=', null).get();
+      expect(rows.map((dynamic r) => r['slug']), <String>['x']);
+      rows = await notNull().having('slug', '=', null).get();
+      expect(rows.map((dynamic r) => r['slug']), <String?>[null]);
+      rows = await notNull().having('slug', null).get();
+      expect(rows.map((dynamic r) => r['slug']), <String?>[null]);
+    });
   });
 
   group('Schema fixes |', () {
