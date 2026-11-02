@@ -4,6 +4,7 @@ import 'package:dox_orm/dox_orm.dart';
 import 'package:test/test.dart';
 
 import 'connection.dart';
+import 'models/blog/blog.model.dart';
 import 'models/user/user.model.dart';
 
 /// a user that only takes `name` from a map
@@ -71,8 +72,55 @@ class DefaultFillableUser extends DefaultUser {
   List<String> get fillable => <String>['name'];
 }
 
+/// a hand-written model with no setColumnValue(), like a model made by
+/// an old dox_builder
+class NoSetterUser extends DefaultUser {
+  @override
+  bool setColumnValue(String column, dynamic value) => false;
+}
+
 void main() async {
   await initQueryBuilder();
+
+  group('forceFill |', () {
+    test('a model with no setColumnValue throws', () {
+      expect(
+        () => NoSetterUser().forceFill(<String, dynamic>{'name': 'a'}),
+        throwsA(
+          isA<ArgumentError>().having(
+            (ArgumentError e) => '${e.message}',
+            'message',
+            contains('setColumnValue'),
+          ),
+        ),
+      );
+    });
+
+    test('a value of the wrong type throws, a key that is not a column is '
+        'skipped', () {
+      expect(
+        () => DefaultUser().forceFill(<String, dynamic>{'is_admin': 'yes'}),
+        throwsArgumentError,
+      );
+      DefaultUser user = DefaultUser()
+        ..forceFill(<String, dynamic>{'name': 'a', 'nope': 1});
+      expect(user.name, 'a');
+    });
+
+    test('an ISO date text sets a DateTime field', () {
+      Blog blog = Blog()
+        ..forceFill(<String, dynamic>{
+          'created_at': '2020-01-02T03:04:05.000Z',
+          'title': '2020-01-02',
+        });
+      expect(blog.createdAt, DateTime.utc(2020, 1, 2, 3, 4, 5));
+      expect(blog.title, '2020-01-02');
+      expect(
+        () => Blog().forceFill(<String, dynamic>{'created_at': 'not a date'}),
+        throwsArgumentError,
+      );
+    });
+  });
 
   group('Security', () {
     setUp(() async {

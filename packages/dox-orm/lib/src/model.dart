@@ -522,12 +522,27 @@ class Model<T> extends QueryBuilder<T> {
   /// await user!.forceFill({'is_admin': true}).save();
   /// ```
   ///
-  /// It uses [setColumnValue], so a key that is not a column, or a
-  /// value that is not of the field type, is skipped. Do not pass user
-  /// input to it.
+  /// It uses [setColumnValue]. A key that is not in [tableColumns] is
+  /// skipped. An ISO date text sets a `DateTime` field. A value that is
+  /// not of the field type throws an [ArgumentError], and so does every
+  /// column of a model with no [setColumnValue] (a hand-written model, or
+  /// one made by an old dox_builder). Do not pass user input to it.
   Model<T> forceFill(Map<String, dynamic> data) {
+    List<String> columns = tableColumns;
     for (MapEntry<String, dynamic> e in data.entries) {
-      setColumnValue(e.key, e.value);
+      dynamic value = e.value;
+      if (setColumnValue(e.key, value)) continue;
+      DateTime? date = value is String ? DateTime.tryParse(value) : null;
+      if (date != null && setColumnValue(e.key, date)) continue;
+      if (columns.isNotEmpty && !columns.contains(e.key)) continue;
+      throw ArgumentError.value(
+        value,
+        e.key,
+        'forceFill() can not set this column of $runtimeType: the value is '
+        'not of the field type, or the model has no setColumnValue() '
+        '(a hand-written model, or one made by an old dox_builder: run '
+        'build_runner again)',
+      );
     }
     return this;
   }
