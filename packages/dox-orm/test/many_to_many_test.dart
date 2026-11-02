@@ -342,8 +342,16 @@ void main() async {
         expect(await songIds(), <int>[1, 3]);
       });
 
-      test("'+1' and '1.0' are song 1 on a number key", () async {
-        for (String text in <String>['+1', '1.0']) {
+      test('a number text is song 1 on a number key', () async {
+        for (String text in <String>[
+          '+1',
+          '1.0',
+          '1.',
+          '1e0',
+          '1E0',
+          '0x1',
+          ' 01 ',
+        ]) {
           await artist.detach('songs');
           await artist.attach('songs', 1, <String, dynamic>{'role': 'bass'});
 
@@ -366,21 +374,43 @@ void main() async {
           expect(r.detached, <int>[1], reason: text);
           expect(await songIds(), <int>[], reason: text);
 
-          /// detach sends the text as it is, and the database finds the
-          /// row. Postgres does not take '1.0' for an integer column, the
-          /// same as in where(), so it throws there.
+          /// a second sync and syncWithoutDetaching keep one row
           await artist.attach('songs', 1);
-          if (text == '1.0' && Platform.environment['DRIVER'] == 'postgres') {
-            await expectLater(
-              artist.detach('songs', <dynamic>[text]),
-              throwsA(anything),
-            );
-          } else {
-            expect(await artist.detach('songs', <dynamic>[text]), 1);
-            expect(await songIds(), <int>[], reason: text);
-          }
+          await artist.sync('songs', <dynamic>[text]);
+          r = await artist.syncWithoutDetaching('songs', <dynamic>[text]);
+          expect(r.attached, isEmpty, reason: text);
+          expect(await songIds(), <int>[1], reason: text);
         }
+
+        /// detach sends the text as it is, and the database reads it.
+        /// Each database reads other texts, so this checks '+1' only.
+        expect(await artist.detach('songs', <dynamic>['+1']), 1);
+        expect(await songIds(), <int>[]);
       });
+
+      test('toggle detaches a row once', () async {
+        await artist.attach('songs', 1);
+        PivotSyncResult r = await artist.toggle('songs', <dynamic>['1', '01']);
+        expect(r.detached, <int>[1]);
+        expect(r.attached, isEmpty);
+        expect(await songIds(), <int>[]);
+      });
+
+      test(
+        'a stored 1.5 keeps its link on SQLite',
+        () async {
+          /// SQLite keeps the text '1.5' as 1.5 in an integer column
+          await QueryBuilder.table(
+            'artist_song',
+          ).insert(<String, dynamic>{'artist_id': artist.id, 'song_id': '1.5'});
+          PivotSyncResult r = await artist.sync('songs', <dynamic>['1.5']);
+          expect(r.attached, isEmpty);
+          expect(r.detached, isEmpty);
+        },
+        skip: Platform.environment['DRIVER'] == 'sqlite'
+            ? false
+            : 'only SQLite keeps 1.5 in an integer column',
+      );
 
       test('a number id with spaces is the same id', () async {
         await artist.attach('songs', <dynamic>[1, 3]);
@@ -564,10 +594,17 @@ void main() async {
         expect(intId('+1'), 1);
         expect(intId('1.0'), 1);
         expect(intId('-2.00'), -2);
-        expect(intId('1.'), isNull);
-        expect(intId('.0'), isNull);
+        expect(intId('1.'), 1);
+        expect(intId('.0'), 0);
+        expect(intId('1e0'), 1);
+        expect(intId('1E0'), 1);
+        expect(intId('0x1'), 1);
         expect(intId('1.01'), isNull);
         expect(intId('++1'), isNull);
+        expect(intId('Infinity'), isNull);
+        expect(intId('NaN'), isNull);
+        expect(intId(9007199254740992.0), 9007199254740992);
+        expect(intId(18014398509481984.0), isNull);
         expect(intId('-2'), -2);
         expect(intId('1.5'), isNull);
         expect(intId(1.5), isNull);
@@ -580,6 +617,7 @@ void main() async {
         expect(intId(double.infinity), isNull);
         expect(intId(double.nan), isNull);
         expect(sameId(1e20, 9223372036854775807), isFalse);
+        expect(sameId(9007199254740992.0, 9007199254740993), isFalse);
       });
 
       test('sameId', () {
@@ -590,7 +628,13 @@ void main() async {
         /// two texts only match by the exact text: it can be a text key
         expect(sameId('007', '7'), isFalse);
         expect(sameId('1', '01'), isFalse);
-        expect(sameId('1.5', 1.5), isFalse);
+        expect(sameId('1.5', 1.5), isTrue);
+        expect(sameId('1.5', 1), isFalse);
+        expect(sameId(1, '1e0'), isTrue);
+        expect(sameId(1, '0x1'), isTrue);
+        expect(sameId('1', '1e0'), isFalse);
+        expect(sameId(1, 'NaN'), isFalse);
+        expect(sameId(double.nan, 'NaN'), isFalse);
         expect(sameId('abc', 'abc'), isTrue);
         expect(sameId('abc', 'ABC'), isFalse);
       });

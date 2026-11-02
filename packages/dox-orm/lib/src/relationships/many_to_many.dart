@@ -198,7 +198,8 @@ class _Pivot {
   /// Like Laravel, null means no ids, and a null id (or a model without
   /// a key) is skipped. A whole number like `2.0` becomes the int `2`,
   /// because Postgres does not take `2.0` for an integer column. Any other
-  /// double (`1.5`, NaN, infinity, `1e20`) throws an [ArgumentError]. An id
+  /// double (`1.5`, NaN, infinity, or past ±2^53 like `1e20`) throws an
+  /// [ArgumentError]. An id
   /// is kept once, by [sameId]: `[1, '01', 1.0]` gives one id, the first
   /// one wins. Every write uses these ids, so they all match the same way.
   Map<dynamic, Map<String, dynamic>> records(
@@ -417,18 +418,21 @@ extension ManyToManyWrites<T> on Model<T> {
     }
     List<Map<String, dynamic>> current = await p.rows();
 
-    /// match by value, so `'01'` keeps the row of `1`. [records] has
-    /// each id once, so two ids never match the same row.
+    /// match by value, so `'01'` keeps the row of `1`. Two texts like
+    /// `'1'` and `'01'` are two ids, but they can match the same row of a
+    /// number key. A row is used once, the first id wins.
     Map<dynamic, Map<String, dynamic>> attach =
         <dynamic, Map<String, dynamic>>{};
     List<dynamic> updated = <dynamic>[];
     List<dynamic> kept = <dynamic>[];
+    Set<Map<String, dynamic>> used = Set<Map<String, dynamic>>.identity();
     for (MapEntry<dynamic, Map<String, dynamic>> e in records.entries) {
       Map<String, dynamic>? row = p.match(current, e.key);
       if (row == null) {
         attach[e.key] = e.value;
         continue;
       }
+      if (!used.add(row)) continue;
       kept.add(row[p.relatedForeignKey]);
       if (_changes(row, e.value)) {
         await p.update(<dynamic>[row[p.relatedForeignKey]], e.value);
@@ -466,10 +470,13 @@ extension ManyToManyWrites<T> on Model<T> {
     List<dynamic> detached = <dynamic>[];
     Map<dynamic, Map<String, dynamic>> attach =
         <dynamic, Map<String, dynamic>>{};
+
+    /// a row is used once: `['1', '01']` detaches the row of `1` once
+    Set<Map<String, dynamic>> used = Set<Map<String, dynamic>>.identity();
     for (MapEntry<dynamic, Map<String, dynamic>> e in records.entries) {
       Map<String, dynamic>? row = p.match(current, e.key);
       if (row != null) {
-        detached.add(row[p.relatedForeignKey]);
+        if (used.add(row)) detached.add(row[p.relatedForeignKey]);
       } else {
         attach[e.key] = e.value;
       }
