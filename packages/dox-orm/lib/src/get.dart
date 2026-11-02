@@ -34,11 +34,20 @@ mixin Get<T> implements SharedMixin<T> {
   /// If only [arg1] is provided, it will as as id value,
   /// If both [arg1] and [arg2] ar provided, [arg1] is column name and
   /// [arg2] is value of column. `find('email', null)` finds the row
-  /// where email IS NULL.
+  /// where email IS NULL. With two args, [arg1] that is not a text (like
+  /// `find(5, null)`) throws an [ArgumentError].
   /// This cannot be use with other query such as, where, join, delete.
   /// It works with lockForUpdate() and sharedLock().
   Future<T?> find(dynamic arg1, [dynamic arg2 = missingArg]) {
     bool idOnly = identical(arg2, missingArg);
+    if (!idOnly && arg1 is! String) {
+      throw ArgumentError.value(
+        arg1,
+        'arg1',
+        'must be a column name when a second arg is given. '
+            'Use find(id) to find by id',
+      );
+    }
     String column = idOnly ? primaryKey : arg1;
     dynamic value = idOnly ? arg1 : arg2;
     QueryBuilder<T> qb = queryBuilder;

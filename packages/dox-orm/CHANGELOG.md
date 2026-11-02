@@ -1,5 +1,6 @@
 ## Unreleased
 
+- Fix: `find(5, null)` and `findOrFail(5, null)` now throw an `ArgumentError` that says the first arg must be a column name. Before, they threw a type error with no clear message. `find(5)` and `find('email', null)` work as before.
 - Fix: `restore()` on a query now only changes soft deleted rows (`deleted_at IS NOT NULL`). Before, it returned true when any row matched, even a row that was not deleted, on Postgres and SQLite. MySQL counts only changed rows, so it gave false. Now all databases give the same answer.
 - Fix: `cursorPaginate()` now adds the primary key as the last order column when you order by a column of another table with the same name, like `orderBy('author.id')` on a join. Before, it only compared the last part of the name, so it skipped the key and rows with the same value could be skipped. Also, a null in the first row of a page no longer makes a good cursor give page 1 (a client looped on page 1). The order columns must still have no nulls: the page now throws the clear `StateError` of a null cursor value.
 - Fix: many to many writes now see ids with the same text (`'1'` and `1`) as one id. Before, on a text key, `toggle(['1', 1])` removed both `'1'` and `'01'`. The `attached`, `detached` and `updated` lists also list an id once now. Before, two stored rows of one id gave `detached: [1, 1]`.

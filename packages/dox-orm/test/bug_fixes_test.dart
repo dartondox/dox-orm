@@ -386,6 +386,20 @@ void main() async {
       expect((await Blog().find(withSlug.uid))?.uid, withSlug.uid);
       expect((await Blog().findOrFail('slug', null)).uid, noSlug.uid);
     });
+
+    test('find(5, null) gives a clear error', () async {
+      expect(
+        () => Blog().find(5, null),
+        throwsA(
+          isA<ArgumentError>().having(
+            (ArgumentError e) => '${e.message}',
+            'message',
+            contains('column name'),
+          ),
+        ),
+      );
+      expect(() => Blog().findOrFail(5, null), throwsArgumentError);
+    });
   });
 
   group('Schema fixes |', () {
