@@ -1,5 +1,6 @@
 ## Unreleased
 
+- Fix: `foreignId('x')` now keeps `constrained()` and `references()` after every column modifier, like Laravel. Before, `foreignId('user_id').unique().constrained()` (and the same after `defaultTo()`, `change()`, `primary()` and others) did not compile.
 - Fix: `forceFill()` now throws an `ArgumentError` when it can not set a column: a value of the wrong type, or a model with no `setColumnValue()` (a hand-written model, or one made by an old dox_builder). Before, it skipped them with no error, so nothing was set. An ISO date text now sets a `DateTime` field. A key that is not a column is still skipped.
 - Fix: a soft delete now sets `updated_at` too, like Laravel, when the model has timestamps. This is true for `blog.delete()` and for a query like `Blog().where('id', 1).delete()`. `blog.delete()` now also sets the `deletedAt` and `updatedAt` fields of the model, and `blog.restore()` sets `deletedAt` back to null. Before, the fields kept their old values.
 - Fix: `find(5, null)` and `findOrFail(5, null)` now throw an `ArgumentError` that says the first arg must be a column name. Before, they threw a type error with no clear message. `find(5)` and `find('email', null)` work as before.

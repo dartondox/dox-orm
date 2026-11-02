@@ -156,7 +156,8 @@ class ForeignIdColumnDefinition extends ColumnDefinition {
 
   ForeignIdColumnDefinition(this._table, super.name, super.type);
 
-  /// these return this type, so `.nullable().constrained()` works
+  /// every modifier returns this type, so `.nullable().constrained()`
+  /// and `.unique().constrained()` work, like Laravel
   @override
   ForeignIdColumnDefinition nullable([bool value = true]) {
     super.nullable(value);
@@ -178,6 +179,54 @@ class ForeignIdColumnDefinition extends ColumnDefinition {
   @override
   ForeignIdColumnDefinition after(String column) {
     super.after(column);
+    return this;
+  }
+
+  @override
+  ForeignIdColumnDefinition defaultTo(Object? value) {
+    super.defaultTo(value);
+    return this;
+  }
+
+  @override
+  ForeignIdColumnDefinition withDefault(Object? value) => defaultTo(value);
+
+  @override
+  ForeignIdColumnDefinition defaultRaw(String sql) {
+    super.defaultRaw(sql);
+    return this;
+  }
+
+  @override
+  ForeignIdColumnDefinition useCurrent() => defaultRaw('CURRENT_TIMESTAMP');
+
+  @override
+  ForeignIdColumnDefinition useCurrentOnUpdate() {
+    super.useCurrentOnUpdate();
+    return this;
+  }
+
+  @override
+  ForeignIdColumnDefinition unique() {
+    super.unique();
+    return this;
+  }
+
+  @override
+  ForeignIdColumnDefinition primary() {
+    super.primary();
+    return this;
+  }
+
+  @override
+  ForeignIdColumnDefinition unsigned() {
+    super.unsigned();
+    return this;
+  }
+
+  @override
+  ForeignIdColumnDefinition change() {
+    super.change();
     return this;
   }
 
