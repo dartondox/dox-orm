@@ -322,6 +322,40 @@ void main() async {
       rows = await notNull().having('slug', null).get();
       expect(rows.map((dynamic r) => r['slug']), <String?>[null]);
     });
+
+    test('restore on a query restores the matching rows', () async {
+      for (String s in <String>['old', 'old', 'new']) {
+        await (Blog()
+              ..title = s
+              ..description = s
+              ..status = s)
+            .save();
+      }
+      await Blog().where('status', 'old').delete();
+      await Blog().where('status', 'new').delete();
+      expect(await Blog().get(), isEmpty);
+
+      Blog query = Blog().where('status', 'old') as Blog;
+      expect(await query.restore(), true);
+      List<Blog> blogs = await Blog().get();
+      expect(blogs.map((Blog b) => b.status), <String>['old', 'old']);
+
+      /// nothing left to restore
+      query = Blog().where('status', 'none') as Blog;
+      expect(await query.restore(), false);
+
+      /// no where: it does not restore every row
+      expect(() => Blog().restore(), throwsStateError);
+      expect(await Blog().get(), hasLength(2));
+
+      /// restore on a loaded model still works
+      Blog? trashed = await Blog()
+          .withTrash()
+          .where('status', 'new')
+          .getFirst();
+      expect(await trashed!.restore(), true);
+      expect(await Blog().get(), hasLength(3));
+    });
   });
 
   group('Schema fixes |', () {
