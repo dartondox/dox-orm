@@ -145,10 +145,6 @@ class _Pivot {
   /// not saved
   bool skipped = false;
 
-  /// every id of the last [records], before repeated ids were dropped.
-  /// [ManyToManyWrites.sync] keeps a stored row that any of them matches.
-  List<dynamic> given = <dynamic>[];
-
   _Pivot({
     required this.owner,
     required this.ownerKey,
@@ -188,12 +184,22 @@ class _Pivot {
   /// the pivot rows of the owner
   Future<List<Map<String, dynamic>>> rows() => query().get();
 
-  /// the row of [rows] whose related id is [id] by value, see [sameId]
-  Map<String, dynamic>? match(List<Map<String, dynamic>> rows, dynamic id) {
+  /// the row of [rows] whose related id is [id] by value, see [sameId].
+  /// A row that is not in [used] wins, so on a text key `[1, '01']` finds
+  /// the rows `'1'` and `'01'`. A row of [used] is only returned when no
+  /// other row matches.
+  Map<String, dynamic>? match(
+    List<Map<String, dynamic>> rows,
+    dynamic id,
+    Set<Map<String, dynamic>> used,
+  ) {
+    Map<String, dynamic>? found;
     for (Map<String, dynamic> r in rows) {
-      if (sameId(r[relatedForeignKey], id)) return r;
+      if (!sameId(r[relatedForeignKey], id)) continue;
+      if (!used.contains(r)) return r;
+      found ??= r;
     }
-    return null;
+    return found;
   }
 
   /// [ids] as `id => extra pivot values`. [ids] can be one id, one
@@ -203,9 +209,10 @@ class _Pivot {
   /// a key) is skipped. A whole number like `2.0` becomes the int `2`,
   /// because Postgres does not take `2.0` for an integer column. Any other
   /// double (`1.5`, NaN, infinity, or past ±2^53 like `1e20`) throws an
-  /// [ArgumentError]. An id
-  /// is kept once, by [sameId]: `[1, '01', 1.0]` gives one id, the first
-  /// one wins. Every write uses these ids, so they all match the same way.
+  /// [ArgumentError]. An id that is the same in Dart (`1` and `1.0`) is
+  /// kept once, the first one wins. Ids that only match by [sameId], like
+  /// `1` and `'01'`, are all kept here, because on a text key they are
+  /// two rows. [unique] drops them for an insert.
   Map<dynamic, Map<String, dynamic>> records(
     dynamic ids, [
     Map<String, dynamic> values = const <String, dynamic>{},
@@ -222,20 +229,30 @@ class _Pivot {
       ];
     }
     skipped = false;
-    given = <dynamic>[];
     Map<dynamic, Map<String, dynamic>> out = <dynamic, Map<String, dynamic>>{};
     for (MapEntry<dynamic, dynamic> e in entries) {
       dynamic id = _id(e.key);
       if (id == null) skipped = true;
-      if (id != null) given.add(id);
-      // ponytail: O(n²) scan of the ids of one call, fine for normal lists
-      if (id == null || _hasSame(out.keys, id)) continue;
+      if (id == null || out.containsKey(id)) continue;
       out[id] = <String, dynamic>{
         ...values,
 
         /// an untyped map literal like `{1: {'role': 'x'}}` works too
         ...?(e.value as Map<dynamic, dynamic>?)?.cast<String, dynamic>(),
       };
+    }
+    return out;
+  }
+
+  /// [records] without an id that is the same, by [sameId], as an id
+  /// before it. So `attach([1, '01'])` adds one row. The first one wins.
+  Map<dynamic, Map<String, dynamic>> unique(
+    Map<dynamic, Map<String, dynamic>> records,
+  ) {
+    Map<dynamic, Map<String, dynamic>> out = <dynamic, Map<String, dynamic>>{};
+    for (MapEntry<dynamic, Map<String, dynamic>> e in records.entries) {
+      // ponytail: O(n²) scan of the ids of one call, fine for normal lists
+      if (!_hasSame(out.keys, e.key)) out[e.key] = e.value;
     }
     return out;
   }
@@ -379,7 +396,7 @@ extension ManyToManyWrites<T> on Model<T> {
     Map<String, dynamic> values = const <String, dynamic>{},
   ]) async {
     _Pivot p = _pivotOf(relation);
-    await p.insert(p.records(ids, values));
+    await p.insert(p.unique(p.records(ids, values)));
   }
 
   /// deletes the pivot rows of [ids]. With no [ids] it deletes every
@@ -424,17 +441,19 @@ extension ManyToManyWrites<T> on Model<T> {
     }
     List<Map<String, dynamic>> current = await p.rows();
 
-    /// match by value, so `'01'` keeps the row of `1`. Two texts like
-    /// `'1'` and `'01'` are two ids, but they can match the same row of a
-    /// number key. A row is used once, the first id wins.
+    /// match by value, so `'01'` keeps the row of `1`. Each id finds its
+    /// own row when it can, so on a text key `[1, '01']` sets the values
+    /// of the rows `'1'` and `'01'`. When two ids match one row (`'1'` and
+    /// `'01'` on a number key), the first one wins. An id with no row is
+    /// added once, by [sameId].
     Map<dynamic, Map<String, dynamic>> attach =
         <dynamic, Map<String, dynamic>>{};
     List<dynamic> updated = <dynamic>[];
     Set<Map<String, dynamic>> used = Set<Map<String, dynamic>>.identity();
     for (MapEntry<dynamic, Map<String, dynamic>> e in records.entries) {
-      Map<String, dynamic>? row = p.match(current, e.key);
+      Map<String, dynamic>? row = p.match(current, e.key, used);
       if (row == null) {
-        attach[e.key] = e.value;
+        if (!_hasSame(attach.keys, e.key)) attach[e.key] = e.value;
         continue;
       }
       if (!used.add(row)) continue;
@@ -444,13 +463,12 @@ extension ManyToManyWrites<T> on Model<T> {
       }
     }
 
-    /// a stored row is deleted only when no given id matches it. The
-    /// list before repeated ids were dropped is used, so on a text key
-    /// `[1, '01']` keeps the rows `'1'` and `'01'`.
+    /// a stored row is deleted only when no given id matches it, so a
+    /// row is never deleted by a near match of another id
     List<dynamic> detached = <dynamic>[
       if (detaching)
         for (Map<String, dynamic> r in current)
-          if (!_hasSame(p.given, r[p.relatedForeignKey]))
+          if (!_hasSame(records.keys, r[p.relatedForeignKey]))
             r[p.relatedForeignKey],
     ];
 
@@ -480,13 +498,15 @@ extension ManyToManyWrites<T> on Model<T> {
     Map<dynamic, Map<String, dynamic>> attach =
         <dynamic, Map<String, dynamic>>{};
 
-    /// a row is used once: `['1', '01']` detaches the row of `1` once
+    /// each id finds its own row when it can (on a text key `[1, '01']`
+    /// detaches `'1'` and `'01'`). A row is used once, so on a number key
+    /// `['1', '01']` detaches the row of `1` once and adds nothing.
     Set<Map<String, dynamic>> used = Set<Map<String, dynamic>>.identity();
     for (MapEntry<dynamic, Map<String, dynamic>> e in records.entries) {
-      Map<String, dynamic>? row = p.match(current, e.key);
+      Map<String, dynamic>? row = p.match(current, e.key, used);
       if (row != null) {
         if (used.add(row)) detached.add(row[p.relatedForeignKey]);
-      } else {
+      } else if (!_hasSame(attach.keys, e.key)) {
         attach[e.key] = e.value;
       }
     }

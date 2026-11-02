@@ -100,6 +100,28 @@ void main() async {
       }
     });
 
+    test(
+      "detach, toggle and updateExistingPivot with [1, '01'] find both rows",
+      () async {
+        await artist.attach('songs', <dynamic>['1', '01']);
+        expect(
+          await artist.updateExistingPivot(
+            'songs',
+            <dynamic>[1, '01'],
+            <String, dynamic>{'role': 'u'},
+          ),
+          2,
+        );
+        PivotSyncResult r = await artist.toggle('songs', <dynamic>['01', 1]);
+        expect(r.detached, unorderedEquals(<dynamic>['01', 1]));
+        expect(await keys(), <String>[]);
+
+        await artist.attach('songs', <dynamic>['1', '01']);
+        expect(await artist.detach('songs', <dynamic>[1, '01']), 2);
+        expect(await keys(), <String>[]);
+      },
+    );
+
     test('other text keys match by the exact text', () async {
       await artist.attach('songs', <dynamic>['a1b2', 'A1B2', 'abc']);
       PivotSyncResult r = await artist.sync('songs', <dynamic>['abc', 'x']);
