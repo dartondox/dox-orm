@@ -504,7 +504,19 @@ class Model<T> extends QueryBuilder<T> {
   /// Blog? blog = await Blog().withTrash().find(1);
   /// await blog?.restore();
   /// ```
+  ///
+  /// On a query, like `Blog().where('status', 'old').restore()`, it
+  /// restores every soft deleted row of the query, with no events, like
+  /// Laravel. It returns true when it changed a row. With no where(), it
+  /// throws a [StateError], so it can not restore every row by mistake.
   Future<bool> restore() async {
+    if (tempIdValue == null) {
+      _needKeyOrWhere('restore');
+      withTrash();
+
+      /// super.update(): deleted_at is not checked against fillable
+      return await super.update(<String, dynamic>{'deleted_at': null}) > 0;
+    }
     bool events = _eventsOn;
     if (events) {
       try {

@@ -80,8 +80,7 @@ mixin Limit<T> implements SharedMixin<T> {
   /// List blogs = await Blog().take(10).get()
   /// ```
   QueryBuilder<T> take(int value) {
-    _limit = value;
-    return queryBuilder;
+    return limit(value);
   }
 
   /// limit query
@@ -89,7 +88,9 @@ mixin Limit<T> implements SharedMixin<T> {
   /// ```
   /// List blogs = await Blog().limit(10).get()
   /// ```
+  /// A negative [value] is ignored, like Laravel.
   QueryBuilder<T> limit(int value) {
+    if (value < 0) return queryBuilder;
     _limit = value;
     return queryBuilder;
   }

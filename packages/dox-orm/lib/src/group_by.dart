@@ -1,5 +1,6 @@
 import 'query_builder.dart';
 import 'shared_mixin.dart';
+import 'where.dart';
 
 mixin GroupBy<T> implements SharedMixin<T> {
   String _groupBy = '';
@@ -45,7 +46,8 @@ mixin GroupBy<T> implements SharedMixin<T> {
 
   /// having condition, it goes after GROUP BY. like where(), it takes
   /// a column and a value, or a column, an operator and a value.
-  /// the value is a param, the column is quoted.
+  /// the value is a param, the column is quoted. a null value becomes
+  /// `IS NULL` with `=` (or 2 args) and `IS NOT NULL` with `!=` or `<>`.
   ///
   /// ```
   /// await QueryBuilder.table('blog')
@@ -56,7 +58,11 @@ mixin GroupBy<T> implements SharedMixin<T> {
   /// ```
   /// ponytail: postgres does not allow a select alias (like `total`) in
   /// HAVING. use havingRaw('count(*) > @n', {'n': 1}) for aggregates.
-  QueryBuilder<T> having(String column, dynamic arg2, [dynamic arg3]) {
+  QueryBuilder<T> having(
+    String column,
+    dynamic arg2, [
+    dynamic arg3 = missingArg,
+  ]) {
     return _having('AND', column, arg2, arg3);
   }
 
@@ -70,7 +76,11 @@ mixin GroupBy<T> implements SharedMixin<T> {
   ///     .orHaving('status', 'draft')
   ///     .get();
   /// ```
-  QueryBuilder<T> orHaving(String column, dynamic arg2, [dynamic arg3]) {
+  QueryBuilder<T> orHaving(
+    String column,
+    dynamic arg2, [
+    dynamic arg3 = missingArg,
+  ]) {
     return _having('OR', column, arg2, arg3);
   }
 
@@ -105,19 +115,19 @@ mixin GroupBy<T> implements SharedMixin<T> {
   QueryBuilder<T> _having(
     String type,
     String column,
-    dynamic arg2, [
+    dynamic arg2,
     dynamic arg3,
-  ]) {
+  ) {
     String condition = '=';
     dynamic value = arg2;
-    if (arg3 != null) {
+    if (!identical(arg3, missingArg)) {
       condition = helper.operator(arg2);
       value = arg3;
     }
 
-    /// `= null` never match in sql, use IS NULL
+    /// `= null` never match in sql, use IS NULL (or IS NOT NULL)
     if (value == null) {
-      return _havingRaw(type, '${helper.wrap(column)} IS NULL');
+      return _havingRaw(type, '${helper.wrap(column)} ${nullCheck(condition)}');
     }
     String key = helper.parseColumnKey(column);
     addSubstitutionValues(key, value);
