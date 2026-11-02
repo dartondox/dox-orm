@@ -1,3 +1,7 @@
+## Unreleased
+
+- New public library `package:dox_migration/env.dart`. It exports `loadEnv`, the `.env` reader of the Migrator. The dox CLI uses it to read `APP_ENV`.
+
 ## 3.0.1
 
 - Version bump only, to match dox_orm.
