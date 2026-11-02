@@ -3,7 +3,8 @@
 CI job. Run from the repo root.
 
 Env: ENTRIES: JSON list of entries (ci/test-matrix.json). Each entry runs
-     ci/run-tests.sh with its `packages` and `vars`.
+     ci/run-tests.sh with its `packages`, `vars` and `files` (optional:
+     only these test files).
      MAX_PARALLEL: how many entries run at the same time. Default: the
      number of CPUs.
 
@@ -51,6 +52,7 @@ def start(entry, index):
         os.environ,
         TEST_PACKAGES=entry['packages'],
         TEST_VARS=entry.get('vars', ''),
+        TEST_FILES=entry.get('files', ''),
         # run-tests.sh prints ::group:: lines. Groups can not be nested,
         # so this file prints the whole log in one group.
         NO_LOG_GROUPS='1',

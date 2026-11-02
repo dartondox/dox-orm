@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:dox_orm/dox_orm.dart';
 
+import '../drivers/db_driver.dart' show SqlParam, findSqlParams;
+import '../get.dart' show selectSql;
 import '../limit.dart';
 import '../relationships/keys.dart';
 
@@ -51,6 +53,31 @@ class QueryBuilderHelper<T> {
     return '@$keyPrefix${name}_p${_paramCount++}';
   }
 
+  /// number of sub queries added by subQuery()
+  int _subCount = 0;
+
+  /// the select sql of [sub], to put in this query as a sub query.
+  /// its param keys get a new prefix, so they can not clash with the keys
+  /// of this query. its values are added to this query.
+  String subQuery(QueryBuilder<dynamic> sub) {
+    String sql = selectSql(sub);
+    Map<String, dynamic> values = sub.substitutionValues;
+    String prefix = '${keyPrefix}dox_sub${_subCount++}_';
+    bool mysql = queryBuilder.dbDriver.getName() == Driver.mysql;
+    StringBuffer out = StringBuffer();
+    int copied = 0;
+    for (SqlParam p in findSqlParams(sql, mysql: mysql)) {
+      if (!values.containsKey(p.name)) continue;
+      out
+        ..write(sql.substring(copied, p.start))
+        ..write('@$prefix${p.name}');
+      copied = p.end;
+      queryBuilder.addSubstitutionValues('$prefix${p.name}', values[p.name]);
+    }
+    out.write(sql.substring(copied));
+    return out.toString();
+  }
+
   /// quote a table or column name for the current driver
   String wrap(String value) => queryBuilder.dbDriver.wrap(value);
 
@@ -71,6 +98,9 @@ class QueryBuilderHelper<T> {
     query += queryBuilder.getWhereQuery();
     query += queryBuilder.getGroupByQuery();
     if (!isCountQuery) {
+      /// orderBy and limit come after the unions: they sort and cut the
+      /// whole result
+      query += queryBuilder.getUnionQuery();
       query += queryBuilder.getOrderByQuery();
       query += queryBuilder.getLimitQuery();
     } else {

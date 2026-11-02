@@ -33,6 +33,7 @@ jobs:
   # The entries are in ci/test-matrix.json. Each entry has:
   # - packages: folders under packages/ to run `dart test` in.
   # - vars: env vars for `dart test`.
+  # - files: optional, only these test files.
   # - locks: what the entry can not share with another entry at the same
   #   time, like one database. See ci/run-group.py.
   # The Postgres and MySQL drivers are native (dox_postgres_native and

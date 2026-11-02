@@ -162,16 +162,7 @@ mixin Insert<T> implements SharedMixin<T> {
     if (uniqueBy.isEmpty) {
       throw ArgumentError.value(uniqueBy, 'uniqueBy', 'must not be empty');
     }
-    List<String> columns = rows.first.keys.toList();
-    for (Map<String, dynamic> row in rows) {
-      if (row.length != columns.length || !columns.every(row.containsKey)) {
-        throw ArgumentError.value(
-          rows,
-          'rows',
-          'every row must have the same keys',
-        );
-      }
-    }
+    List<String> columns = _sameKeys(rows);
     List<String> update =
         updateColumns ??
         <String>[
@@ -180,20 +171,8 @@ mixin Insert<T> implements SharedMixin<T> {
         ];
 
     DBDriver driver = dbDriver;
-    List<String> values = <String>[];
-    for (Map<String, dynamic> row in rows) {
-      List<String> keys = <String>[];
-      for (String column in columns) {
-        String key = helper.parseColumnKey(column);
-        keys.add(key);
-        addSubstitutionValues(key, driver.columnValue(row[column]));
-      }
-      values.add("(${keys.join(',')})");
-    }
-
     String q =
-        "INSERT INTO ${helper.wrap(tableName)} "
-        "(${columns.map(helper.wrap).join(',')}) VALUES ${values.join(',')}";
+        "INSERT INTO ${helper.wrap(tableName)} ${_values(rows, columns)}";
     if (driver.getName() == Driver.mysql) {
       /// ponytail: `VALUES(col)` is old in MySQL 8 but works there and in
       /// MariaDB. The new `AS alias` form does not work in MariaDB.
@@ -215,6 +194,74 @@ mixin Insert<T> implements SharedMixin<T> {
     int count = await runAffectingQuery(queryBuilder, q);
     resetSubstitutionValues();
     return count;
+  }
+
+  /// insert [rows], and skip a row that the database refuses, like a row
+  /// with a duplicate primary key or unique value. It returns how many
+  /// rows were inserted.
+  ///
+  /// ```
+  /// int added = await QueryBuilder.table('tag').insertOrIgnore([
+  ///   {'name': 'dart'},
+  ///   {'name': 'php'},
+  /// ]);
+  /// ```
+  ///
+  /// Every row must have the same keys.
+  /// - Postgres: `ON CONFLICT DO NOTHING`. It skips rows that clash with
+  ///   a primary key, a unique index or an exclusion constraint.
+  /// - SQLite: `INSERT OR IGNORE`. It also skips rows that break a
+  ///   `NOT NULL` or `CHECK` rule.
+  /// - MySQL and MariaDB: `INSERT IGNORE`. It also changes some bad
+  ///   values to a warning, like text that is too long (it is cut).
+  Future<int> insertOrIgnore(List<Map<String, dynamic>> rows) async {
+    if (rows.isEmpty) return 0;
+    String values = _values(rows, _sameKeys(rows));
+    String table = helper.wrap(tableName);
+    String q;
+    switch (dbDriver.getName()) {
+      case Driver.postgres:
+        q = "INSERT INTO $table $values ON CONFLICT DO NOTHING";
+      case Driver.mysql:
+        q = "INSERT IGNORE INTO $table $values";
+      case Driver.sqlite:
+        q = "INSERT OR IGNORE INTO $table $values";
+    }
+    int count = await runAffectingQuery(queryBuilder, q);
+    resetSubstitutionValues();
+    return count;
+  }
+
+  /// the keys of the first row. it throws an [ArgumentError] when a row
+  /// has other keys.
+  static List<String> _sameKeys(List<Map<String, dynamic>> rows) {
+    List<String> columns = rows.first.keys.toList();
+    for (Map<String, dynamic> row in rows) {
+      if (row.length != columns.length || !columns.every(row.containsKey)) {
+        throw ArgumentError.value(
+          rows,
+          'rows',
+          'every row must have the same keys',
+        );
+      }
+    }
+    return columns;
+  }
+
+  /// `(columns) VALUES (...),(...)` of [rows], with bound values
+  String _values(List<Map<String, dynamic>> rows, List<String> columns) {
+    DBDriver driver = dbDriver;
+    List<String> values = <String>[];
+    for (Map<String, dynamic> row in rows) {
+      List<String> keys = <String>[];
+      for (String column in columns) {
+        String key = helper.parseColumnKey(column);
+        keys.add(key);
+        addSubstitutionValues(key, driver.columnValue(row[column]));
+      }
+      values.add("(${keys.join(',')})");
+    }
+    return "(${columns.map(helper.wrap).join(',')}) VALUES ${values.join(',')}";
   }
 
   /// the first row that matches all [where] pairs, or a new row made from

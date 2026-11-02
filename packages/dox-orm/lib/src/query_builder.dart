@@ -11,6 +11,7 @@ import 'order_by.dart';
 import 'raw.dart';
 import 'select.dart';
 import 'truncate.dart';
+import 'union.dart';
 import 'update.dart';
 import 'utils/helper.dart';
 import 'utils/logger.dart';
@@ -32,7 +33,8 @@ class QueryBuilder<T>
         Truncate<T>,
         Delete<T>,
         Count<T>,
-        WithCount<T> {
+        WithCount<T>,
+        Union<T> {
   /// made on the first use, a find() with a cached sql makes it once
   Map<String, dynamic>? _substitutionValues;
 

@@ -195,6 +195,21 @@ void main() async {
       expect(await QueryBuilder.table('users').where('is_admin', 1).count(), 1);
     });
 
+    test('insertOrIgnore on a model drops keys that are not allowed', () async {
+      Map<String, dynamic> body = <String, dynamic>{'name': 'a', 'is_admin': 1};
+      expect(
+        await FillableUser().insertOrIgnore(<Map<String, dynamic>>[body, body]),
+        2,
+      );
+      List<Map<String, dynamic>> rows = await QueryBuilder.table('users').get();
+      expect(rows.map((Map<String, dynamic> r) => r['is_admin']), <int>[0, 0]);
+      await expectLater(
+        DefaultUser().insertOrIgnore(<Map<String, dynamic>>[body]),
+        throwsA(isA<MassAssignmentException>()),
+      );
+      expect(await QueryBuilder.table('users').count(), 2);
+    });
+
     test('insertMultiple on a model drops keys that are not allowed', () async {
       Map<String, dynamic> body = <String, dynamic>{'name': 'a', 'is_admin': 1};
       await FillableUser().insertMultiple(<Map<String, dynamic>>[body, body]);
