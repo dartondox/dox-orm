@@ -90,6 +90,58 @@ void main() async {
       expect(s.updatedAt!.isAfter(old), isTrue);
       expect((await modifiedAt(s.id))!.isAfter(old), isTrue);
     });
+
+    test('restore sets the custom column', () async {
+      Stamped s = await oldRow();
+      await s.delete();
+      await QueryBuilder.table('stamped')
+          .where('id', s.id)
+          .update(<String, dynamic>{'modified_at': old});
+      s = (await Stamped().withTrash().find(s.id))!;
+      expect(s.updatedAt!.year, 2020);
+
+      expect(await s.restore(), isTrue);
+      expect(s.deletedAt, isNull);
+      expect(s.updatedAt!.isAfter(old), isTrue);
+      expect((await modifiedAt(s.id))!.isAfter(old), isTrue);
+
+      /// a query restore sets it too
+      await s.delete();
+      await QueryBuilder.table('stamped')
+          .where('id', s.id)
+          .update(<String, dynamic>{'modified_at': old});
+      expect(await (Stamped().where('id', s.id) as Stamped).restore(), isTrue);
+      expect((await modifiedAt(s.id))!.isAfter(old), isTrue);
+    });
+  });
+
+  group('Restore without timestamps |', () {
+    setUp(() async {
+      /// no updated_at column
+      await Schema().create('plain_trash', (Table table) {
+        table.id();
+        table.string('title');
+        table.softDeletes();
+      });
+    });
+
+    tearDown(() async {
+      await Schema().dropIfExists('plain_trash');
+    });
+
+    test('restore does not set updated_at', () async {
+      PlainTrash p = await PlainTrash().create(<String, dynamic>{'title': 'a'});
+      await p.delete();
+      p = (await PlainTrash().withTrash().find(p.id))!;
+      expect(await p.restore(), isTrue);
+      expect(p.updatedAt, isNull);
+      await p.delete();
+      expect(
+        await (PlainTrash().where('id', p.id) as PlainTrash).restore(),
+        isTrue,
+      );
+      expect(await PlainTrash().find(p.id), isNotNull);
+    });
   });
 }
 
@@ -158,6 +210,59 @@ class Stamped extends Model<Stamped> with SoftDeletes<Stamped> {
       case 'deleted_at':
         if (value is! DateTime?) return false;
         deletedAt = value;
+        return true;
+    }
+    return false;
+  }
+}
+
+/// a soft delete model with no timestamps
+class PlainTrash extends Model<PlainTrash> with SoftDeletes<PlainTrash> {
+  /// test model: takes every key of a map
+  @override
+  List<String> get guarded => const <String>[];
+  int? get id => tempIdValue as int?;
+  set id(int? value) => tempIdValue = value;
+
+  String? title;
+
+  @override
+  String get tableName => 'plain_trash';
+
+  @override
+  Map<String, dynamic> get timestampsColumn => const <String, dynamic>{
+    'created_at': null,
+    'updated_at': null,
+  };
+
+  @override
+  List<String> get tableColumns => const <String>['id', 'title', 'deleted_at'];
+
+  @override
+  PlainTrash fromMap(Map<String, dynamic> m) => PlainTrash()
+    ..id = m['id'] as int?
+    ..title = m['title'] as String?;
+
+  @override
+  Map<String, dynamic> columnsToMap() => <String, dynamic>{
+    'id': id,
+    'title': title,
+  };
+
+  @override
+  Map<String, dynamic> convertToMap(dynamic i) =>
+      (i as PlainTrash).columnsToMap();
+
+  @override
+  bool setColumnValue(String column, dynamic value) {
+    switch (column) {
+      case 'id':
+        if (value is! int?) return false;
+        id = value;
+        return true;
+      case 'title':
+        if (value is! String?) return false;
+        title = value;
         return true;
     }
     return false;

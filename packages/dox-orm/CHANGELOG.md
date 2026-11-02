@@ -2,6 +2,7 @@
 
 - Fix: many to many `sync()` and `toggle()` now report in `detached` only the rows that the database really deleted. Before, on a column that compares text without case, with stored `'ABC'` and `'abc'`, `sync(['ABC'])` reported `detached: ['abc']`, but the database kept both rows.
 - Fix: many to many `sync()` and `toggle()` now check all text ids that match a stored row only by case in one query. Before, they ran one query for each id.
+- Fix: `restore()` now sets `updated_at` too, like Laravel, when the model has timestamps. It uses a custom `updated_at` column, and sets nothing when the model has no timestamps. This is true for `blog.restore()` (it also sets the `updatedAt` field) and for a query like `Blog().where('id', 1).restore()`.
 - Fix: `blog.update({...})` on a model from the table now sets the `updatedAt` field when the model has a custom `updated_at` column. Before, only the database row got the new time.
 - Fix: `foreignId('x')` now keeps `constrained()` and `references()` after every column modifier, like Laravel. Before, `foreignId('user_id').unique().constrained()` (and the same after `defaultTo()`, `change()`, `primary()` and others) did not compile.
 - Fix: `forceFill()` now throws an `ArgumentError` when it can not set a column: a value of the wrong type, or a model with no `setColumnValue()` (a hand-written model, or one made by an old dox_builder). Before, it skipped them with no error, so nothing was set. An ISO date text now sets a `DateTime` field. A key that is not a column is still skipped.

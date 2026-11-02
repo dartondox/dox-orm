@@ -353,6 +353,13 @@ class Model<T> extends QueryBuilder<T> {
     return <String, dynamic>{'deleted_at': time, ?updatedAtColumn: time};
   }
 
+  /// the values of a restore: deleted_at null, and updated_at when the
+  /// model has timestamps, like Laravel
+  Map<String, dynamic> _restoreValues() {
+    String? updatedAtColumn = timestampsColumn['updated_at'];
+    return <String, dynamic>{'deleted_at': null, ?updatedAtColumn: now()};
+  }
+
   /// set the fields of a soft delete or restore: the deletedAt field (by
   /// [setColumnValue]) and updatedAt
   void _setSoftDeleteFields(Map<String, dynamic> values) {
@@ -607,7 +614,7 @@ class Model<T> extends QueryBuilder<T> {
       whereNotNull('${tableAlias ?? tableName}.deleted_at');
 
       /// super.update(): deleted_at is not checked against fillable
-      return await super.update(<String, dynamic>{'deleted_at': null}) > 0;
+      return await super.update(_restoreValues()) > 0;
     }
     bool events = _eventsOn;
     if (events) {
@@ -617,7 +624,7 @@ class Model<T> extends QueryBuilder<T> {
         return false;
       }
     }
-    Map<String, dynamic> values = <String, dynamic>{'deleted_at': null};
+    Map<String, dynamic> values = _restoreValues();
     await _thisRecord().update(values);
     _setSoftDeleteFields(values);
     if (events) await _fire(ModelEvent.restored);
