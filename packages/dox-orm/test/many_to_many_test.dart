@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:dox_orm/dox_orm.dart';
+import 'package:dox_orm/src/relationships/pivot_ids.dart';
 import 'package:test/test.dart';
 
 import 'connection.dart';
@@ -301,6 +304,183 @@ void main() async {
         expect(rows.length, 2);
       });
 
+      test('every write matches ids the same way', () async {
+        Future<int> rowCount() async => (await QueryBuilder.table(
+          'artist_song',
+        ).where('artist_id', artist.id).get()).length;
+
+        /// attach keeps one of `1`, `'01'` and `1.0`
+        await artist.attach('songs', <dynamic>[1, '01', 1.0, 2.0]);
+        expect(await rowCount(), 2);
+        expect(await songIds(), <int>[1, 2]);
+
+        /// a whole double works on every database, Postgres too
+        expect(
+          await artist.updateExistingPivot(
+            'songs',
+            <dynamic>[2.0],
+            <String, dynamic>{'role': 'bass'},
+          ),
+          1,
+        );
+        expect(await artist.detach('songs', <dynamic>[2.0]), 1);
+        expect(await songIds(), <int>[1]);
+        expect(await artist.detach('songs', <dynamic>['01']), 1);
+        expect(await songIds(), <int>[]);
+
+        /// a whole double is an int in the result. A text id stays text
+        /// unless it is the plain text of an int, so `'01'` stays `'01'`
+        /// (it could be a text key)
+        PivotSyncResult r = await artist.sync('songs', <dynamic>['01', 2.0]);
+        expect(r.attached, <dynamic>['01', 2]);
+        expect(await songIds(), <int>[1, 2]);
+
+        /// a stored number key matches a text of the same number
+        r = await artist.toggle('songs', <dynamic>['03', '02']);
+        expect(r.attached, <dynamic>['03']);
+        expect(r.detached, <int>[2]);
+        expect(await songIds(), <int>[1, 3]);
+      });
+
+      test('a number text is song 1 on a number key', () async {
+        for (String text in <String>[
+          '+1',
+          '1.0',
+          '1.',
+          '1e0',
+          '1E0',
+          '0x1',
+          ' 01 ',
+        ]) {
+          await artist.detach('songs');
+          await artist.attach('songs', 1, <String, dynamic>{'role': 'bass'});
+
+          /// sync keeps the row and its role
+          PivotSyncResult r = await artist.sync('songs', <dynamic>[text]);
+          expect(r.attached, isEmpty, reason: text);
+          expect(r.detached, isEmpty, reason: text);
+          List<Map<String, dynamic>> rows = await QueryBuilder.table(
+            'artist_song',
+          ).where('artist_id', artist.id).get();
+          expect(rows.single['role'], 'bass', reason: text);
+
+          /// attach with the same id keeps one id
+          await artist.detach('songs');
+          await artist.attach('songs', <dynamic>[1, text]);
+          expect(await songIds(), <int>[1], reason: text);
+
+          /// toggle removes the link
+          r = await artist.toggle('songs', <dynamic>[text]);
+          expect(r.detached, <int>[1], reason: text);
+          expect(await songIds(), <int>[], reason: text);
+
+          /// a second sync and syncWithoutDetaching keep one row
+          await artist.attach('songs', 1);
+          await artist.sync('songs', <dynamic>[text]);
+          r = await artist.syncWithoutDetaching('songs', <dynamic>[text]);
+          expect(r.attached, isEmpty, reason: text);
+          expect(await songIds(), <int>[1], reason: text);
+        }
+
+        /// detach sends the text as it is, and the database reads it.
+        /// Each database reads other texts, so this checks '+1' only.
+        expect(await artist.detach('songs', <dynamic>['+1']), 1);
+        expect(await songIds(), <int>[]);
+      });
+
+      test('a bool id is 1 or 0, like the databases', () async {
+        await artist.attach('songs', 1, <String, dynamic>{'role': 'bass'});
+        PivotSyncResult r = await artist.sync('songs', true);
+        expect(r.attached, isEmpty);
+        expect(r.detached, isEmpty);
+        List<Map<String, dynamic>> rows = await QueryBuilder.table(
+          'artist_song',
+        ).where('artist_id', artist.id).get();
+        expect(rows.single['role'], 'bass');
+
+        r = await artist.toggle('songs', true);
+        expect(r.detached, <int>[1]);
+        expect(await songIds(), <int>[]);
+
+        await artist.attach('songs', <dynamic>[true, 1]);
+        expect(await songIds(), <int>[1]);
+        expect(await artist.detach('songs', true), 1);
+        expect(await songIds(), <int>[]);
+      });
+
+      test('a BigInt id is an int, another type throws', () async {
+        await artist.attach('songs', 1, <String, dynamic>{'role': 'bass'});
+        PivotSyncResult r = await artist.sync('songs', BigInt.one);
+        expect(r.attached, isEmpty);
+        expect(r.detached, isEmpty);
+        expect(await songIds(), <int>[1]);
+
+        r = await artist.toggle('songs', BigInt.one);
+        expect(r.detached, <int>[1]);
+        expect(await songIds(), <int>[]);
+
+        for (dynamic id in <dynamic>[
+          BigInt.parse('9223372036854775808'),
+          Uri.parse('7'),
+        ]) {
+          await expectLater(
+            artist.sync('songs', <dynamic>[id]),
+            throwsArgumentError,
+          );
+          await expectLater(
+            artist.attach('songs', <dynamic>[id]),
+            throwsArgumentError,
+          );
+        }
+        expect(await songIds(), <int>[]);
+      });
+
+      test('toggle detaches a row once', () async {
+        await artist.attach('songs', 1);
+        PivotSyncResult r = await artist.toggle('songs', <dynamic>['1', '01']);
+        expect(r.detached, <int>[1]);
+        expect(r.attached, isEmpty);
+        expect(await songIds(), <int>[]);
+      });
+
+      test(
+        'a stored 1.5 keeps its link on SQLite',
+        () async {
+          /// SQLite keeps the text '1.5' as 1.5 in an integer column
+          await QueryBuilder.table(
+            'artist_song',
+          ).insert(<String, dynamic>{'artist_id': artist.id, 'song_id': '1.5'});
+          PivotSyncResult r = await artist.sync('songs', <dynamic>['1.5']);
+          expect(r.attached, isEmpty);
+          expect(r.detached, isEmpty);
+        },
+        skip: Platform.environment['DRIVER'] == 'sqlite'
+            ? false
+            : 'only SQLite keeps 1.5 in an integer column',
+      );
+
+      test('a number id with spaces is the same id', () async {
+        await artist.attach('songs', <dynamic>[1, 3]);
+        await artist.updateExistingPivot('songs', 3, <String, dynamic>{
+          'role': 'bass',
+        });
+
+        /// sync keeps the row of 3 and its role
+        PivotSyncResult r = await artist.sync('songs', <dynamic>[1, ' 3 ']);
+        expect(r.attached, isEmpty);
+        expect(r.detached, isEmpty);
+        List<Map<String, dynamic>> rows = await QueryBuilder.table(
+          'artist_song',
+        ).where('artist_id', artist.id).where('song_id', 3).get();
+        expect(rows.single['role'], 'bass');
+
+        /// toggle removes the link, it does not add a second row
+        r = await artist.toggle('songs', <dynamic>[' 1']);
+        expect(r.detached, <int>[1]);
+        expect(r.attached, isEmpty);
+        expect(await songIds(), <int>[3]);
+      });
+
       test('detach(null) deletes nothing, detach() deletes all', () async {
         await artist.attach('songs', <int>[1, 2]);
         expect(await artist.detach('songs', null), 0);
@@ -425,6 +605,94 @@ void main() async {
       test('errors', () async {
         expect(() => artist.attach('nope', 1), throwsA(isA<ArgumentError>()));
         expect(() => Artist().attach('songs', 1), throwsA(isA<StateError>()));
+      });
+    });
+
+    test('a double that is not a whole number id throws', () async {
+      Artist artist = await Artist().create(<String, dynamic>{'name': 'A'});
+      await artist.attach('songs', 1);
+      for (dynamic id in <dynamic>[1.5, double.nan, double.infinity, 1e20]) {
+        await expectLater(
+          artist.attach('songs', <dynamic>[id]),
+          throwsA(isA<ArgumentError>()),
+        );
+        await expectLater(
+          artist.sync('songs', <dynamic>[id]),
+          throwsA(isA<ArgumentError>()),
+        );
+        await expectLater(
+          artist.detach('songs', <dynamic>[id]),
+          throwsA(isA<ArgumentError>()),
+        );
+      }
+
+      /// nothing changed
+      List<Map<String, dynamic>> rows = await QueryBuilder.table('artist_song')
+          .get();
+      expect(rows.map((Map<String, dynamic> r) => r['song_id']), <int>[1]);
+    });
+
+    group('pivot ids |', () {
+      test('intId', () {
+        expect(intId(1), 1);
+        expect(intId(1.0), 1);
+        expect(intId('01'), 1);
+        expect(intId(' 1 '), 1);
+        expect(intId('+1'), 1);
+        expect(intId('1.0'), 1);
+        expect(intId('-2.00'), -2);
+        expect(intId('1.'), 1);
+        expect(intId('.0'), 0);
+        expect(intId('1e0'), 1);
+        expect(intId('1E0'), 1);
+        expect(intId('0x1'), 1);
+        expect(intId('1.01'), isNull);
+        expect(intId('9007199254740993.0'), 9007199254740993);
+        expect(() => intId('9007199254740993.'), throwsArgumentError);
+        expect(() => intId('9.007199254740993e15'), throwsArgumentError);
+        expect(intId('9007199254740993.', strict: false), isNull);
+        expect(sameId(1, '12345678901234567890'), isFalse);
+        expect(intId('9007199254740993'), 9007199254740993);
+        expect(() => intId('9007199254740993.5'), throwsArgumentError);
+        expect(() => intId('1e20'), throwsArgumentError);
+        expect(() => intId('99999999999999999999'), throwsArgumentError);
+        expect(intId('++1'), isNull);
+        expect(intId('Infinity'), isNull);
+        expect(intId('NaN'), isNull);
+        expect(intId(9007199254740992.0), 9007199254740992);
+        expect(intId(18014398509481984.0), isNull);
+        expect(intId('-2'), -2);
+        expect(intId('1.5'), isNull);
+        expect(intId(1.5), isNull);
+        expect(intId('abc'), isNull);
+        expect(intId(''), isNull);
+
+        /// out of the int range: not clamped to the max int
+        expect(intId(1e20), isNull);
+        expect(intId(-1e20), isNull);
+        expect(intId(double.infinity), isNull);
+        expect(intId(double.nan), isNull);
+        expect(sameId(1e20, 9223372036854775807), isFalse);
+        expect(sameId(9007199254740992.0, 9007199254740993), isFalse);
+      });
+
+      test('sameId', () {
+        expect(sameId(1, '01'), isTrue);
+        expect(sameId(' 1', 1.0), isTrue);
+        expect(sameId(1, ' 01 '), isTrue);
+
+        /// two texts only match by the exact text: it can be a text key
+        expect(sameId('007', '7'), isFalse);
+        expect(sameId('1', '01'), isFalse);
+        expect(sameId('1.5', 1.5), isTrue);
+        expect(sameId('1.5', 1), isFalse);
+        expect(sameId(1, '1e0'), isTrue);
+        expect(sameId(1, '0x1'), isTrue);
+        expect(sameId('1', '1e0'), isFalse);
+        expect(sameId(1, 'NaN'), isFalse);
+        expect(sameId(double.nan, 'NaN'), isFalse);
+        expect(sameId('abc', 'abc'), isTrue);
+        expect(sameId('abc', 'ABC'), isFalse);
       });
     });
   });
