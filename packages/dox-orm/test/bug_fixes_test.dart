@@ -286,6 +286,19 @@ void main() async {
       expect(groups.length, 2);
       expect(total, 2);
     });
+
+    test('a negative limit is ignored', () async {
+      for (String s in <String>['a', 'b', 'c']) {
+        await (Blog()
+              ..title = s
+              ..description = s)
+            .save();
+      }
+      expect(Blog().limit(-1).toSql(), isNot(contains('LIMIT')));
+      expect(await Blog().limit(-1).get(), hasLength(3));
+      expect(await Blog().limit(2).limit(-1).get(), hasLength(2));
+      expect(await Blog().take(-1).get(), hasLength(3));
+    });
   });
 
   group('Schema fixes |', () {
