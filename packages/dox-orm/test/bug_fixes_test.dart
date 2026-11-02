@@ -357,6 +357,36 @@ void main() async {
       expect(await Blog().get(), hasLength(3));
     });
 
+    test('soft delete sets updated_at and deletedAt', () async {
+      Blog blog = Blog()
+        ..title = 'a'
+        ..description = 'a';
+      await blog.save();
+      DateTime old = DateTime.utc(2020);
+      await Blog().where('uid', blog.uid).update(<String, dynamic>{
+        'updated_at': old,
+      });
+      blog = (await Blog().find(blog.uid))!;
+
+      await blog.delete();
+      expect(blog.deletedAt, isNotNull);
+      expect(blog.updatedAt!.isAfter(old), isTrue);
+      Blog? row = await Blog().withTrash().find(blog.uid);
+      expect(row!.deletedAt, isNotNull);
+      expect(row.updatedAt!.isAfter(old), isTrue);
+
+      await blog.restore();
+      expect(blog.deletedAt, isNull);
+
+      /// a query soft delete sets updated_at too
+      await Blog().where('uid', blog.uid).update(<String, dynamic>{
+        'updated_at': old,
+      });
+      await Blog().where('uid', blog.uid).delete();
+      row = await Blog().withTrash().find(blog.uid);
+      expect(row!.updatedAt!.isAfter(old), isTrue);
+    });
+
     test('restore on a query skips rows that are not deleted', () async {
       await (Blog()
             ..title = 'a'

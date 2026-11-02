@@ -321,7 +321,7 @@ class Model<T> extends QueryBuilder<T> {
       _needKeyOrWhere('delete');
       if (isSoftDeletes) {
         /// super.update(): deleted_at is not checked against fillable
-        return await super.update(<String, dynamic>{'deleted_at': now()});
+        return await super.update(_softDeleteValues());
       }
       return await super.delete();
     }
@@ -333,11 +333,34 @@ class Model<T> extends QueryBuilder<T> {
         return 0;
       }
     }
-    int count = isSoftDeletes
-        ? await _thisRecord().update(<String, dynamic>{'deleted_at': now()})
-        : await _thisRecord().forceDelete();
+    int count;
+    if (isSoftDeletes) {
+      Map<String, dynamic> values = _softDeleteValues();
+      count = await _thisRecord().update(values);
+      if (count > 0) _setSoftDeleteFields(values);
+    } else {
+      count = await _thisRecord().forceDelete();
+    }
     if (events) await _fire(ModelEvent.deleted);
     return count;
+  }
+
+  /// the values of a soft delete: deleted_at, and updated_at when the
+  /// model has timestamps, like Laravel
+  Map<String, dynamic> _softDeleteValues() {
+    DateTime time = now();
+    String? updatedAtColumn = timestampsColumn['updated_at'];
+    return <String, dynamic>{'deleted_at': time, ?updatedAtColumn: time};
+  }
+
+  /// set the fields of a soft delete or restore: the deletedAt field (by
+  /// [setColumnValue]) and updatedAt
+  void _setSoftDeleteFields(Map<String, dynamic> values) {
+    String? updatedAtColumn = timestampsColumn['updated_at'];
+    if (values.containsKey(updatedAtColumn)) {
+      updatedAt = values[updatedAtColumn];
+    }
+    _setSavedColumns(values);
   }
 
   /// delete this record from the table, also when soft deleted.
@@ -579,7 +602,9 @@ class Model<T> extends QueryBuilder<T> {
         return false;
       }
     }
-    await _thisRecord().update(<String, dynamic>{'deleted_at': null});
+    Map<String, dynamic> values = <String, dynamic>{'deleted_at': null};
+    await _thisRecord().update(values);
+    _setSoftDeleteFields(values);
     if (events) await _fire(ModelEvent.restored);
     return true;
   }
