@@ -753,7 +753,14 @@ mixin Get<T> implements SharedMixin<T> {
   /// ```
   /// List<Blog> blogs = await Blog().all();
   /// ```
+  ///
+  /// It throws a [StateError] on a union() query, it would read only the
+  /// first query. Use get() then.
   Future<List<T>> all() async {
+    if (queryBuilder.hasUnion) {
+      throw StateError('all() can not be used on a union() query. Use get().');
+    }
+
     /// the where part adds soft deletes and global scopes
     String query =
         "SELECT $selectQueryString FROM ${queryBuilder.getFromQuery()}"

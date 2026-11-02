@@ -99,11 +99,14 @@ void main() async {
     });
 
     test('update and delete use the global scope', () async {
-      await ScopedPost().update(<String, dynamic>{'views': 0});
+      /// a where is needed, or the write throws (it would change every row)
+      await ScopedPost().where('views', '>=', 0).update(<String, dynamic>{
+        'views': 0,
+      });
       ScopedPost? hidden = await ScopedPost().withoutGlobalScopes().find(3);
       expect(hidden?.views, 30);
 
-      await ScopedPost().delete();
+      await ScopedPost().where('views', '>=', 0).delete();
       expect(await ScopedPost().withoutGlobalScopes().count(), 1);
     });
 

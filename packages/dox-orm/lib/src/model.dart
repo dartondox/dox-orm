@@ -276,10 +276,16 @@ class Model<T> extends QueryBuilder<T> {
   /// It fires deleting and deleted. A query delete like
   /// `Blog().where('id', 1).delete()` fires no events, and returns how
   /// many rows it deleted.
+  ///
+  /// On a model with no primary key value (never saved, or read without
+  /// the key) and no where(), it throws a [StateError], so it can not
+  /// delete every row by mistake. forceDelete(), update(), increment()
+  /// and decrement() do the same.
   @override
   Future<int> delete() async {
     /// a query delete: Blog().where('id', 1).delete()
     if (tempIdValue == null) {
+      _needKeyOrWhere('delete');
       if (isSoftDeletes) {
         /// super.update(): deleted_at is not checked against fillable
         return await super.update(<String, dynamic>{'deleted_at': now()});
@@ -313,6 +319,7 @@ class Model<T> extends QueryBuilder<T> {
   @override
   Future<int> forceDelete() async {
     if (tempIdValue == null) {
+      _needKeyOrWhere('forceDelete');
       return await super.forceDelete();
     }
     bool events = _eventsOn;
@@ -388,6 +395,7 @@ class Model<T> extends QueryBuilder<T> {
     if (tempIdValue != null) {
       return _stepThisRecord(column, amount, extra, up);
     }
+    _needKeyOrWhere(up ? 'increment' : 'decrement');
     return up
         ? super.increment(column, amount, extra)
         : super.decrement(column, amount, extra);
@@ -448,6 +456,19 @@ class Model<T> extends QueryBuilder<T> {
   /// generator work as before. increment() and decrement() on a model
   /// use it.
   bool setColumnValue(String column, dynamic value) => false;
+
+  /// a write on a model with no primary key value (never saved, or read
+  /// without the key) and no where() would change every row of the
+  /// table. It throws a [StateError] then, and runs no query.
+  /// onlyTrashed() counts as a where: it picks only the soft deleted rows.
+  void _needKeyOrWhere(String method) {
+    if (exists || !(hasWhere || trashedOnly)) {
+      throw StateError(
+        '$method() needs a model with a primary key value. Save the '
+        'model first, or use where() to $method rows by a query.',
+      );
+    }
+  }
 
   /// a new query on this row only, so the query state of this model
   /// (where, values of an old query) is not used again
@@ -517,12 +538,7 @@ class Model<T> extends QueryBuilder<T> {
     column ??= updatedAtColumn;
     if (column == null) return 0;
     if (tempIdValue == null) {
-      if (exists || !hasWhere) {
-        throw StateError(
-          'touch() needs a model with a primary key value. Save the '
-          'model first, or use where() to touch rows by a query.',
-        );
-      }
+      _needKeyOrWhere('touch');
       return await super.touch(column);
     }
     bool events = _eventsOn;
@@ -1045,8 +1061,13 @@ class Model<T> extends QueryBuilder<T> {
   /// ```
   /// int count = await User().where('id', 1).update(req.body);
   /// ```
+  ///
+  /// It needs a where(). Without one, or on a model from the table, it
+  /// throws a [StateError], so it can not change every row by mistake.
+  /// Use save() to update one model.
   @override
   Future<int> update(Map<String, dynamic> data) async {
+    _needKeyOrWhere('update');
     data = _onlyFillable(data);
     if (data.isEmpty) return 0;
     return await super.update(data);
