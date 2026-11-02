@@ -210,7 +210,7 @@ void main() async {
 
       /// the database keeps 'abc' with 'ABC', so it is not detached
       expect(r.detached, isEmpty);
-      expect(await keys(), isNotEmpty);
+      expect(await keys(), <String>['ABC', 'abc']);
     });
 
     test('a case-only match of many ids reads the rows once', () async {
