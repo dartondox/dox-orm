@@ -357,6 +357,19 @@ void main() async {
       expect(await Blog().get(), hasLength(3));
     });
 
+    test('restore on a query skips rows that are not deleted', () async {
+      await (Blog()
+            ..title = 'a'
+            ..description = 'a'
+            ..status = 'live')
+          .save();
+
+      /// the row matches, but it is not deleted: nothing to restore, on
+      /// every database (MySQL counts only changed rows)
+      Blog query = Blog().where('status', 'live') as Blog;
+      expect(await query.restore(), false);
+    });
+
     test('find with a column and null finds IS NULL', () async {
       Blog withSlug = Blog()
         ..title = 'a'

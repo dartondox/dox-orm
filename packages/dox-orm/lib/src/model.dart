@@ -564,6 +564,10 @@ class Model<T> extends QueryBuilder<T> {
       _needKeyOrWhere('restore');
       withTrash();
 
+      /// only deleted rows, so every database counts the same rows (MySQL
+      /// counts only changed rows, Postgres and SQLite every matched row)
+      whereNotNull('${tableAlias ?? tableName}.deleted_at');
+
       /// super.update(): deleted_at is not checked against fillable
       return await super.update(<String, dynamic>{'deleted_at': null}) > 0;
     }
