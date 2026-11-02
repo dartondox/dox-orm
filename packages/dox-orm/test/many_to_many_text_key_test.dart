@@ -234,6 +234,34 @@ void main() async {
       expect(selects.count, 2);
     });
 
+    test('the database, not Dart, decides which ids are the same', () async {
+      /// SQLite NOCASE folds only ASCII: 'Äb' is 'ÄB', 'äb' is not.
+      /// MySQL and MariaDB see all three as one.
+      bool sqlite = driver() == 'sqlite';
+      await artist.attach('songs', <dynamic>['ÄB']);
+      PivotSyncResult r = await artist.sync('songs', <dynamic>['Äb', 'äb']);
+      expect(r.attached, sqlite ? <String>['äb'] : isEmpty);
+      expect(r.detached, isEmpty);
+      expect(await keys(), sqlite ? <String>['ÄB', 'äb'] : <String>['ÄB']);
+
+      await QueryBuilder.table('artist_song').where('id', '>', 0).delete();
+      await artist.attach('songs', <dynamic>['ÄB']);
+      r = await artist.toggle('songs', <dynamic>['Äb', 'äb']);
+      expect(r.attached, sqlite ? <String>['äb'] : isEmpty);
+      expect(r.detached, <String>['ÄB']);
+      expect(await keys(), sqlite ? <String>['äb'] : isEmpty);
+    });
+
+    test('toggle reports every row the database deleted', () async {
+      await artist.attach('songs', <dynamic>['ABC']);
+      await artist.attach('songs', <dynamic>['abc']);
+
+      /// the database deletes 'abc' with 'ABC', so both are reported
+      PivotSyncResult r = await artist.toggle('songs', <dynamic>['ABC']);
+      expect(r.detached, unorderedEquals(<String>['ABC', 'abc']));
+      expect(await keys(), isEmpty);
+    });
+
     test(
       'an accent-only match keeps the row',
       () async {

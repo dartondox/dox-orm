@@ -354,12 +354,10 @@ class _Pivot {
   ///
   /// The ids were not matched in Dart. A column that compares without
   /// case or without end spaces (MySQL, MariaDB, SQLite `COLLATE NOCASE`)
-  /// can still see `'abc'` as the row `'ABC'`. One query reads the rows
-  /// of all ids, then each row goes to the ids it matches without case
-  /// and end spaces, like the database. A row with the exact text of an
-  /// id goes only to that id. Only when a row matches no id that way
-  /// (like `'é'` and `'e'` on an accent-insensitive column) are the ids
-  /// with no row checked one by one.
+  /// can still see `'abc'` as the row `'ABC'`. The database does the
+  /// compare, not Dart: one query has a part for each id
+  /// (`WHERE key = id`, joined by `UNION ALL`), and each part tells
+  /// which id found the row.
   Future<Map<dynamic, List<Map<String, dynamic>>>> sameInDatabase(
     List<Map<String, dynamic>> current,
     Iterable<dynamic> ids,
@@ -371,31 +369,35 @@ class _Pivot {
         if (id is String) id,
     ];
     if (current.isEmpty || texts.isEmpty) return out;
-    Set<String> found = await _stored(
-      query().whereIn(relatedForeignKey, texts),
-    );
-    if (found.isEmpty) return out;
-    Set<String> given = texts.toSet();
-    Set<String> claimed = <String>{};
-    List<String> left = <String>[];
-    for (String id in texts) {
-      Set<String> mine = <String>{
-        for (String s in found)
-          if (s == id || (!given.contains(s) && _fold(s) == _fold(id))) s,
-      };
-      claimed.addAll(mine);
-      if (!_put(out, current, id, mine)) left.add(id);
-    }
-    if (claimed.length == found.length) return out;
-    for (String id in left) {
-      _put(
-        out,
-        current,
-        id,
-        await _stored(query().where(relatedForeignKey, id)),
+
+    // ponytail: 100 ids per query. SQLite allows 500 parts in one UNION.
+    for (int start = 0; start < texts.length; start += 100) {
+      List<String> part = texts.sublist(
+        start,
+        start + 100 < texts.length ? start + 100 : texts.length,
       );
+      QueryBuilder<Map<String, dynamic>> q = _rowsOf(part[0], 0);
+      for (int i = 1; i < part.length; i++) {
+        q.unionAll(_rowsOf(part[i], i));
+      }
+      Map<int, Set<String>> found = <int, Set<String>>{};
+      for (Map<String, dynamic> r in await q.get()) {
+        found
+            .putIfAbsent(int.parse('${r['dox_i']}'), () => <String>{})
+            .add('${r[relatedForeignKey]}');
+      }
+      for (int i = 0; i < part.length; i++) {
+        _put(out, current, part[i], found[i] ?? const <String>{});
+      }
     }
     return out;
+  }
+
+  /// the rows that the database sees as the id [id], with the number [i]
+  /// as the column `dox_i`
+  QueryBuilder<Map<String, dynamic>> _rowsOf(String id, int i) {
+    QueryBuilder<Map<String, dynamic>> q = query().where(relatedForeignKey, id);
+    return q.selectRaw('${q.helper.wrap(relatedForeignKey)}, $i AS dox_i');
   }
 
   /// the related key texts of the rows of [q]
@@ -406,8 +408,8 @@ class _Pivot {
   }
 
   /// puts the rows of [current] whose key text is in [found] into [out]
-  /// as the rows of [id]. It returns false when there is no such row.
-  bool _put(
+  /// as the rows of [id], when there is such a row
+  void _put(
     Map<dynamic, List<Map<String, dynamic>>> out,
     List<Map<String, dynamic>> current,
     String id,
@@ -418,11 +420,7 @@ class _Pivot {
         if (found.contains('${c[relatedForeignKey]}')) c,
     ];
     if (rows.isNotEmpty) out[id] = rows;
-    return rows.isNotEmpty;
   }
-
-  /// a text like a column that compares without case and end spaces
-  static String _fold(String s) => s.toLowerCase().trimRight();
 
   /// sets [values] on the pivot rows of [ids]
   Future<int> update(List<dynamic> ids, Map<String, dynamic> values) async {
