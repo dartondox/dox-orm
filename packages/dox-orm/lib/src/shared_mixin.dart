@@ -16,6 +16,7 @@ abstract class SharedMixin<T> {
   String? tableAlias;
   bool isSoftDeletes = false;
   bool withTrashed = false;
+  bool trashedOnly = false;
   String? connection;
 
   void addSubstitutionValues(String key, dynamic value);

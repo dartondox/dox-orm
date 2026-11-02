@@ -166,6 +166,9 @@ class QueryBuilderHelper<T> {
         : getMapResult(queryResult);
     List<String> preloads = self.customPreloadList;
     List<String> aggregateKeys = queryBuilder.aggregateKeys;
+    Set<String> existsKeys = aggregateKeys.isEmpty
+        ? const <String>{}
+        : queryBuilder.existsKeys;
     List<T> ret = <T>[];
 
     /// a many to many query: each row keeps the pivot settings
@@ -181,7 +184,13 @@ class QueryBuilderHelper<T> {
         res.preload(preload);
       }
       for (String key in aggregateKeys) {
-        res.setAggregate(key, e[key]);
+        dynamic value = e[key];
+
+        /// mysql and sqlite give 1 or 0 for EXISTS
+        if (existsKeys.contains(key)) {
+          value = value == true || value == 1 || value == '1';
+        }
+        res.setAggregate(key, value);
       }
       ret.add(res as T);
     }
