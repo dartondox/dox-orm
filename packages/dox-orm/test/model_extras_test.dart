@@ -10,6 +10,14 @@ import 'models/blog/blog.model.dart';
 import 'models/blog_info/blog_info.model.dart';
 import 'models/song/song.model.dart';
 
+/// keeps every logged query
+class _Queries implements QueryPrinter {
+  final List<String> queries = <String>[];
+
+  @override
+  void log(String query, List<String> params) => queries.add(query);
+}
+
 class _Recorder extends ModelObserver<Blog> {
   final List<ModelEvent> events = <ModelEvent>[];
 
@@ -413,6 +421,61 @@ void main() async {
       await walk(
         () => Blog().where('uid', '>', 1).orderBy('status').orderBy('slug'),
         <String>['t3', 't5', 't7', 't2', 't4', 't6'],
+      );
+    });
+
+    test('a key column of a joined table still adds the key', () async {
+      await Schema().dropIfExists('tag');
+      await Schema().create('tag', (Table table) {
+        table.integer('uid');
+        table.integer('blog_id');
+      });
+      QueryPrinter old = SqlQueryBuilder().printer;
+      _Queries log = _Queries();
+      SqlQueryBuilder().printer = log;
+      try {
+        await Blog()
+            .debug(true)
+            .select('blog.*')
+            .join('tag', 'tag.blog_id', 'blog.uid')
+            .orderBy('tag.uid')
+            .cursorPaginate(perPage: 2);
+      } finally {
+        SqlQueryBuilder().printer = old;
+        await Schema().dropIfExists('tag');
+      }
+      expect(
+        log.queries.last.replaceAll(RegExp('["`]'), ''),
+        contains('tag.uid asc,blog.uid asc'),
+      );
+    });
+
+    test('a null in the first row of a page does not give page 1', () async {
+      /// the first rows of page 1 and page 2 have a null slug
+      await Blog().whereIn('uid', <int>[1, 4]).update(<String, dynamic>{
+        'slug': null,
+      });
+      CursorPagination<Blog> p1 = await Blog()
+          .orderBy('uid')
+          .orderBy('slug')
+          .cursorPaginate(perPage: 3);
+      expect(titles(p1.data), <String>['t1', 't2', 't3']);
+
+      /// before, the null did not fit the cursor, so page 1 came back and a
+      /// client looped on it. Now the null gives the clear error of a null
+      /// cursor value.
+      await expectLater(
+        Blog()
+            .orderBy('uid')
+            .orderBy('slug')
+            .cursorPaginate(perPage: 3, cursor: p1.nextCursor),
+        throwsA(
+          isA<StateError>().having(
+            (StateError e) => e.message,
+            'message',
+            contains('never null'),
+          ),
+        ),
       );
     });
 

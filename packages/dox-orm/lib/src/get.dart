@@ -267,9 +267,11 @@ mixin Get<T> implements SharedMixin<T> {
     List<(String, bool)> columns = order.isEmpty
         ? <(String, bool)>[(column ?? primaryKey, dir == 'desc')]
         : <(String, bool)>[...order];
+
+    /// the key of this table only: `author.id` on a join is not it
     bool hasKey = false;
     for ((String, bool) c in columns) {
-      if (_keyOf(c.$1) == _keyOf(primaryKey)) hasKey = true;
+      if (_isOwnKey(c.$1)) hasKey = true;
     }
     if (!hasKey) columns.add((primaryKey, false));
     List<String> names = <String>[for ((String, bool) c in columns) c.$1];
@@ -387,6 +389,16 @@ mixin Get<T> implements SharedMixin<T> {
   /// the column name without the table, like `id` for `blog.id`
   static String _keyOf(String column) => column.split('.').last;
 
+  /// true when [column] is the primary key of this table: `id`,
+  /// `blog.id`, or `alias.id` when the table has an alias
+  bool _isOwnKey(String column) {
+    String key = _keyOf(primaryKey);
+    return column == primaryKey ||
+        column == key ||
+        column == '$tableName.$key' ||
+        (tableAlias != null && column == '$tableAlias.$key');
+  }
+
   /// the kind of a cursor value: n (number), s (text), d (date), or
   /// null when it can not be in a cursor
   static String? _kindOf(dynamic value) {
@@ -397,16 +409,21 @@ mixin Get<T> implements SharedMixin<T> {
   }
 
   /// true when each cursor value has the kind of the same column in the
-  /// rows. no rows: nothing to check.
+  /// rows. no rows: nothing to check. A null in the rows is skipped, so a
+  /// null in the first row does not make a good cursor give page 1 (a
+  /// client would loop on page 1).
   static bool _cursorFits(
     List<dynamic> rows,
     List<(String, bool)> columns,
     List<dynamic> values,
   ) {
-    if (rows.isEmpty) return true;
     for (int i = 0; i < columns.length; i++) {
-      dynamic value = _valueOfRow(rows.first, _keyOf(columns[i].$1));
-      if (_kindOf(value) != _kindOf(values[i])) return false;
+      for (dynamic row in rows) {
+        dynamic value = _valueOfRow(row, _keyOf(columns[i].$1));
+        if (value == null) continue;
+        if (_kindOf(value) != _kindOf(values[i])) return false;
+        break;
+      }
     }
     return true;
   }
