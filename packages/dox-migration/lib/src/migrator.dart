@@ -239,8 +239,11 @@ class Migrator {
     for (Map<String, dynamic> row in rows) {
       String name = row['migration'].toString();
       Object? migration = known[name];
+
+      /// like Laravel: say so, keep its row, and go on with the others
       if (migration == null) {
-        throw MigrationException(name, 'migration file not found');
+        Logger.warn('Migration not found: $name');
+        continue;
       }
       await _runOne(d, name, migration, MigrationType.down, 0);
     }
