@@ -502,8 +502,12 @@ class Model<T> extends QueryBuilder<T> {
   /// save(). It returns 0 when a hook throws [CancelModelEvent]. Use
   /// [touchQuietly] for no events.
   ///
-  /// As a query (also on a new model that has no primary key value) it
+  /// As a query, like `Blog().where('status', 'draft').touch()`, it
   /// changes every row of the query, and fires no events.
+  ///
+  /// On a model that has no primary key value (never saved, or read
+  /// without the key) and no where(), it throws a [StateError], so it
+  /// can not change every row by mistake.
   ///
   /// It returns 0 when the model has no updated_at column and no
   /// [column] is given.
@@ -512,7 +516,15 @@ class Model<T> extends QueryBuilder<T> {
     String? updatedAtColumn = timestampsColumn['updated_at'];
     column ??= updatedAtColumn;
     if (column == null) return 0;
-    if (tempIdValue == null) return await super.touch(column);
+    if (tempIdValue == null) {
+      if (exists || !hasWhere) {
+        throw StateError(
+          'touch() needs a model with a primary key value. Save the '
+          'model first, or use where() to touch rows by a query.',
+        );
+      }
+      return await super.touch(column);
+    }
     bool events = _eventsOn;
     if (events) {
       try {

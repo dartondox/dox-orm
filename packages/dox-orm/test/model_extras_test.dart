@@ -473,6 +473,20 @@ void main() async {
       expect(recorder.events, isEmpty);
     });
 
+    test('a model with no key value throws, no row changes', () async {
+      DateTime old = DateTime.utc(2020);
+      await Blog().where('uid', '>', 0).update(<String, dynamic>{
+        'updated_at': old,
+      });
+      Blog fresh = Blog()..title = 'new';
+      expect(() => fresh.touch(), throwsStateError);
+      expect(() => fresh.touchQuietly(), throwsStateError);
+      expect(() => Blog().touch(), throwsStateError);
+      Blog noKey = (await Blog().select('title').where('uid', 1).getFirst())!;
+      expect(() => noKey.touch(), throwsStateError);
+      expect(await Blog().where('updated_at', '>', old).count(), 0);
+    });
+
     test('a query touches its rows, and another column', () async {
       DateTime old = DateTime.utc(2020);
       await Blog().where('uid', '>', 0).update(<String, dynamic>{
