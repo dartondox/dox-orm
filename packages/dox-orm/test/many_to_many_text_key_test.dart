@@ -210,6 +210,41 @@ void main() async {
       expect(await keys(), isNotEmpty);
     });
 
+    test('a case-only match of many ids reads the rows once', () async {
+      await artist.attach('songs', <dynamic>['ABC', 'DEF', 'x']);
+      QueryPrinter old = SqlQueryBuilder().printer;
+      _Selects selects = _Selects();
+      SqlQueryBuilder().printer = selects;
+      PivotSyncResult r;
+      try {
+        artist.debug(true);
+        r = await artist.sync('songs', <dynamic>['abc', 'def']);
+      } finally {
+        artist.debug(false);
+        SqlQueryBuilder().printer = old;
+      }
+      expect(r.attached, isEmpty);
+      expect(r.detached, <String>['x']);
+      expect(await keys(), <String>['ABC', 'DEF']);
+
+      /// the pivot rows, then one query for all text ids
+      expect(selects.count, 2);
+    });
+
+    test(
+      'an accent-only match keeps the row',
+      () async {
+        await artist.attach('songs', <dynamic>['é', 'ABC']);
+        PivotSyncResult r = await artist.sync('songs', <dynamic>['e', 'abc']);
+        expect(r.attached, isEmpty);
+        expect(r.detached, isEmpty);
+        expect(await keys(), <String>['ABC', 'é']);
+      },
+      skip: driver() == 'mysql'
+          ? false
+          : 'only MySQL and MariaDB ignore accents',
+    );
+
     test('toggle with the other case removes the row', () async {
       await artist.attach('songs', <dynamic>['ABC']);
       PivotSyncResult r = await artist.toggle('songs', <dynamic>['abc']);
@@ -221,3 +256,13 @@ void main() async {
 }
 
 String driver() => Platform.environment['DRIVER'] ?? 'mysql';
+
+/// counts the logged SELECT queries on the pivot table
+class _Selects implements QueryPrinter {
+  int count = 0;
+
+  @override
+  void log(String query, List<String> params) {
+    if (query.startsWith('SELECT') && query.contains('artist_song')) count++;
+  }
+}
