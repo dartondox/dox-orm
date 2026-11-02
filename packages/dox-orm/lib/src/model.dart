@@ -104,8 +104,11 @@ class Model<T> extends QueryBuilder<T> {
   /// });
   /// ```
   ///
-  /// It uses a [Zone], so it covers every await inside [callback] and
-  /// nothing outside it, also when other requests run at the same time.
+  /// It uses a [Zone], so it covers every await inside [callback]. Other
+  /// requests that run at the same time still use [fillable]. Work that
+  /// starts inside [callback] and finishes later (a timer, a future that
+  /// is not awaited, a stream listener) also runs with the check off, so
+  /// await everything inside [callback].
   static R unguarded<R>(R Function() callback) {
     return runZoned(
       callback,

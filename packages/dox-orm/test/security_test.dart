@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dox_orm/dox_orm.dart';
 import 'package:test/test.dart';
 
@@ -46,6 +48,21 @@ class DefaultUser extends Model<DefaultUser> {
   @override
   Map<String, dynamic> convertToMap(dynamic i) =>
       (i as DefaultUser).columnsToMap();
+
+  @override
+  bool setColumnValue(String column, dynamic value) {
+    switch (column) {
+      case 'name':
+        if (value is! String?) return false;
+        name = value;
+        return true;
+      case 'is_admin':
+        if (value is! int?) return false;
+        isAdmin = value;
+        return true;
+    }
+    return false;
+  }
 }
 
 /// the default user, but it takes `name` from a map
@@ -217,12 +234,12 @@ void main() async {
       expect(await DefaultUser().where('id', kept.id).forceUpdate(body), 1);
       expect(await QueryBuilder.table('users').where('is_admin', 1).count(), 2);
 
-      /// forceFill sets the fields, save() writes them
-      User? user = await FillableUser().find(kept.id);
-      user!.forceFill(<String, dynamic>{'name': 'b', 'nope': 1});
-      expect(user.name, 'b');
+      /// forceFill sets a guarded field, save() writes it
+      DefaultUser? user = await DefaultUser().find(kept.id);
+      user!.forceFill(<String, dynamic>{'is_admin': 3, 'nope': 1});
+      expect(user.isAdmin, 3);
       await user.save();
-      expect((await User().find(kept.id))!.name, 'b');
+      expect((await DefaultUser().find(kept.id))!.isAdmin, 3);
     });
 
     test('Model.unguarded turns fillable off only inside it', () async {
@@ -243,6 +260,29 @@ void main() async {
         DefaultUser().create(body),
         throwsA(isA<MassAssignmentException>()),
       );
+    });
+
+    test('a request at the same time keeps fillable', () async {
+      Map<String, dynamic> body = <String, dynamic>{'name': 'a', 'is_admin': 1};
+      Completer<void> wait = Completer<void>();
+      Completer<void> started = Completer<void>();
+      Future<DefaultUser> inside = Model.unguarded(() async {
+        started.complete();
+        await wait.future;
+        return await DefaultFillableUser().create(body);
+      });
+
+      /// the unguarded callback is waiting now. a static flag would be
+      /// on here, the zone is not.
+      await started.future;
+      expect(Model.isUnguarded, isFalse);
+      DefaultUser outside = await DefaultFillableUser().create(body);
+      await DefaultFillableUser().where('id', outside.id).update(body);
+      wait.complete();
+      DefaultUser forced = await inside;
+
+      expect((await DefaultUser().find(outside.id))!.isAdmin, 0);
+      expect((await DefaultUser().find(forced.id))!.isAdmin, 1);
     });
 
     test('update on a loaded model sets updated_at', () async {
