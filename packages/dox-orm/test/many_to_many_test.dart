@@ -408,6 +408,33 @@ void main() async {
         expect(await songIds(), <int>[]);
       });
 
+      test('a BigInt id is an int, another type throws', () async {
+        await artist.attach('songs', 1, <String, dynamic>{'role': 'bass'});
+        PivotSyncResult r = await artist.sync('songs', BigInt.one);
+        expect(r.attached, isEmpty);
+        expect(r.detached, isEmpty);
+        expect(await songIds(), <int>[1]);
+
+        r = await artist.toggle('songs', BigInt.one);
+        expect(r.detached, <int>[1]);
+        expect(await songIds(), <int>[]);
+
+        for (dynamic id in <dynamic>[
+          BigInt.parse('9223372036854775808'),
+          Uri.parse('7'),
+        ]) {
+          await expectLater(
+            artist.sync('songs', <dynamic>[id]),
+            throwsArgumentError,
+          );
+          await expectLater(
+            artist.attach('songs', <dynamic>[id]),
+            throwsArgumentError,
+          );
+        }
+        expect(await songIds(), <int>[]);
+      });
+
       test('toggle detaches a row once', () async {
         await artist.attach('songs', 1);
         PivotSyncResult r = await artist.toggle('songs', <dynamic>['1', '01']);

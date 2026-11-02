@@ -271,9 +271,19 @@ class _Pivot {
 
     /// like main and the databases: true is 1 and false is 0
     if (id is bool) return id ? 1 : 0;
-    if (id is! double) return id;
-    return intId(id) ??
-        (throw ArgumentError.value(id, 'ids', 'is not a whole number id'));
+    if (id is BigInt) {
+      if (id.isValidInt) return id.toInt();
+      throw ArgumentError.value(id, 'ids', 'does not fit in an int');
+    }
+    if (id is double) {
+      return intId(id) ??
+          (throw ArgumentError.value(id, 'ids', 'is not a whole number id'));
+    }
+    if (id == null || id is int || id is String) return id;
+
+    /// another type would be matched by its toString() on main, and not at
+    /// all here, so it could lose a link
+    throw ArgumentError.value(id, 'ids', 'must be an int, a String or a model');
   }
 
   /// adds a pivot row for each of [records]
