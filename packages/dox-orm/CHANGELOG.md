@@ -1,5 +1,6 @@
 ## Unreleased
 
+- Fix: many to many `sync()` and `toggle()` on a text key no longer lose links when the column compares text without case (MySQL and MariaDB by default, SQLite `COLLATE NOCASE`). Before, with a stored `'ABC'`, `sync(['abc'])` added `'abc'` and then deleted `'ABC'`, and the database deleted both rows. Now an id that the database sees as a stored row keeps that row (`sync`) or removes it (`toggle`), and the delete never removes a row that the database sees as a kept id. The same is true for a UUID in the other case and for an end space on MariaDB.
 - New: `forceCreate()`, `forceUpdate()` and `forceFill()` ignore `fillable` and `guarded`, like Laravel. `User().where('id', 1).forceUpdate({'is_admin': true})` sets a guarded column. `forceFill()` sets the fields of a model and does not save. Do not pass user input to them.
 - New: `Model.unguarded(() async { ... })` turns `fillable` and `guarded` off for every write inside the callback, like Laravel's `Model::unguarded()`. It uses a zone, so other requests that run at the same time still use `fillable`. `Model.isUnguarded` tells if the check is off.
 - Note: a query `update()` on a model still drops the keys that `fillable` does not allow. Laravel's query update does not. Dox keeps the check, so `User().where('id', 1).update(req.body)` stays safe. Use `forceUpdate()` for the Laravel behaviour.
