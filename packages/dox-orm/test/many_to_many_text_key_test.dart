@@ -206,7 +206,10 @@ void main() async {
     test('sync does not delete a row that is the same as a kept row', () async {
       await artist.attach('songs', <dynamic>['ABC']);
       await artist.attach('songs', <dynamic>['abc']);
-      await artist.sync('songs', <dynamic>['ABC']);
+      PivotSyncResult r = await artist.sync('songs', <dynamic>['ABC']);
+
+      /// the database keeps 'abc' with 'ABC', so it is not detached
+      expect(r.detached, isEmpty);
       expect(await keys(), isNotEmpty);
     });
 

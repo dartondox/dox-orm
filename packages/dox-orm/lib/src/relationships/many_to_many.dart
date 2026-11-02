@@ -330,6 +330,24 @@ class _Pivot {
     return await q.delete();
   }
 
+  /// [delete] of the [detached] ids of the rows [current], and returns
+  /// the ids whose row is really gone. A column that compares without
+  /// case keeps `'abc'` when `'ABC'` is kept, so when the database
+  /// deleted another number of rows, the rows are read again.
+  Future<List<dynamic>> deleteDetached(
+    List<Map<String, dynamic>> current,
+    List<dynamic> detached,
+    Iterable<dynamic> keep,
+  ) async {
+    int count = await delete(detached, keep: keep);
+    if (count == detached.length) return detached;
+    Set<String> left = await _stored(query());
+    return <dynamic>[
+      for (Map<String, dynamic> r in current)
+        if (!left.contains('${r[relatedForeignKey]}')) r[relatedForeignKey],
+    ];
+  }
+
   /// the rows of [current] that the database sees as the same as each
   /// text id of [ids], as `id => rows`. An id that the database sees as
   /// no row is not in the map.
@@ -623,13 +641,10 @@ extension ManyToManyWrites<T> on Model<T> {
     /// links. The delete keeps the new and the kept ids, so a database
     /// that sees two ids as one does not delete them.
     await p.insert(attach);
-    await p.delete(
-      detached,
-      keep: <dynamic>[
-        ...attach.keys,
-        for (Map<String, dynamic> r in used) r[p.relatedForeignKey],
-      ],
-    );
+    detached = await p.deleteDetached(current, detached, <dynamic>[
+      ...attach.keys,
+      for (Map<String, dynamic> r in used) r[p.relatedForeignKey],
+    ]);
     return PivotSyncResult(
       attached: _keys(attach.keys),
       detached: _keys(detached),
@@ -680,7 +695,7 @@ extension ManyToManyWrites<T> on Model<T> {
     /// insert first, so a failed insert keeps the old links. The delete
     /// keeps the new ids, see [_Pivot.delete].
     await p.insert(attach);
-    await p.delete(detached, keep: attach.keys);
+    detached = await p.deleteDetached(current, detached, attach.keys);
     return PivotSyncResult(
       attached: _keys(attach.keys),
       detached: _keys(detached),
