@@ -70,11 +70,12 @@ mixin Select<T> implements SharedMixin<T> {
   ///
   /// ```
   /// await Blog().select('title, body').get();
-  /// await Blog().select('title').select('body').get();
   /// await Blog().select(['title', 'body']).get();
   /// await Blog().select(['title', 'body as content']).get();
   /// ```
   /// [selection] can be string or array.
+  /// a second call replaces the columns, like Laravel. so
+  /// `select('title').select('body')` selects only `body`.
   /// column names are quoted. it throws an [ArgumentError] when a part is
   /// not a plain name. use selectRaw() for expressions like `count(*)`.
   QueryBuilder<T> select(dynamic selection) {
