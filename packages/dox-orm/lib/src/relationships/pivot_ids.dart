@@ -3,8 +3,9 @@
 library;
 
 /// [id] as an int when it is a whole number that fits in an int, or a
-/// text of only digits (with an optional `-`, and spaces around it, like
-/// the database reads it), else null. A double out of the int range, like
+/// text of a whole number, else null. The text can have a `+` or `-`, a
+/// `.0` end, and spaces around it, because the databases store `'+1'`,
+/// `'1.0'` and `' 1'` as `1` in a number column. A double out of the int range, like
 /// `1e20`, is not a number id: `toInt()` would clamp it to the max int.
 int? intId(dynamic id) {
   if (id is int) return id;
@@ -16,7 +17,8 @@ int? intId(dynamic id) {
   }
   if (id is String) {
     String text = id.trim();
-    if (_digits.hasMatch(text)) return int.tryParse(text);
+    Match? m = _wholeNumber.firstMatch(text);
+    if (m != null) return int.tryParse(m[1]!);
   }
   return null;
 }
@@ -24,7 +26,8 @@ int? intId(dynamic id) {
 /// 2^63, the first double that does not fit in a 64-bit int
 const double _intLimit = 9223372036854775808.0;
 
-final RegExp _digits = RegExp(r'^-?[0-9]+$');
+/// a whole number text; group 1 is the part before the `.0`
+final RegExp _wholeNumber = RegExp(r'^([+-]?[0-9]+)(\.0+)?$');
 
 /// true when the ids [a] and [b] are the same.
 ///

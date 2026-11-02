@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:dox_orm/dox_orm.dart';
 import 'package:dox_orm/src/relationships/pivot_ids.dart';
 import 'package:test/test.dart';
@@ -340,6 +342,46 @@ void main() async {
         expect(await songIds(), <int>[1, 3]);
       });
 
+      test("'+1' and '1.0' are song 1 on a number key", () async {
+        for (String text in <String>['+1', '1.0']) {
+          await artist.detach('songs');
+          await artist.attach('songs', 1, <String, dynamic>{'role': 'bass'});
+
+          /// sync keeps the row and its role
+          PivotSyncResult r = await artist.sync('songs', <dynamic>[text]);
+          expect(r.attached, isEmpty, reason: text);
+          expect(r.detached, isEmpty, reason: text);
+          List<Map<String, dynamic>> rows = await QueryBuilder.table(
+            'artist_song',
+          ).where('artist_id', artist.id).get();
+          expect(rows.single['role'], 'bass', reason: text);
+
+          /// attach with the same id keeps one id
+          await artist.detach('songs');
+          await artist.attach('songs', <dynamic>[1, text]);
+          expect(await songIds(), <int>[1], reason: text);
+
+          /// toggle removes the link
+          r = await artist.toggle('songs', <dynamic>[text]);
+          expect(r.detached, <int>[1], reason: text);
+          expect(await songIds(), <int>[], reason: text);
+
+          /// detach sends the text as it is, and the database finds the
+          /// row. Postgres does not take '1.0' for an integer column, the
+          /// same as in where(), so it throws there.
+          await artist.attach('songs', 1);
+          if (text == '1.0' && Platform.environment['DRIVER'] == 'postgres') {
+            await expectLater(
+              artist.detach('songs', <dynamic>[text]),
+              throwsA(anything),
+            );
+          } else {
+            expect(await artist.detach('songs', <dynamic>[text]), 1);
+            expect(await songIds(), <int>[], reason: text);
+          }
+        }
+      });
+
       test('a number id with spaces is the same id', () async {
         await artist.attach('songs', <dynamic>[1, 3]);
         await artist.updateExistingPivot('songs', 3, <String, dynamic>{
@@ -519,6 +561,13 @@ void main() async {
         expect(intId(1.0), 1);
         expect(intId('01'), 1);
         expect(intId(' 1 '), 1);
+        expect(intId('+1'), 1);
+        expect(intId('1.0'), 1);
+        expect(intId('-2.00'), -2);
+        expect(intId('1.'), isNull);
+        expect(intId('.0'), isNull);
+        expect(intId('1.01'), isNull);
+        expect(intId('++1'), isNull);
         expect(intId('-2'), -2);
         expect(intId('1.5'), isNull);
         expect(intId(1.5), isNull);
