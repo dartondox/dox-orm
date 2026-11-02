@@ -122,6 +122,17 @@ void main() async {
       },
     );
 
+    test('a long digit text in the table does not stop sync', () async {
+      await artist.attach('songs', <dynamic>['12345678901234567890', '1e20']);
+      PivotSyncResult r = await artist.sync('songs', <dynamic>[1]);
+      expect(r.attached, <int>[1]);
+      expect(
+        r.detached,
+        unorderedEquals(<String>['12345678901234567890', '1e20']),
+      );
+      expect(await keys(), <String>['1']);
+    });
+
     test('other text keys match by the exact text', () async {
       await artist.attach('songs', <dynamic>['a1b2', 'A1B2', 'abc']);
       PivotSyncResult r = await artist.sync('songs', <dynamic>['abc', 'x']);

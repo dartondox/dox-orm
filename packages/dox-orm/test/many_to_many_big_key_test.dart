@@ -51,7 +51,13 @@ void main() async {
     });
 
     test('a text that is not an exact number throws first', () async {
-      for (String text in <String>['9007199254740993.5', '1e20']) {
+      for (String text in <String>[
+        '9007199254740993.5',
+        '9007199254740993.',
+        '9007199254740993e0',
+        '9.007199254740993e15',
+        '1e20',
+      ]) {
         await expectLater(
           artist.sync('songs', <dynamic>[text]),
           throwsA(isA<ArgumentError>()),

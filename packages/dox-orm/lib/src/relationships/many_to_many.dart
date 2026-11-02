@@ -198,7 +198,7 @@ class _Pivot {
     Map<String, dynamic>? found;
     for (Map<String, dynamic> r in rows) {
       dynamic stored = r[relatedForeignKey];
-      if (!sameId(stored, id)) continue;
+      if (!sameId(id, stored)) continue;
       if (used.contains(r)) {
         found ??= r;
       } else if ('$stored' == '$id') {
@@ -268,6 +268,9 @@ class _Pivot {
 
   dynamic _id(dynamic id) {
     if (id is Model) id = relationKey(id, relatedKey);
+
+    /// like main and the databases: true is 1 and false is 0
+    if (id is bool) return id ? 1 : 0;
     if (id is! double) return id;
     return intId(id) ??
         (throw ArgumentError.value(id, 'ids', 'is not a whole number id'));
@@ -457,7 +460,8 @@ extension ManyToManyWrites<T> on Model<T> {
     /// added once, by [sameId].
     Map<dynamic, Map<String, dynamic>> attach =
         <dynamic, Map<String, dynamic>>{};
-    List<dynamic> updated = <dynamic>[];
+    List<MapEntry<dynamic, Map<String, dynamic>>> changes =
+        <MapEntry<dynamic, Map<String, dynamic>>>[];
     Set<Map<String, dynamic>> used = Set<Map<String, dynamic>>.identity();
     for (MapEntry<dynamic, Map<String, dynamic>> e in records.entries) {
       Map<String, dynamic>? row = p.match(current, e.key, used);
@@ -467,8 +471,12 @@ extension ManyToManyWrites<T> on Model<T> {
       }
       if (!used.add(row)) continue;
       if (_changes(row, e.value)) {
-        await p.update(<dynamic>[row[p.relatedForeignKey]], e.value);
-        updated.add(row[p.relatedForeignKey]);
+        changes.add(
+          MapEntry<dynamic, Map<String, dynamic>>(
+            row[p.relatedForeignKey],
+            e.value,
+          ),
+        );
       }
     }
 
@@ -477,9 +485,16 @@ extension ManyToManyWrites<T> on Model<T> {
     List<dynamic> detached = <dynamic>[
       if (detaching)
         for (Map<String, dynamic> r in current)
-          if (!_hasSame(records.keys, r[p.relatedForeignKey]))
+          if (!_hasGiven(records.keys, r[p.relatedForeignKey]))
             r[p.relatedForeignKey],
     ];
+
+    /// every id is checked above, so a bad id throws before any write
+    List<dynamic> updated = <dynamic>[];
+    for (MapEntry<dynamic, Map<String, dynamic>> c in changes) {
+      await p.update(<dynamic>[c.key], c.value);
+      updated.add(c.key);
+    }
 
     /// insert first and delete last, so a failed insert keeps the old
     /// links. The ids of the two never overlap.
@@ -543,7 +558,16 @@ List<dynamic> _keys(Iterable<dynamic> ids) {
 /// the default of [ManyToManyWrites.detach]: no ids given, detach all
 const Object _allIds = Object();
 
-/// true when [ids] has an id that is the same as [id] by value
+/// true when one of the given [ids] matches the stored value [stored]
+bool _hasGiven(Iterable<dynamic> ids, dynamic stored) {
+  for (dynamic i in ids) {
+    if (sameId(i, stored)) return true;
+  }
+  return false;
+}
+
+/// true when [ids] has a given id that is the same as the given [id].
+/// Both can throw, see [intId].
 bool _hasSame(Iterable<dynamic> ids, dynamic id) {
   for (dynamic i in ids) {
     if (sameId(i, id)) return true;

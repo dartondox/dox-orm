@@ -388,6 +388,26 @@ void main() async {
         expect(await songIds(), <int>[]);
       });
 
+      test('a bool id is 1 or 0, like the databases', () async {
+        await artist.attach('songs', 1, <String, dynamic>{'role': 'bass'});
+        PivotSyncResult r = await artist.sync('songs', true);
+        expect(r.attached, isEmpty);
+        expect(r.detached, isEmpty);
+        List<Map<String, dynamic>> rows = await QueryBuilder.table(
+          'artist_song',
+        ).where('artist_id', artist.id).get();
+        expect(rows.single['role'], 'bass');
+
+        r = await artist.toggle('songs', true);
+        expect(r.detached, <int>[1]);
+        expect(await songIds(), <int>[]);
+
+        await artist.attach('songs', <dynamic>[true, 1]);
+        expect(await songIds(), <int>[1]);
+        expect(await artist.detach('songs', true), 1);
+        expect(await songIds(), <int>[]);
+      });
+
       test('toggle detaches a row once', () async {
         await artist.attach('songs', 1);
         PivotSyncResult r = await artist.toggle('songs', <dynamic>['1', '01']);
@@ -601,6 +621,10 @@ void main() async {
         expect(intId('0x1'), 1);
         expect(intId('1.01'), isNull);
         expect(intId('9007199254740993.0'), 9007199254740993);
+        expect(() => intId('9007199254740993.'), throwsArgumentError);
+        expect(() => intId('9.007199254740993e15'), throwsArgumentError);
+        expect(intId('9007199254740993.', strict: false), isNull);
+        expect(sameId(1, '12345678901234567890'), isFalse);
         expect(intId('9007199254740993'), 9007199254740993);
         expect(() => intId('9007199254740993.5'), throwsArgumentError);
         expect(() => intId('1e20'), throwsArgumentError);

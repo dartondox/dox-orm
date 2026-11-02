@@ -19,17 +19,20 @@ final RegExp _zeroEnd = RegExp(r'\.0+$');
 /// takes `'0x1'` as 1, Postgres does too, MariaDB reads it as 0 and MySQL
 /// throws.
 ///
-/// A text that only reads as a double past ±2^53 (like `'1e20'` or
-/// `'9007199254740993.5'`) throws an [ArgumentError]: the double is not
-/// exact, so it could match the wrong row.
-int? intId(dynamic id) {
+/// A text that only reads as a double at or past ±2^53 (like `'1e20'`,
+/// `'9007199254740993.'` or `'9007199254740993.5'`) is not exact, so it
+/// could match the wrong row. With [strict] (a given id) it throws an
+/// [ArgumentError]. Without it (a stored value) it is null, so it does
+/// not match a number.
+int? intId(dynamic id, {bool strict = true}) {
   if (id is int) return id;
   if (id is String) {
     String text = id.trim();
     int? i = int.tryParse(text.replaceFirst(_zeroEnd, ''));
     if (i != null) return i;
     double? d = double.tryParse(text);
-    if (d != null && d.isFinite && d.abs() > _maxSafe) {
+    if (d != null && d.isFinite && d.abs() >= _maxSafe) {
+      if (!strict) return null;
       throw ArgumentError.value(id, 'ids', 'is a number that is not exact');
     }
     id = d;
@@ -40,7 +43,7 @@ int? intId(dynamic id) {
   return null;
 }
 
-/// true when the ids [a] and [b] are the same.
+/// true when the ids [given] and [stored] are the same.
 ///
 /// Two texts only match by the exact text, so `'007'` and `'7'` are two
 /// ids. The ORM does not know the type of the key column, and on a text
@@ -52,11 +55,18 @@ int? intId(dynamic id) {
 /// id. A number key comes back from the database as a number, so this keeps
 /// the stored rows of a number key. A number that is not a whole id,
 /// like a stored `1.5` (SQLite), matches the same finite double.
-bool sameId(dynamic a, dynamic b) {
+///
+/// [stored] is a value read from the table. It never throws (see [intId]),
+/// so a long digit text in a text key column does not stop a write. Only
+/// [given], an id from the call, can throw.
+bool sameId(dynamic given, dynamic stored) {
+  dynamic a = given;
+  dynamic b = stored;
+
   /// no `a == b` first: Dart says `9007199254740993 == 9007199254740992.0`
   if (a is! num && b is! num) return a == b;
   int? x = intId(a);
-  int? y = intId(b);
+  int? y = intId(b, strict: false);
   if (x != null || y != null) return x == y;
   double? c = _double(a);
   double? d = _double(b);
