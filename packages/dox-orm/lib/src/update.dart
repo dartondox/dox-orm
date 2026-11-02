@@ -30,6 +30,15 @@ mixin Update<T> implements SharedMixin<T> {
     return _update(data, const <String>[]);
   }
 
+  /// [update] that ignores the `fillable` and `guarded` of a model.
+  /// On `QueryBuilder.table()` it is the same as [update]. Do not pass
+  /// user input to it.
+  ///
+  /// ```
+  /// await User().where('id', 1).forceUpdate({'is_admin': true});
+  /// ```
+  Future<int> forceUpdate(Map<String, dynamic> data) => update(data);
+
   /// add [amount] to [column] in one query, and set the [extra] columns
   /// too. It returns how many rows changed.
   ///

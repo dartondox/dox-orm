@@ -1,5 +1,9 @@
 ## Unreleased
 
+- New: `forceCreate()`, `forceUpdate()` and `forceFill()` ignore `fillable` and `guarded`, like Laravel. `User().where('id', 1).forceUpdate({'is_admin': true})` sets a guarded column. `forceFill()` sets the fields of a model and does not save. Do not pass user input to them.
+- New: `Model.unguarded(() async { ... })` turns `fillable` and `guarded` off for every write inside the callback, like Laravel's `Model::unguarded()`. It uses a zone, so other requests that run at the same time still use `fillable`. `Model.isUnguarded` tells if the check is off.
+- Note: a query `update()` on a model still drops the keys that `fillable` does not allow. Laravel's query update does not. Dox keeps the check, so `User().where('id', 1).update(req.body)` stays safe. Use `forceUpdate()` for the Laravel behaviour.
+- Fix: `blog.update({...})` on a model from the table now sets `updated_at` (and the `updatedAt` field), like Laravel, when the model has timestamps and the map has no value for it.
 - Fix: `limit()` and `take()` with a negative number are now ignored, like Laravel. Before, `limit(-1)` sent `LIMIT -1`, which is an error on Postgres.
 - Fix: `having('x', '!=', null)` now builds `x IS NOT NULL`, and `having('x', '=', null)` builds `x IS NULL`, like `where()`. Before, a null third arg was read as no arg, so it built `x = '!='`.
 - Fix: `restore()` on a query, like `Blog().withTrash().where('status', 'old').restore()`, now restores every soft deleted row of the query, like Laravel. It fires no events and returns true when it changed a row. Before, it ran `WHERE id IS NULL`, changed nothing and returned true. With no `where()` it throws a `StateError`, like `delete()`, so it can not restore every row by mistake. `restore()` on a loaded model works as before.
