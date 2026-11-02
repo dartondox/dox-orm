@@ -89,8 +89,39 @@ class Model<T> extends QueryBuilder<T> {
   /// ```
   List<String> get guarded => const <String>['*'];
 
+  /// zone key that [unguarded] sets
+  static const Symbol _unguardedKey = #doxOrmUnguarded;
+
+  /// run [callback] with [fillable] and [guarded] turned off for every
+  /// model, like Laravel's `Model::unguarded()`. create(), update(),
+  /// upsert() and the other writes take every key of a map inside it.
+  /// It is not safe with user input.
+  ///
+  /// ```
+  /// await Model.unguarded(() async {
+  ///   await User().create({'name': 'Ann', 'is_admin': true});
+  ///   await User().where('id', 1).update({'is_admin': true});
+  /// });
+  /// ```
+  ///
+  /// It uses a [Zone], so it covers every await inside [callback]. Other
+  /// requests that run at the same time still use [fillable]. Work that
+  /// starts inside [callback] and finishes later (a timer, a future that
+  /// is not awaited, a stream listener) also runs with the check off, so
+  /// await everything inside [callback].
+  static R unguarded<R>(R Function() callback) {
+    return runZoned(
+      callback,
+      zoneValues: <Object?, Object?>{_unguardedKey: true},
+    );
+  }
+
+  /// true inside [unguarded]
+  static bool get isUnguarded => Zone.current[_unguardedKey] == true;
+
   /// [data] without the keys that [fillable] and [guarded] do not allow
   Map<String, dynamic> _onlyFillable(Map<String, dynamic> data) {
+    if (isUnguarded) return data;
     List<String> allowed = fillable;
     List<String> blocked = guarded;
     if (allowed.isEmpty && blocked.isEmpty) return data;
@@ -458,6 +489,25 @@ class Model<T> extends QueryBuilder<T> {
   /// generator work as before. increment() and decrement() on a model
   /// use it.
   bool setColumnValue(String column, dynamic value) => false;
+
+  /// set the fields of [data] (column name => value) and ignore
+  /// [fillable] and [guarded], like Laravel's `forceFill()`. It does not
+  /// save: call save() after it. It returns this model.
+  ///
+  /// ```
+  /// User? user = await User().find(1);
+  /// await user!.forceFill({'is_admin': true}).save();
+  /// ```
+  ///
+  /// It uses [setColumnValue], so a key that is not a column, or a
+  /// value that is not of the field type, is skipped. Do not pass user
+  /// input to it.
+  Model<T> forceFill(Map<String, dynamic> data) {
+    for (MapEntry<String, dynamic> e in data.entries) {
+      setColumnValue(e.key, e.value);
+    }
+    return this;
+  }
 
   /// a write on a model with no primary key value and no where() would
   /// change every row of the table. It throws a [StateError] then, and
@@ -1066,6 +1116,16 @@ class Model<T> extends QueryBuilder<T> {
     };
   }
 
+  /// create() that ignores [fillable] and [guarded], like Laravel's
+  /// `forceCreate()`. Do not pass user input to it.
+  ///
+  /// ```
+  /// User user = await User().forceCreate({'name': 'Ann', 'is_admin': true});
+  /// ```
+  Future<T> forceCreate(Map<String, dynamic> data) {
+    return unguarded(() => create(data));
+  }
+
   /// create a record
   /// ```
   /// Blog blog = await Blog().insert({
@@ -1087,8 +1147,9 @@ class Model<T> extends QueryBuilder<T> {
   ///
   /// On a model from the table (it has a primary key value and no
   /// where()), it changes only that row, like Laravel, and sets the
-  /// fields to the new values. It runs one query and fires no model
-  /// events. Use save() for the events and updated_at.
+  /// fields to the new values. It sets updated_at too, when the model
+  /// has timestamps and [data] has no value for it. It runs one query
+  /// and fires no model events. Use save() for the events.
   ///
   /// ```
   /// User? user = await User().find(1);
@@ -1098,11 +1159,18 @@ class Model<T> extends QueryBuilder<T> {
   /// With no primary key value and no where(), it throws a [StateError],
   /// so it can not change every row by mistake. To change every row on
   /// purpose, use `whereRaw('1 = 1')`.
+  ///
+  /// To set a column that [fillable] does not allow, like `is_admin`,
+  /// use [forceUpdate].
   @override
   Future<int> update(Map<String, dynamic> data) async {
     if (tempIdValue != null && !hasWhere) {
       data = _onlyFillable(data);
       if (data.isEmpty) return 0;
+      String? updatedAtColumn = timestampsColumn['updated_at'];
+      if (updatedAtColumn != null && !data.containsKey(updatedAtColumn)) {
+        data = <String, dynamic>{...data, updatedAtColumn: now()};
+      }
       int count = await _thisRecord().update(data);
       if (count > 0) _setSavedColumns(data);
       return count;
@@ -1111,6 +1179,17 @@ class Model<T> extends QueryBuilder<T> {
     data = _onlyFillable(data);
     if (data.isEmpty) return 0;
     return await super.update(data);
+  }
+
+  /// update() that ignores [fillable] and [guarded]. Laravel's query
+  /// update works like this. Do not pass user input to it.
+  ///
+  /// ```
+  /// await User().where('id', 1).forceUpdate({'is_admin': true});
+  /// ```
+  @override
+  Future<int> forceUpdate(Map<String, dynamic> data) {
+    return unguarded(() => update(data));
   }
 
   /// insert or update many rows in one query, see [QueryBuilder.upsert].
