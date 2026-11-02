@@ -161,6 +161,36 @@ void main() async {
       );
     });
 
+    test('cursorPaginate and chunkById throw on union and fromSub', () async {
+      QueryBuilder<Map<String, dynamic>> union() => users()
+          .select(<String>['id', 'name'])
+          .where('age', 20)
+          .union(users().select(<String>['id', 'name']).where('age', 30));
+      QueryBuilder<Map<String, dynamic>> sub() =>
+          QueryBuilder.table('u').fromSub(users().select('id'), 'u');
+      for (QueryBuilder<Map<String, dynamic>> q
+          in <QueryBuilder<Map<String, dynamic>>>[union(), sub()]) {
+        await expectLater(q.cursorPaginate(perPage: 1), throwsStateError);
+      }
+      for (QueryBuilder<Map<String, dynamic>> q
+          in <QueryBuilder<Map<String, dynamic>>>[union(), sub()]) {
+        await expectLater(q.chunkById(1, _keepGoing), throwsStateError);
+      }
+
+      /// paginate() and chunk() work on a union
+      expect(
+        (await union().orderBy('id').paginate(currentPage: 1, perPage: 1))
+            .total,
+        2,
+      );
+      int seen = 0;
+      await union().chunk(1, (List<Map<String, dynamic>> rows) {
+        seen += rows.length;
+        return true;
+      });
+      expect(seen, 2);
+    });
+
     test('union on three queries, values bound in each part', () async {
       List<String> got = await names(
         users()
@@ -421,6 +451,8 @@ void main() async {
 }
 
 int _same(int value) => value;
+
+bool _keepGoing(List<Map<String, dynamic>> rows) => true;
 
 String _name(Map<String, dynamic> row) => row['name'] as String;
 

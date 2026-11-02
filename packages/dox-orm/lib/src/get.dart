@@ -234,12 +234,15 @@ mixin Get<T> implements SharedMixin<T> {
   /// first page: bad base64 or JSON, made for other columns, or values
   /// that do not fit the columns (checked against the rows, and a
   /// Postgres "data exception" is caught).
+  ///
+  /// It throws a [StateError] on a union() or fromSub() query.
   Future<CursorPagination<T>> cursorPaginate({
     required int perPage,
     String? cursor,
     String? column,
     String direction = 'asc',
   }) async {
+    _checkNoSub('cursorPaginate');
     _checkPerPage(perPage);
     String dir = direction.toLowerCase();
     if (dir != 'asc' && dir != 'desc') {
@@ -610,7 +613,8 @@ mixin Get<T> implements SharedMixin<T> {
   /// by [column] (the primary key by default). it is safe when the
   /// callback changes or deletes rows. the column must be unique, and the
   /// rows must have it (do not leave it out of select()).
-  /// it throws a [StateError] when the query has an orderBy().
+  /// it throws a [StateError] when the query has an orderBy(), and on a
+  /// union() or fromSub() query.
   ///
   /// ```
   /// await User().chunkById(100, (List<User> users) async {
@@ -624,6 +628,7 @@ mixin Get<T> implements SharedMixin<T> {
     FutureOr<bool?> Function(List<T> rows) callback, {
     String? column,
   }) async {
+    _checkNoSub('chunkById');
     _checkChunkSize(size);
     QueryBuilder<T> qb = queryBuilder;
     if (qb.getOrderByQuery().isNotEmpty) {
@@ -665,6 +670,17 @@ mixin Get<T> implements SharedMixin<T> {
   /// param name of the last value of chunkById()
   static const String _chunkKey = 'dox_chunk_last';
 
+  /// [method] adds its where to this query only, so on a union it would
+  /// page the first part only. it throws a [StateError] then.
+  void _checkNoSub(String method) {
+    if (queryBuilder.hasUnion || queryBuilder.hasFromSub) {
+      throw StateError(
+        '$method() can not be used with union() or fromSub(). '
+        'Use paginate(), simplePaginate() or chunk().',
+      );
+    }
+  }
+
   static void _checkChunkSize(int size) {
     if (size < 1) {
       throw ArgumentError.value(size, 'size', 'must be 1 or more');
@@ -674,7 +690,9 @@ mixin Get<T> implements SharedMixin<T> {
   /// [column] with the table name in front, so a join can not make it
   /// ambiguous
   String _qualified(String column) {
-    return column.contains('.') ? column : '$tableName.$column';
+    /// the ORDER BY of a union takes only the plain output name
+    if (column.contains('.') || queryBuilder.hasUnion) return column;
+    return '$tableName.$column';
   }
 
   /// the value of [key] in a row: a map, or a model (its original row)
