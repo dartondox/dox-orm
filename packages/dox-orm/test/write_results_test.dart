@@ -319,7 +319,7 @@ void main() async {
       /// forceDelete also deletes the soft deleted rows
       Note? trashed = await Note().withTrash().where('title', 'a').getFirst();
       expect(await trashed!.forceDelete(), 1);
-      expect(await Note().where('id', '>', 0).forceDelete(), 2);
+      expect(await Note().whereRaw('1 = 1').forceDelete(), 2);
       expect(await Note().withTrash().count(), 0);
     });
 
@@ -388,7 +388,7 @@ void main() async {
       expect(await _views('a2'), 4);
 
       /// every row
-      expect(await Counter().where('views', '>=', 0).increment('views', 10), 3);
+      expect(await Counter().whereRaw('1 = 1').increment('views', 10), 3);
       expect(await _views('b'), 10);
       expect(await Counter().where('name', 'b').decrement('views'), 1);
       expect(await _views('b'), 9);
@@ -718,16 +718,36 @@ void main() async {
       });
 
       test(
-        'update() on a model from the table throws, no row changes',
+        'update() on a model from the table changes only that row',
         () async {
           Counter c = (await Counter().where('name', 'a').getFirst())!;
-          await expectLater(
-            () => c.update(<String, dynamic>{'views': 0}),
-            throwsStateError,
-          );
-          await expectNoChange();
+          expect(await c.update(<String, dynamic>{'views': 7}), 1);
+          expect(c.views, 7);
+          expect(await _views('a'), 7);
+          expect(await _views('b'), 0);
+          expect(await _views('c'), 0);
         },
       );
+
+      test("whereRaw('1 = 1') writes every row on purpose", () async {
+        expect(
+          await Counter().whereRaw('1 = 1').update(<String, dynamic>{
+            'views': 2,
+          }),
+          3,
+        );
+        expect(await _counters().where('views', 2).count(), 3);
+        expect(await Counter().whereRaw('1 = 1').increment('views'), 3);
+        expect(await _counters().where('views', 3).count(), 3);
+
+        /// a soft delete model keeps its rows, with deleted_at set
+        expect(await Note().whereRaw('1 = 1').delete(), 2);
+        expect(await Note().count(), 0);
+        expect(await Note().withTrash().count(), 2);
+
+        expect(await Counter().whereRaw('1 = 1').delete(), 3);
+        expect(await _counters().count(), 0);
+      });
 
       test('the same writes with a where still work', () async {
         expect(

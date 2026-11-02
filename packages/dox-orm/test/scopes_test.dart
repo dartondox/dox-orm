@@ -99,16 +99,30 @@ void main() async {
     });
 
     test('update and delete use the global scope', () async {
-      /// a where is needed, or the write throws (it would change every row)
-      await ScopedPost().where('views', '>=', 0).update(<String, dynamic>{
-        'views': 0,
-      });
+      await ScopedPost().update(<String, dynamic>{'views': 0});
       ScopedPost? hidden = await ScopedPost().withoutGlobalScopes().find(3);
       expect(hidden?.views, 30);
 
-      await ScopedPost().where('views', '>=', 0).delete();
+      await ScopedPost().delete();
       expect(await ScopedPost().withoutGlobalScopes().count(), 1);
     });
+
+    test('a write with no global scope and no where throws', () async {
+      await expectLater(
+        () => ScopedPost().withoutGlobalScopes().delete(),
+        throwsStateError,
+      );
+      expect(await ScopedPost().withoutGlobalScopes().count(), 4);
+    });
+
+    test(
+      'a model read without its key throws, also with a global scope',
+      () async {
+        ScopedPost post = (await ScopedPost().select('title').getFirst())!;
+        await expectLater(post.delete, throwsStateError);
+        expect(await ScopedPost().withoutGlobalScopes().count(), 4);
+      },
+    );
 
     test('save of a model is not changed by the global scope', () async {
       ScopedPost? post = await ScopedPost().withoutGlobalScopes().find(3);

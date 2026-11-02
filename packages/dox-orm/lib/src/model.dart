@@ -280,7 +280,9 @@ class Model<T> extends QueryBuilder<T> {
   /// On a model with no primary key value (never saved, or read without
   /// the key) and no where(), it throws a [StateError], so it can not
   /// delete every row by mistake. forceDelete(), update(), increment()
-  /// and decrement() do the same.
+  /// and decrement() do the same. To delete every row on purpose, use
+  /// `Blog().whereRaw('1 = 1').delete()`: it keeps soft deletes and
+  /// global scopes.
   @override
   Future<int> delete() async {
     /// a query delete: Blog().where('id', 1).delete()
@@ -457,17 +459,26 @@ class Model<T> extends QueryBuilder<T> {
   /// use it.
   bool setColumnValue(String column, dynamic value) => false;
 
-  /// a write on a model with no primary key value (never saved, or read
-  /// without the key) and no where() would change every row of the
-  /// table. It throws a [StateError] then, and runs no query.
+  /// a write on a model with no primary key value and no where() would
+  /// change every row of the table. It throws a [StateError] then, and
+  /// runs no query.
+  ///
   /// onlyTrashed() counts as a where: it picks only the soft deleted rows.
+  /// A global scope that adds a condition counts too, like Laravel, so
+  /// `Post().delete()` under a tenant scope deletes the tenant's rows. It
+  /// does not count on a model read without its key: that model means
+  /// one row, not every row in the scope.
   void _needKeyOrWhere(String method) {
-    if (exists || !(hasWhere || trashedOnly)) {
-      throw StateError(
-        '$method() needs a model with a primary key value. Save the '
-        'model first, or use where() to $method rows by a query.',
-      );
+    if (hasWhere || trashedOnly) return;
+    if (!exists) {
+      applyGlobalScopes();
+      if (hasWhere) return;
     }
+    throw StateError(
+      '$method() was called on a model with no primary key value and no '
+      'where(), so it would change every row. Use where() to pick the '
+      "rows, or whereRaw('1 = 1') to change every row on purpose.",
+    );
   }
 
   /// a new query on this row only, so the query state of this model
@@ -1062,11 +1073,28 @@ class Model<T> extends QueryBuilder<T> {
   /// int count = await User().where('id', 1).update(req.body);
   /// ```
   ///
-  /// It needs a where(). Without one, or on a model from the table, it
-  /// throws a [StateError], so it can not change every row by mistake.
-  /// Use save() to update one model.
+  /// On a model from the table (it has a primary key value and no
+  /// where()), it changes only that row, like Laravel, and sets the
+  /// fields to the new values. It runs one query and fires no model
+  /// events. Use save() for the events and updated_at.
+  ///
+  /// ```
+  /// User? user = await User().find(1);
+  /// await user!.update({'name': 'Ann'}); // only user 1
+  /// ```
+  ///
+  /// With no primary key value and no where(), it throws a [StateError],
+  /// so it can not change every row by mistake. To change every row on
+  /// purpose, use `whereRaw('1 = 1')`.
   @override
   Future<int> update(Map<String, dynamic> data) async {
+    if (tempIdValue != null && !hasWhere) {
+      data = _onlyFillable(data);
+      if (data.isEmpty) return 0;
+      int count = await _thisRecord().update(data);
+      if (count > 0) _setSavedColumns(data);
+      return count;
+    }
     _needKeyOrWhere('update');
     data = _onlyFillable(data);
     if (data.isEmpty) return 0;
