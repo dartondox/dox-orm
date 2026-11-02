@@ -185,21 +185,30 @@ class _Pivot {
   Future<List<Map<String, dynamic>>> rows() => query().get();
 
   /// the row of [rows] whose related id is [id] by value, see [sameId].
-  /// A row that is not in [used] wins, so on a text key `[1, '01']` finds
-  /// the rows `'1'` and `'01'`. A row of [used] is only returned when no
-  /// other row matches.
+  /// A row that is not in [used] wins, and of those a row with the same
+  /// text (`1` and `'1'`) wins. So on a text key `[1, '01']` finds the rows
+  /// `'1'` and `'01'`. A row of [used] is only returned when no other row
+  /// matches.
   Map<String, dynamic>? match(
     List<Map<String, dynamic>> rows,
     dynamic id,
     Set<Map<String, dynamic>> used,
   ) {
+    Map<String, dynamic>? near;
     Map<String, dynamic>? found;
     for (Map<String, dynamic> r in rows) {
-      if (!sameId(r[relatedForeignKey], id)) continue;
-      if (!used.contains(r)) return r;
-      found ??= r;
+      dynamic stored = r[relatedForeignKey];
+      if (!sameId(stored, id)) continue;
+      if (used.contains(r)) {
+        found ??= r;
+      } else if ('$stored' == '$id') {
+        /// the same text wins, so on a text key `1` finds `'1'`, not `'01'`
+        return r;
+      } else {
+        near ??= r;
+      }
     }
-    return found;
+    return near ?? found;
   }
 
   /// [ids] as `id => extra pivot values`. [ids] can be one id, one
