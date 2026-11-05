@@ -38,7 +38,10 @@ mixin Get<T> implements SharedMixin<T> {
   /// `find(5, null)`) throws an [ArgumentError].
   /// This cannot be use with other query such as, where, join, delete.
   /// It works with lockForUpdate() and sharedLock().
+  /// It throws a [StateError] on a union() query: the id would only be
+  /// checked in the first part. Use get() then.
   Future<T?> find(dynamic arg1, [dynamic arg2 = missingArg]) {
+    _checkNoUnion('find');
     bool idOnly = identical(arg2, missingArg);
     if (!idOnly && arg1 is! String) {
       throw ArgumentError.value(
@@ -590,7 +593,10 @@ mixin Get<T> implements SharedMixin<T> {
   }
 
   /// select only [columns], as `dox_pluck0`, `dox_pluck1`...
+  /// it throws a [StateError] on a union() query: only the first part
+  /// would get the select.
   Future<List<Map<String, dynamic>>> _pluckRows(List<String> columns) async {
+    _checkNoUnion('pluck(), pluckMap() and valueOf');
     if (queryBuilder.getRawQuery().isNotEmpty) {
       throw StateError('pluck() and valueOf() can not be used with rawQuery()');
     }
@@ -710,6 +716,18 @@ mixin Get<T> implements SharedMixin<T> {
     }
   }
 
+  /// [method] adds its where or select to the first part of a union
+  /// only, so it gives a wrong row or an sql error. it throws a
+  /// [StateError] then.
+  void _checkNoUnion(String method) {
+    if (queryBuilder.hasUnion) {
+      throw StateError(
+        '$method() can not be used on a union() query. '
+        'Use get() and read the rows.',
+      );
+    }
+  }
+
   static void _checkChunkSize(int size) {
     if (size < 1) {
       throw ArgumentError.value(size, 'size', 'must be 1 or more');
@@ -721,7 +739,7 @@ mixin Get<T> implements SharedMixin<T> {
   String _qualified(String column) {
     /// the ORDER BY of a union takes only the plain output name
     if (column.contains('.') || queryBuilder.hasUnion) return column;
-    return '$tableName.$column';
+    return '${tableAlias ?? tableName}.$column';
   }
 
   /// the value of [key] in a row: a map, or a model (its original row)

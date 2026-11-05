@@ -430,6 +430,58 @@ void main() async {
       );
       expect(() => Blog().findOrFail(5, null), throwsArgumentError);
     });
+
+    Future<List<Blog>> threeBlogs() async {
+      List<Blog> blogs = <Blog>[];
+      for (String status in <String>['x', 'y', 'z']) {
+        Blog blog = Blog()
+          ..title = status
+          ..description = status
+          ..status = status;
+        await blog.save();
+        blogs.add(blog);
+      }
+      return blogs;
+    }
+
+    test('fromSub on a model uses the alias', () async {
+      List<Blog> blogs = await threeBlogs();
+      await blogs[1].delete();
+      QueryBuilder<Map<String, dynamic>> sub() =>
+          QueryBuilder.table('blog').select('uid, title, deleted_at');
+
+      /// the soft delete check uses `b.deleted_at`, not `blog.deleted_at`
+      List<Blog> rows = await Blog().fromSub(sub(), 'b').orderBy('uid').get();
+      expect(rows.map((Blog b) => b.title), <String>['x', 'z']);
+      expect(await Blog().fromSub(sub(), 'b').count(), 2);
+
+      /// chunk() orders by `b.uid`
+      List<String?> titles = <String?>[];
+      await Blog().fromSub(sub(), 'b').chunk(1, (List<Blog> page) {
+        titles.addAll(page.map((Blog b) => b.title));
+        return true;
+      });
+      expect(titles, <String>['x', 'z']);
+    });
+
+    test('find, pluck and valueOf throw on a union', () async {
+      await threeBlogs();
+      QueryBuilder<Map<String, dynamic>> q() =>
+          QueryBuilder.table('blog')
+              .where('status', 'zzz')
+              .union(QueryBuilder.table('blog').where('status', 'y'));
+      expect(() => q().find(1), throwsStateError);
+      expect(() => q().find('title', 'x'), throwsStateError);
+      expect(() => q().findOrFail(1), throwsStateError);
+      expect(() => q().pluck('title'), throwsStateError);
+      expect(() => q().pluckMap('title', 'uid'), throwsStateError);
+      expect(() => q().valueOf('title'), throwsStateError);
+
+      /// getFirst() and firstOrFail() put LIMIT 1 on the whole union, so
+      /// they give the right row
+      expect((await q().getFirst())?['status'], 'y');
+      expect((await q().firstOrFail())['status'], 'y');
+    });
   });
 
   group('Schema fixes |', () {
