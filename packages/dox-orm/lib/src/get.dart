@@ -8,6 +8,7 @@ import 'limit.dart';
 import 'order_by.dart';
 import 'where.dart';
 import 'shared_mixin.dart';
+import 'union.dart';
 
 /// the select sql of [qb], as get() runs it. it is a function, not a
 /// query method, so it can not clash with the name of a model field.
@@ -38,7 +39,10 @@ mixin Get<T> implements SharedMixin<T> {
   /// `find(5, null)`) throws an [ArgumentError].
   /// This cannot be use with other query such as, where, join, delete.
   /// It works with lockForUpdate() and sharedLock().
+  /// It throws a [StateError] on a union() query: the id would only be
+  /// checked in the first part. Use get() then.
   Future<T?> find(dynamic arg1, [dynamic arg2 = missingArg]) {
+    checkNoUnion(queryBuilder, 'find');
     bool idOnly = identical(arg2, missingArg);
     if (!idOnly && arg1 is! String) {
       throw ArgumentError.value(
@@ -590,7 +594,10 @@ mixin Get<T> implements SharedMixin<T> {
   }
 
   /// select only [columns], as `dox_pluck0`, `dox_pluck1`...
+  /// it throws a [StateError] on a union() query: only the first part
+  /// would get the select.
   Future<List<Map<String, dynamic>>> _pluckRows(List<String> columns) async {
+    checkNoUnion(queryBuilder, 'pluck(), pluckMap() and valueOf');
     if (queryBuilder.getRawQuery().isNotEmpty) {
       throw StateError('pluck() and valueOf() can not be used with rawQuery()');
     }
@@ -721,7 +728,7 @@ mixin Get<T> implements SharedMixin<T> {
   String _qualified(String column) {
     /// the ORDER BY of a union takes only the plain output name
     if (column.contains('.') || queryBuilder.hasUnion) return column;
-    return '$tableName.$column';
+    return '${tableAlias ?? tableName}.$column';
   }
 
   /// the value of [key] in a row: a map, or a model (its original row)

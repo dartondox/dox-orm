@@ -1,5 +1,8 @@
 ## Unreleased
 
+- Fix: `fromSub()` on a model now uses the alias. Before, the soft delete check and the `chunk()` order used the model table, like `blog.deleted_at`, so `Blog().fromSub(sub, 'b').get()` failed with `no such column: blog.deleted_at`. Now they use `b.deleted_at` and `b.uid`. `update()`, `delete()` and `restore()` after `fromSub()` still run on the model table, as before.
+- Fix: `find()`, `findOrFail()`, `firstOrNew()`, `firstOrCreate()` and `updateOrCreate()` on a `union()` query now throw a `StateError`. Before, their where went to the first part only and `LIMIT 1` to the whole union, so they could give a wrong row, and `firstOrCreate()` and `updateOrCreate()` could write the wrong row. Use `get()` on a union. `getFirst()` and `firstOrFail()` work as before.
+- Fix: `pluck()`, `pluckMap()` and `valueOf()` on a `union()` query now throw a clear `StateError`. Before, only the first part got the select, so the database gave an SQL error.
 - Fix: many to many `sync()` and `toggle()` now report in `detached` only the rows that the database really deleted. Before, on a column that compares text without case, with stored `'ABC'` and `'abc'`, `sync(['ABC'])` reported `detached: ['abc']`, but the database kept both rows.
 - Fix: many to many `sync()` and `toggle()` now check all text ids that match a stored row only by case in one query. Before, they ran one query for each id.
 - Fix: `restore()` now sets `updated_at` too, like Laravel, when the model has timestamps. It uses a custom `updated_at` column, and sets nothing when the model has no timestamps. This is true for `blog.restore()` (it also sets the `updatedAt` field) and for a query like `Blog().where('id', 1).restore()`.

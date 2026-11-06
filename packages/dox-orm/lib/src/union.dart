@@ -60,3 +60,15 @@ mixin Union<T> implements SharedMixin<T> {
     return queryBuilder;
   }
 }
+
+/// [method] adds its where or select to the first part of a union only,
+/// so it gives a wrong row or an sql error. it throws a [StateError]
+/// then.
+void checkNoUnion(QueryBuilder<dynamic> q, String method) {
+  if (q.hasUnion) {
+    throw StateError(
+      '$method() can not be used on a union() query. '
+      'Use get() and read the rows.',
+    );
+  }
+}

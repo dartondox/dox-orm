@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import '../dox_orm.dart';
+import 'union.dart';
 
 class Model<T> extends QueryBuilder<T> {
   static final Map<String, Model<dynamic> Function()> _morphModels =
@@ -610,8 +611,9 @@ class Model<T> extends QueryBuilder<T> {
       withTrash();
 
       /// only deleted rows, so every database counts the same rows (MySQL
-      /// counts only changed rows, Postgres and SQLite every matched row)
-      whereNotNull('${tableAlias ?? tableName}.deleted_at');
+      /// counts only changed rows, Postgres and SQLite every matched row).
+      /// the UPDATE runs on the real table, so no alias of fromSub().
+      whereNotNull('$tableName.deleted_at');
 
       /// super.update(): deleted_at is not checked against fillable
       return await super.update(_restoreValues()) > 0;
@@ -1105,6 +1107,7 @@ class Model<T> extends QueryBuilder<T> {
     Map<String, dynamic> where, [
     Map<String, dynamic> values = const <String, dynamic>{},
   ]) async {
+    checkNoUnion(this, 'firstOrNew');
     for (MapEntry<String, dynamic> e in where.entries) {
       this.where(e.key, e.value);
     }
@@ -1136,6 +1139,7 @@ class Model<T> extends QueryBuilder<T> {
     Map<String, dynamic> where,
     Map<String, dynamic> values,
   ) async {
+    checkNoUnion(this, 'updateOrCreate');
     for (MapEntry<String, dynamic> e in where.entries) {
       this.where(e.key, e.value);
     }

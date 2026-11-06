@@ -142,7 +142,7 @@ class QueryBuilderHelper<T> {
     String join = queryBuilder.getJoinQuery();
     String orderBy = queryBuilder.getOrderByQuery();
     String limit = queryBuilder.getLimitQuery();
-    String where = queryBuilder.getWhereQuery();
+    String where = queryBuilder.getWhereQuery(write: true);
     if (join.isEmpty && orderBy.isEmpty && limit.isEmpty) {
       return where;
     }

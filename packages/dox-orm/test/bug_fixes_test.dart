@@ -430,6 +430,89 @@ void main() async {
       );
       expect(() => Blog().findOrFail(5, null), throwsArgumentError);
     });
+
+    Future<List<Blog>> threeBlogs() async {
+      List<Blog> blogs = <Blog>[];
+      for (String status in <String>['x', 'y', 'z']) {
+        Blog blog = Blog()
+          ..title = status
+          ..description = status
+          ..status = status;
+        await blog.save();
+        blogs.add(blog);
+      }
+      return blogs;
+    }
+
+    test('fromSub on a model uses the alias', () async {
+      List<Blog> blogs = await threeBlogs();
+      await blogs[1].delete();
+      QueryBuilder<Map<String, dynamic>> sub() =>
+          QueryBuilder.table('blog').select('uid, title, deleted_at');
+
+      /// the soft delete check uses `b.deleted_at`, not `blog.deleted_at`
+      List<Blog> rows = await Blog().fromSub(sub(), 'b').orderBy('uid').get();
+      expect(rows.map((Blog b) => b.title), <String>['x', 'z']);
+      expect(await Blog().fromSub(sub(), 'b').count(), 2);
+
+      /// chunk() orders by `b.uid`
+      List<String?> titles = <String?>[];
+      await Blog().fromSub(sub(), 'b').chunk(1, (List<Blog> page) {
+        titles.addAll(page.map((Blog b) => b.title));
+        return true;
+      });
+      expect(titles, <String>['x', 'z']);
+    });
+
+    test('update and delete after fromSub on a model', () async {
+      List<Blog> blogs = await threeBlogs();
+      int id = blogs[0].uid!;
+      Blog q() => Blog()
+        ..fromSub(QueryBuilder.table('blog').select('uid'), 'b')
+        ..where('uid', id);
+
+      /// writes run on the real table, so the soft delete check uses
+      /// `blog.deleted_at`, not `b.deleted_at`
+      expect(await q().update(<String, dynamic>{'title': 'new'}), 1);
+      expect((await Blog().find(id))?.title, 'new');
+      expect(await q().delete(), 1);
+      expect(await Blog().find(id), isNull);
+      expect(await q().restore(), isTrue);
+      expect((await Blog().find(id))?.title, 'new');
+    });
+
+    test('find, pluck and first-or helpers throw on a union', () async {
+      await threeBlogs();
+      QueryBuilder<Map<String, dynamic>> q() =>
+          QueryBuilder.table('blog')
+              .where('status', 'zzz')
+              .union(QueryBuilder.table('blog').where('status', 'y'));
+      expect(() => q().find(1), throwsStateError);
+      expect(() => q().find('title', 'x'), throwsStateError);
+      expect(() => q().findOrFail(1), throwsStateError);
+      expect(() => q().pluck('title'), throwsStateError);
+      expect(() => q().pluckMap('title', 'uid'), throwsStateError);
+      expect(() => q().valueOf('title'), throwsStateError);
+      Map<String, dynamic> where = <String, dynamic>{'title': 'x'};
+      Map<String, dynamic> values = <String, dynamic>{'body': 'b'};
+      expect(() => q().firstOrNew(where), throwsStateError);
+      expect(() => q().firstOrCreate(where, values), throwsStateError);
+      expect(() => q().updateOrCreate(where, values), throwsStateError);
+
+      /// a model has its own firstOrNew() and updateOrCreate()
+      Blog blogs() => Blog()
+        ..where('status', 'zzz')
+        ..union(Blog().where('status', 'y'));
+      expect(() => blogs().firstOrNew(where), throwsStateError);
+      expect(() => blogs().firstOrCreate(where, values), throwsStateError);
+      expect(() => blogs().updateOrCreate(where, values), throwsStateError);
+      expect(await Blog().count(), 3);
+
+      /// getFirst() and firstOrFail() put LIMIT 1 on the whole union, so
+      /// they give the right row
+      expect((await q().getFirst())?['status'], 'y');
+      expect((await q().firstOrFail())['status'], 'y');
+    });
   });
 
   group('Schema fixes |', () {

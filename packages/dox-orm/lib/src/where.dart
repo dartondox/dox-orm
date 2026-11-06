@@ -63,16 +63,20 @@ mixin Where<T> implements SharedMixin<T> {
 
   static final RegExp _leadingType = RegExp(r'^(AND|OR) ');
 
-  String getWhereQuery() {
+  /// the WHERE part. [write] is true for an UPDATE or DELETE: they run
+  /// on the real table, so the soft delete check uses the table name,
+  /// not the alias of fromSub().
+  String getWhereQuery({bool write = false}) {
     queryBuilder.applyGlobalScopes();
     List<String>? wheres = _wheres;
+    String table = write ? tableName : tableAlias ?? tableName;
 
     /// wrap user conditions in brackets so an OR can not skip the
     /// soft delete check. onlyTrashed() keeps its check also when
     /// forceDelete() turns on withTrashed.
     if (isSoftDeletes && (trashedOnly || !withTrashed)) {
       String softDelete =
-          "${helper.wrap('${tableAlias ?? tableName}.deleted_at')} "
+          "${helper.wrap('$table.deleted_at')} "
           "${trashedOnly ? 'IS NOT NULL' : 'IS NULL'}";
       if (wheres == null) {
         return " WHERE $softDelete";

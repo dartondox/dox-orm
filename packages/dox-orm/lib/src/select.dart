@@ -36,6 +36,11 @@ mixin Select<T> implements SharedMixin<T> {
   QueryBuilder<T> fromSub(QueryBuilder<dynamic> query, String alias) {
     _fromSub = '(${helper.subQuery(query)}) AS ${helper.wrap(alias)}';
     tableName = alias;
+
+    /// a model reads its table name from its class, so the line above
+    /// does nothing there. the alias field keeps [alias] for the
+    /// columns that need the table in front, like `b.deleted_at`.
+    tableAlias = alias;
     return queryBuilder;
   }
 
