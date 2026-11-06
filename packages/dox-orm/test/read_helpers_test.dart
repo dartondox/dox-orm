@@ -208,9 +208,28 @@ void main() async {
           ),
         );
         expect(
-          const ModelNotFoundException('item', id: 7, column: 'id').toString(),
+          ModelNotFoundException('item', id: 7, column: 'id').toString(),
           contains('item'),
         );
+      });
+
+      test('ModelNotFoundException is a 404 HTTP exception', () {
+        ModelNotFoundException e = ModelNotFoundException(
+          'item',
+          id: 7,
+          column: 'id',
+        );
+        expect(e, isA<IHttpException>());
+        expect(e, isA<Exception>());
+        expect(e.code, 404);
+        expect(e.table, 'item');
+        expect(e.id, 7);
+        expect(e.column, 'id');
+        // the table, column and id do not go to the client
+        expect(e.toResponse(), <String, dynamic>{
+          'code': 'not_found',
+          'message': 'Not Found',
+        });
       });
 
       test('a soft deleted model is not found', () async {

@@ -1,4 +1,10 @@
+import 'package:dox_annotation/dox_annotation.dart';
+
 /// thrown by firstOrFail() and findOrFail() when no row matches
+///
+/// In a Dox app it answers 404 with
+/// `{"code": "not_found", "message": "Not Found"}`, like Laravel.
+/// The table, column and id are not sent to the client.
 ///
 /// ```
 /// try {
@@ -8,7 +14,7 @@
 ///   print(e.id); // 1
 /// }
 /// ```
-class ModelNotFoundException implements Exception {
+class ModelNotFoundException extends IHttpException implements Exception {
   /// the table of the query
   final String table;
 
@@ -19,7 +25,12 @@ class ModelNotFoundException implements Exception {
   /// null for firstOrFail().
   final String? column;
 
-  const ModelNotFoundException(this.table, {this.id, this.column});
+  /// not `const`: [IHttpException] has fields that can change.
+  ModelNotFoundException(this.table, {this.id, this.column}) {
+    code = 404;
+    errorCode = 'not_found';
+    message = 'Not Found';
+  }
 
   @override
   String toString() {
