@@ -418,8 +418,9 @@ void main() async {
     });
 
     test('find(5, null) gives a clear error', () async {
-      expect(
-        () => Blog().find(5, null),
+      /// a Future, not a sync throw
+      await expectLater(
+        Blog().find(5, null),
         throwsA(
           isA<ArgumentError>().having(
             (ArgumentError e) => '${e.message}',
@@ -428,7 +429,7 @@ void main() async {
           ),
         ),
       );
-      expect(() => Blog().findOrFail(5, null), throwsArgumentError);
+      await expectLater(Blog().findOrFail(5, null), throwsArgumentError);
     });
 
     Future<List<Blog>> threeBlogs() async {

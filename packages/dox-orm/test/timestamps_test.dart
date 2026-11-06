@@ -125,6 +125,25 @@ void main() async {
       expect(s.updatedAt!.isAfter(given), isTrue);
     });
 
+    test('save after update, touch, delete or restore sets now', () async {
+      /// Stamped.setColumnValue() does not take modified_at, so the
+      /// ORM must remember the time it set
+      Stamped s = await oldRow();
+      Future<void> saveSetsNow(Future<void> Function() write) async {
+        await write();
+        DateTime before = s.updatedAt!;
+        await Future<void>.delayed(Duration(milliseconds: 5));
+        s.title = '${s.title}x';
+        await s.save();
+        expect(s.updatedAt!.isAfter(before), isTrue);
+      }
+
+      await saveSetsNow(() => s.update(<String, dynamic>{'title': 'b'}));
+      await saveSetsNow(() => s.touch());
+      await saveSetsNow(() => s.delete());
+      await saveSetsNow(() => s.restore());
+    });
+
     test('restore sets the custom column', () async {
       Stamped s = await oldRow();
       await s.delete();

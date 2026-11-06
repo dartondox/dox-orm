@@ -528,11 +528,15 @@ class Model<T> extends QueryBuilder<T> {
 
   /// set the fields of [values] (column name => value) and mark them as
   /// saved, so save() does not send them again. a column that
-  /// [setColumnValue] does not take is skipped.
+  /// [setColumnValue] does not take is skipped. The updated_at column
+  /// is kept too: the caller set the updatedAt field, also for a custom
+  /// column that setColumnValue does not know. Else the next save()
+  /// sees a changed time and keeps the old one.
   void _setSavedColumns(Map<String, dynamic> values) {
+    String? updatedAtColumn = timestampsColumn['updated_at'];
     List<String> done = <String>[
       for (MapEntry<String, dynamic> e in values.entries)
-        if (setColumnValue(e.key, e.value)) e.key,
+        if (setColumnValue(e.key, e.value) || e.key == updatedAtColumn) e.key,
     ];
 
     /// a model that was not read or saved keeps exists false
