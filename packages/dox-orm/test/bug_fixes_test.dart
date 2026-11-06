@@ -464,6 +464,23 @@ void main() async {
       expect(titles, <String>['x', 'z']);
     });
 
+    test('update and delete after fromSub on a model', () async {
+      List<Blog> blogs = await threeBlogs();
+      int id = blogs[0].uid!;
+      Blog q() => Blog()
+        ..fromSub(QueryBuilder.table('blog').select('uid'), 'b')
+        ..where('uid', id);
+
+      /// writes run on the real table, so the soft delete check uses
+      /// `blog.deleted_at`, not `b.deleted_at`
+      expect(await q().update(<String, dynamic>{'title': 'new'}), 1);
+      expect((await Blog().find(id))?.title, 'new');
+      expect(await q().delete(), 1);
+      expect(await Blog().find(id), isNull);
+      expect(await q().restore(), isTrue);
+      expect((await Blog().find(id))?.title, 'new');
+    });
+
     test('find, pluck and first-or helpers throw on a union', () async {
       await threeBlogs();
       QueryBuilder<Map<String, dynamic>> q() =>

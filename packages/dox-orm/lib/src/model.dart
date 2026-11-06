@@ -611,8 +611,9 @@ class Model<T> extends QueryBuilder<T> {
       withTrash();
 
       /// only deleted rows, so every database counts the same rows (MySQL
-      /// counts only changed rows, Postgres and SQLite every matched row)
-      whereNotNull('${tableAlias ?? tableName}.deleted_at');
+      /// counts only changed rows, Postgres and SQLite every matched row).
+      /// the UPDATE runs on the real table, so no alias of fromSub().
+      whereNotNull('$tableName.deleted_at');
 
       /// super.update(): deleted_at is not checked against fillable
       return await super.update(_restoreValues()) > 0;
