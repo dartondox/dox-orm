@@ -8,6 +8,7 @@ import 'limit.dart';
 import 'order_by.dart';
 import 'where.dart';
 import 'shared_mixin.dart';
+import 'union.dart';
 
 /// the select sql of [qb], as get() runs it. it is a function, not a
 /// query method, so it can not clash with the name of a model field.
@@ -41,7 +42,7 @@ mixin Get<T> implements SharedMixin<T> {
   /// It throws a [StateError] on a union() query: the id would only be
   /// checked in the first part. Use get() then.
   Future<T?> find(dynamic arg1, [dynamic arg2 = missingArg]) {
-    _checkNoUnion('find');
+    checkNoUnion(queryBuilder, 'find');
     bool idOnly = identical(arg2, missingArg);
     if (!idOnly && arg1 is! String) {
       throw ArgumentError.value(
@@ -596,7 +597,7 @@ mixin Get<T> implements SharedMixin<T> {
   /// it throws a [StateError] on a union() query: only the first part
   /// would get the select.
   Future<List<Map<String, dynamic>>> _pluckRows(List<String> columns) async {
-    _checkNoUnion('pluck(), pluckMap() and valueOf');
+    checkNoUnion(queryBuilder, 'pluck(), pluckMap() and valueOf');
     if (queryBuilder.getRawQuery().isNotEmpty) {
       throw StateError('pluck() and valueOf() can not be used with rawQuery()');
     }
@@ -712,18 +713,6 @@ mixin Get<T> implements SharedMixin<T> {
       throw StateError(
         '$method() can not be used with union() or fromSub(). '
         'Use paginate(), simplePaginate() or chunk().',
-      );
-    }
-  }
-
-  /// [method] adds its where or select to the first part of a union
-  /// only, so it gives a wrong row or an sql error. it throws a
-  /// [StateError] then.
-  void _checkNoUnion(String method) {
-    if (queryBuilder.hasUnion) {
-      throw StateError(
-        '$method() can not be used on a union() query. '
-        'Use get() and read the rows.',
       );
     }
   }

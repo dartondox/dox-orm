@@ -1,6 +1,7 @@
 import 'package:dox_orm/dox_orm.dart';
 
 import 'shared_mixin.dart';
+import 'union.dart';
 import 'update.dart';
 
 mixin Insert<T> implements SharedMixin<T> {
@@ -281,7 +282,7 @@ mixin Insert<T> implements SharedMixin<T> {
     Map<String, dynamic> where, [
     Map<String, dynamic> values = const <String, dynamic>{},
   ]) async {
-    T? found = await _whereAll(where).getFirst();
+    T? found = await _whereAll(where, 'firstOrCreate').getFirst();
     if (found != null) return found;
     resetSubstitutionValues();
     return await queryBuilder.create(<String, dynamic>{...where, ...values});
@@ -298,7 +299,7 @@ mixin Insert<T> implements SharedMixin<T> {
     Map<String, dynamic> where, [
     Map<String, dynamic> values = const <String, dynamic>{},
   ]) async {
-    T? found = await _whereAll(where).getFirst();
+    T? found = await _whereAll(where, 'firstOrNew').getFirst();
     return found ??
         _fromData(<String, dynamic>{...where, ...values}, saved: false);
   }
@@ -318,7 +319,7 @@ mixin Insert<T> implements SharedMixin<T> {
     Map<String, dynamic> where,
     Map<String, dynamic> values,
   ) async {
-    T? found = await _whereAll(where).getFirst();
+    T? found = await _whereAll(where, 'updateOrCreate').getFirst();
     if (found == null) {
       resetSubstitutionValues();
       return await queryBuilder.create(<String, dynamic>{...where, ...values});
@@ -343,7 +344,10 @@ mixin Insert<T> implements SharedMixin<T> {
   }
 
   /// this query with `where(key, value)` for each pair of [where]
-  QueryBuilder<T> _whereAll(Map<String, dynamic> where) {
+  /// it throws a [StateError] on a union() query: the where would go to
+  /// the first part only.
+  QueryBuilder<T> _whereAll(Map<String, dynamic> where, String method) {
+    checkNoUnion(queryBuilder, method);
     for (MapEntry<String, dynamic> e in where.entries) {
       queryBuilder.where(e.key, e.value);
     }

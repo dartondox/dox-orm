@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import '../dox_orm.dart';
+import 'union.dart';
 
 class Model<T> extends QueryBuilder<T> {
   static final Map<String, Model<dynamic> Function()> _morphModels =
@@ -1105,6 +1106,7 @@ class Model<T> extends QueryBuilder<T> {
     Map<String, dynamic> where, [
     Map<String, dynamic> values = const <String, dynamic>{},
   ]) async {
+    checkNoUnion(this, 'firstOrNew');
     for (MapEntry<String, dynamic> e in where.entries) {
       this.where(e.key, e.value);
     }
@@ -1136,6 +1138,7 @@ class Model<T> extends QueryBuilder<T> {
     Map<String, dynamic> where,
     Map<String, dynamic> values,
   ) async {
+    checkNoUnion(this, 'updateOrCreate');
     for (MapEntry<String, dynamic> e in where.entries) {
       this.where(e.key, e.value);
     }

@@ -464,7 +464,7 @@ void main() async {
       expect(titles, <String>['x', 'z']);
     });
 
-    test('find, pluck and valueOf throw on a union', () async {
+    test('find, pluck and first-or helpers throw on a union', () async {
       await threeBlogs();
       QueryBuilder<Map<String, dynamic>> q() =>
           QueryBuilder.table('blog')
@@ -476,6 +476,20 @@ void main() async {
       expect(() => q().pluck('title'), throwsStateError);
       expect(() => q().pluckMap('title', 'uid'), throwsStateError);
       expect(() => q().valueOf('title'), throwsStateError);
+      Map<String, dynamic> where = <String, dynamic>{'title': 'x'};
+      Map<String, dynamic> values = <String, dynamic>{'body': 'b'};
+      expect(() => q().firstOrNew(where), throwsStateError);
+      expect(() => q().firstOrCreate(where, values), throwsStateError);
+      expect(() => q().updateOrCreate(where, values), throwsStateError);
+
+      /// a model has its own firstOrNew() and updateOrCreate()
+      Blog blogs() => Blog()
+        ..where('status', 'zzz')
+        ..union(Blog().where('status', 'y'));
+      expect(() => blogs().firstOrNew(where), throwsStateError);
+      expect(() => blogs().firstOrCreate(where, values), throwsStateError);
+      expect(() => blogs().updateOrCreate(where, values), throwsStateError);
+      expect(await Blog().count(), 3);
 
       /// getFirst() and firstOrFail() put LIMIT 1 on the whole union, so
       /// they give the right row
