@@ -375,6 +375,57 @@ void main() async {
       ]);
     });
 
+    test('a guarded column can not be set with a changed key', () async {
+      /// the SQL builder trims the name, a table prefix points to the same
+      /// column, and SQLite and MySQL match names without case
+      for (String key in <String>[
+        ' is_admin',
+        'is_admin\t',
+        'IS_ADMIN',
+        'users.is_admin',
+      ]) {
+        Map<String, dynamic> body = <String, dynamic>{'name': 'b', key: 1};
+        User user = await GuardedUser().create(<String, dynamic>{'name': 'a'});
+        await GuardedUser().where('id', user.id).update(body);
+
+        /// find() gives a User, so make the loaded model by hand
+        await (GuardedUser()..id = user.id).update(body);
+        await GuardedUser().insertMultiple(<Map<String, dynamic>>[body]);
+        await GuardedUser().insertOrIgnore(<Map<String, dynamic>>[body]);
+        await GuardedUser().upsert(
+          <Map<String, dynamic>>[
+            <String, dynamic>{'id': 1000, ...body},
+          ],
+          <String>['id'],
+        );
+
+        List<Map<String, dynamic>> rows = await QueryBuilder.table('users')
+            .get();
+        expect(rows, hasLength(4), reason: key);
+        for (Map<String, dynamic> row in rows) {
+          expect(row['name'], 'b', reason: key);
+          expect(row['is_admin'], 0, reason: key);
+        }
+        await QueryBuilder.table('users').forceDelete();
+      }
+    });
+
+    test('a fillable key must match the name exactly', () async {
+      User user = await FillableUser().create(<String, dynamic>{'name': 'a'});
+      await FillableUser().where('id', user.id).update(<String, dynamic>{
+        'name': 'b',
+        'NAME': 'c',
+        ' name': 'd',
+        'IS_ADMIN': 1,
+        'users.is_admin': 1,
+      });
+      Map<String, dynamic> row = (await QueryBuilder.table(
+        'users',
+      ).get()).single;
+      expect(row['name'], 'b');
+      expect(row['is_admin'], 0);
+    });
+
     test('tls modes', () {
       ConnectionConfig pg = ConnectionConfig.fromUrl(
         'postgres://u:p@db.example.com/app?sslmode=verify-full',

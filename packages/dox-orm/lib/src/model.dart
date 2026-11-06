@@ -131,12 +131,26 @@ class Model<T> extends QueryBuilder<T> {
       if (data.isEmpty) return data;
       throw MassAssignmentException('$runtimeType', data.keys.toList());
     }
+    Set<String> blockedNames = blocked.map(_columnName).toSet();
+    List<String> columns = tableColumns;
     return <String, dynamic>{
       for (MapEntry<String, dynamic> e in data.entries)
-        if (!blocked.contains(e.key) &&
-            (allowed.contains(e.key) || (allowed.isEmpty && !blockAll)))
+        if (!blockedNames.contains(_columnName(e.key)) &&
+            (allowed.contains(e.key) ||
+                (allowed.isEmpty &&
+                    !blockAll &&
+                    (columns.isEmpty || columns.contains(e.key)))))
           e.key: e.value,
     };
+  }
+
+  /// the column name that the database sees for [key]. The SQL builder
+  /// trims the name, a table prefix points to the same column, and
+  /// SQLite and MySQL match names without case. So `' IS_ADMIN'` and
+  /// `'users.is_admin'` set `is_admin`, and [guarded] must catch them.
+  static String _columnName(String key) {
+    String name = key.trim();
+    return name.substring(name.lastIndexOf('.') + 1).toLowerCase();
   }
 
   /// the generator overrides it with the model columns
