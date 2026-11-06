@@ -19,6 +19,9 @@ class MemberRouter extends Router {
     Route.put('/members/{id}', (int id, UpdateMember body) {
       return <String, dynamic>{'id': id, 'email': body.email};
     });
+    Route.get('/members/{id}', (int id) async {
+      return await orm.QueryBuilder.table('members').findOrFail(id);
+    });
   }
 }
 
@@ -30,11 +33,12 @@ class QuietExceptionHandler extends ExceptionHandler {
   void report(Object error, StackTrace stackTrace) {}
 }
 
-/// sends [body] as JSON and gives the status and the decoded body
+/// sends [body] as JSON (no body when null) and gives the status and
+/// the decoded body
 Future<(int, Map<String, dynamic>)> send(
   String method,
   String path,
-  Object body,
+  Object? body,
 ) async {
   HttpClient client = HttpClient();
   try {
@@ -42,8 +46,10 @@ Future<(int, Map<String, dynamic>)> send(
       method,
       Uri.parse('http://127.0.0.1:${Dox().server.httpServer.port}$path'),
     );
-    req.headers.contentType = ContentType.json;
-    req.write(jsonEncode(body));
+    if (body != null) {
+      req.headers.contentType = ContentType.json;
+      req.write(jsonEncode(body));
+    }
     HttpClientResponse res = await req.close();
     String text = await utf8.decodeStream(res);
     return (res.statusCode, jsonDecode(text) as Map<String, dynamic>);
@@ -163,6 +169,19 @@ void main() {
       'email': 'taken@dox.dev',
     });
     expect(other, 422);
+  });
+
+  test('findOrFail with no row answers 404, without the table', () async {
+    var (int status, Map<String, dynamic> body) = await send(
+      'GET',
+      '/members/999',
+      null,
+    );
+    expect(status, 404);
+    expect(body, <String, dynamic>{
+      'code': 'not_found',
+      'message': 'Not Found',
+    });
   });
 
   group('fluent schemas use the ORM as the PresenceVerifier |', () {
