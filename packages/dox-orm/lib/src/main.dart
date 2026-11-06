@@ -44,6 +44,16 @@ class SqlQueryBuilder {
 
   DatabaseConfig? databaseConfig;
 
+  /// the names to hide in the log of a query on [connection]: [logRedact]
+  /// and the `logRedact` of that named connection
+  List<String> logRedactOf(String? connection) {
+    List<String> named = connection == null
+        ? const <String>[]
+        : databaseConfig?.connections[connection]?.logRedact ??
+              const <String>[];
+    return named.isEmpty ? logRedact : <String>[...logRedact, ...named];
+  }
+
   /// initialize with DatabaseConfig class.
   /// postgres and mysql throw an [UnsupportedError] when their native
   /// library does not load.

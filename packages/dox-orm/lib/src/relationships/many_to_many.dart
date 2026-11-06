@@ -333,14 +333,22 @@ class _Pivot {
   /// [delete] of the [detached] ids of the rows [current], and returns
   /// the ids whose row is really gone. A column that compares without
   /// case keeps `'abc'` when `'ABC'` is kept, so when the database
-  /// deleted another number of rows, the rows are read again.
+  /// deleted another number of rows than [current] has for [detached],
+  /// the rows are read again. It counts rows, not ids: two pivot rows
+  /// of one id are two rows.
   Future<List<dynamic>> deleteDetached(
     List<Map<String, dynamic>> current,
     List<dynamic> detached,
     Iterable<dynamic> keep,
   ) async {
     int count = await delete(detached, keep: keep);
-    if (count == detached.length) return detached;
+    Set<String> ids = <String>{for (dynamic id in detached) '$id'};
+    int rows = current
+        .where(
+          (Map<String, dynamic> r) => ids.contains('${r[relatedForeignKey]}'),
+        )
+        .length;
+    if (count == rows) return detached;
     Set<String> left = await _stored(query());
     return <dynamic>[
       for (Map<String, dynamic> r in current)

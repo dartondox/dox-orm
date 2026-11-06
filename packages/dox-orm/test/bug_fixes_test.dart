@@ -418,8 +418,9 @@ void main() async {
     });
 
     test('find(5, null) gives a clear error', () async {
-      expect(
-        () => Blog().find(5, null),
+      /// a Future, not a sync throw
+      await expectLater(
+        Blog().find(5, null),
         throwsA(
           isA<ArgumentError>().having(
             (ArgumentError e) => '${e.message}',
@@ -428,7 +429,7 @@ void main() async {
           ),
         ),
       );
-      expect(() => Blog().findOrFail(5, null), throwsArgumentError);
+      await expectLater(Blog().findOrFail(5, null), throwsArgumentError);
     });
 
     Future<List<Blog>> threeBlogs() async {
@@ -481,37 +482,82 @@ void main() async {
       expect((await Blog().find(id))?.title, 'new');
     });
 
-    test('find, pluck and first-or helpers throw on a union', () async {
-      await threeBlogs();
+    group('union guards |', () {
       QueryBuilder<Map<String, dynamic>> q() =>
           QueryBuilder.table('blog')
               .where('status', 'zzz')
               .union(QueryBuilder.table('blog').where('status', 'y'));
-      expect(() => q().find(1), throwsStateError);
-      expect(() => q().find('title', 'x'), throwsStateError);
-      expect(() => q().findOrFail(1), throwsStateError);
-      expect(() => q().pluck('title'), throwsStateError);
-      expect(() => q().pluckMap('title', 'uid'), throwsStateError);
-      expect(() => q().valueOf('title'), throwsStateError);
-      Map<String, dynamic> where = <String, dynamic>{'title': 'x'};
-      Map<String, dynamic> values = <String, dynamic>{'body': 'b'};
-      expect(() => q().firstOrNew(where), throwsStateError);
-      expect(() => q().firstOrCreate(where, values), throwsStateError);
-      expect(() => q().updateOrCreate(where, values), throwsStateError);
-
-      /// a model has its own firstOrNew() and updateOrCreate()
       Blog blogs() => Blog()
         ..where('status', 'zzz')
         ..union(Blog().where('status', 'y'));
-      expect(() => blogs().firstOrNew(where), throwsStateError);
-      expect(() => blogs().firstOrCreate(where, values), throwsStateError);
-      expect(() => blogs().updateOrCreate(where, values), throwsStateError);
-      expect(await Blog().count(), 3);
+      Map<String, dynamic> where = <String, dynamic>{'title': 'x'};
+      Map<String, dynamic> values = <String, dynamic>{'body': 'b'};
+
+      setUp(threeBlogs);
+
+      /// a Future, not a sync throw: find() fails like findOrFail()
+      test('find', () async {
+        await expectLater(q().find(1), throwsStateError);
+        await expectLater(q().find('title', 'x'), throwsStateError);
+      });
+
+      test('findOrFail', () async {
+        await expectLater(q().findOrFail(1), throwsStateError);
+      });
+
+      test('pluck', () {
+        expect(() => q().pluck('title'), throwsStateError);
+      });
+
+      test('pluckMap', () {
+        expect(() => q().pluckMap('title', 'uid'), throwsStateError);
+      });
+
+      test('valueOf', () {
+        expect(() => q().valueOf('title'), throwsStateError);
+      });
+
+      test('firstOrNew', () async {
+        await expectLater(q().firstOrNew(where), throwsStateError);
+      });
+
+      test('firstOrCreate writes nothing', () async {
+        await expectLater(q().firstOrCreate(where, values), throwsStateError);
+        expect(await Blog().count(), 3);
+      });
+
+      test('updateOrCreate writes nothing', () async {
+        await expectLater(q().updateOrCreate(where, values), throwsStateError);
+        expect(await Blog().count(), 3);
+      });
+
+      /// a model has its own firstOrNew() and updateOrCreate()
+      test('model firstOrNew', () async {
+        await expectLater(blogs().firstOrNew(where), throwsStateError);
+      });
+
+      test('model firstOrCreate writes nothing', () async {
+        await expectLater(
+          blogs().firstOrCreate(where, values),
+          throwsStateError,
+        );
+        expect(await Blog().count(), 3);
+      });
+
+      test('model updateOrCreate writes nothing', () async {
+        await expectLater(
+          blogs().updateOrCreate(where, values),
+          throwsStateError,
+        );
+        expect(await Blog().count(), 3);
+      });
 
       /// getFirst() and firstOrFail() put LIMIT 1 on the whole union, so
       /// they give the right row
-      expect((await q().getFirst())?['status'], 'y');
-      expect((await q().firstOrFail())['status'], 'y');
+      test('getFirst and firstOrFail work', () async {
+        expect((await q().getFirst())?['status'], 'y');
+        expect((await q().firstOrFail())['status'], 'y');
+      });
     });
   });
 

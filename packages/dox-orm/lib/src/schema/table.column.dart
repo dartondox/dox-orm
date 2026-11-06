@@ -29,6 +29,7 @@ enum ColumnType {
   uuid,
   binary,
   enumeration,
+  year,
 }
 
 /// one column of a table, made by the methods of [Table].
@@ -154,7 +155,16 @@ class ColumnDefinition {
 class ForeignIdColumnDefinition extends ColumnDefinition {
   final Table _table;
 
-  ForeignIdColumnDefinition(this._table, super.name, super.type);
+  /// the table and key of the model of `foreignIdFor()`
+  String? modelTable;
+  String? modelKey;
+
+  ForeignIdColumnDefinition(
+    this._table,
+    super.name,
+    super.type, {
+    super.length,
+  });
 
   /// every modifier returns this type, so `.nullable().constrained()`
   /// and `.unique().constrained()` work, like Laravel
@@ -232,8 +242,10 @@ class ForeignIdColumnDefinition extends ColumnDefinition {
 
   /// add a foreign key to [table] ([column], default `id`).
   /// without [table] the name is guessed: `user_id` => `users`.
-  ForeignKeyDefinition constrained([String? table, String column = 'id']) {
-    return references(column).on(table ?? guessTable(name));
+  /// After `foreignIdFor()` it is the model table and key.
+  ForeignKeyDefinition constrained([String? table, String? column]) {
+    return references(column ?? modelKey ?? 'id')
+        .on(table ?? modelTable ?? guessTable(name));
   }
 
   /// add a foreign key to [column], set the table with `on()`
@@ -294,6 +306,8 @@ class ForeignKeyDefinition {
   ForeignKeyDefinition nullOnDelete() => onDelete('set null');
   ForeignKeyDefinition restrictOnDelete() => onDelete('restrict');
   ForeignKeyDefinition cascadeOnUpdate() => onUpdate('cascade');
+  ForeignKeyDefinition nullOnUpdate() => onUpdate('set null');
+  ForeignKeyDefinition restrictOnUpdate() => onUpdate('restrict');
 }
 
 /// String or `List<String>` to `List<String>`

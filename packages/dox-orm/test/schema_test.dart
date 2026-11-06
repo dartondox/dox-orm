@@ -397,6 +397,87 @@ void main() async {
       expect((await rows('sch_post')).length, 2);
     });
 
+    test('dropConstrainedForeignId drops the key and the column', () async {
+      await schema.create('sch_user', (Table table) {
+        table.id();
+      });
+      await schema.create('sch_post', (Table table) {
+        table.id();
+        table.foreignId('user_id').constrained('sch_user');
+        table.string('title').nullable();
+        table.year('year').nullable();
+        table.ipAddress().nullable();
+      });
+      await insert('sch_user', <String, dynamic>{'id': 1});
+      await insert('sch_post', <String, dynamic>{
+        'user_id': 1,
+        'title': 'a',
+        'year': 2024,
+        'ip_address': '2001:db8::1',
+      });
+      Map<String, dynamic> row = (await rows('sch_post')).single;
+      expect('${row['year']}', '2024');
+      expect(row['ip_address'], '2001:db8::1');
+
+      await schema.table('sch_post', (Table table) {
+        table.dropConstrainedForeignId('user_id');
+      });
+      expect(await schema.hasColumn('sch_post', 'user_id'), isFalse);
+      expect((await rows('sch_post')).single['title'], 'a');
+    });
+
+    test('renameIndex keeps the index', () async {
+      await schema.create('sch_post', (Table table) {
+        table.id();
+        table.string('code').unique();
+      });
+      await schema.table('sch_post', (Table table) {
+        table.renameIndex('sch_post_code_unique', 'sch_post_code_uq');
+      });
+      await insert('sch_post', <String, dynamic>{'code': 'a'});
+      await expectLater(
+        insert('sch_post', <String, dynamic>{'code': 'a'}),
+        throwsA(anything),
+      );
+
+      /// the old name is gone, the new one can be dropped
+      await schema.table('sch_post', (Table table) {
+        table.dropUnique('sch_post_code_uq');
+      });
+      await insert('sch_post', <String, dynamic>{'code': 'a'});
+    });
+
+    test(
+      'fullText and dropPrimary',
+      () async {
+        await schema.create('sch_post', (Table table) {
+          table.integer('id').primary();
+          table.string('title');
+          table.text('body');
+          table.fullText(<String>['title', 'body']);
+        });
+        await insert('sch_post', <String, dynamic>{
+          'id': 1,
+          'title': 'a',
+          'body': 'b',
+        });
+        await schema.table('sch_post', (Table table) {
+          table.dropPrimary();
+        });
+
+        /// no primary key: the same id can be added again
+        await insert('sch_post', <String, dynamic>{
+          'id': 1,
+          'title': 'c',
+          'body': 'd',
+        });
+        expect((await rows('sch_post')).length, 2);
+      },
+      skip: driver == Driver.sqlite
+          ? 'sqlite has no full text index and can not drop a primary key'
+          : false,
+    );
+
     test('change with unique and index', () async {
       await schema.create('sch_post', (Table table) {
         table.id();

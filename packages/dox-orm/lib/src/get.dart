@@ -42,15 +42,21 @@ mixin Get<T> implements SharedMixin<T> {
   /// It throws a [StateError] on a union() query: the id would only be
   /// checked in the first part. Use get() then.
   Future<T?> find(dynamic arg1, [dynamic arg2 = missingArg]) {
-    checkNoUnion(queryBuilder, 'find');
     bool idOnly = identical(arg2, missingArg);
-    if (!idOnly && arg1 is! String) {
-      throw ArgumentError.value(
-        arg1,
-        'arg1',
-        'must be a column name when a second arg is given. '
-            'Use find(id) to find by id',
-      );
+    try {
+      checkNoUnion(queryBuilder, 'find');
+      if (!idOnly && arg1 is! String) {
+        throw ArgumentError.value(
+          arg1,
+          'arg1',
+          'must be a column name when a second arg is given. '
+              'Use find(id) to find by id',
+        );
+      }
+    } catch (e, s) {
+      /// find() is not async, so give the error in the Future, like
+      /// findOrFail()
+      return Future<T?>.error(e, s);
     }
     String column = idOnly ? primaryKey : arg1;
     dynamic value = idOnly ? arg1 : arg2;
@@ -520,6 +526,14 @@ mixin Get<T> implements SharedMixin<T> {
     return _first(_buildQuery());
   }
 
+  /// the first row, or null. The same as [getFirst], like Laravel's
+  /// `first()`.
+  ///
+  /// ```
+  /// Blog? blog = await Blog().where('status', 'active').first();
+  /// ```
+  Future<T?> first() => getFirst();
+
   /// the first row, like getFirst(), but it throws a
   /// [ModelNotFoundException] when no row matches
   ///
@@ -761,6 +775,48 @@ mixin Get<T> implements SharedMixin<T> {
     return queryBuilder;
   }
 
+  /// run [callback] on the query only when [condition] is false, else
+  /// run [otherwise] when it is given. The opposite of [when].
+  ///
+  /// ```
+  /// List<Blog> blogs = await Blog()
+  ///     .unless(showDrafts, (QueryBuilder<Blog> q) {
+  ///       q.where('status', 'published');
+  ///     })
+  ///     .get();
+  /// ```
+  QueryBuilder<T> unless(
+    bool condition,
+    void Function(QueryBuilder<T> query) callback, [
+    void Function(QueryBuilder<T> query)? otherwise,
+  ]) {
+    return when(!condition, callback, otherwise);
+  }
+
+  /// run [callback] with [value] when [value] is not null, else run
+  /// [otherwise] when it is given. It is Laravel's `when($value, fn)`:
+  /// the callback gets the value, and the value is not null in it.
+  ///
+  /// ```
+  /// List<Blog> blogs = await Blog()
+  ///     .whenValue(req.query['status'], (QueryBuilder<Blog> q, status) {
+  ///       q.where('status', status);
+  ///     })
+  ///     .get();
+  /// ```
+  QueryBuilder<T> whenValue<V>(
+    V? value,
+    void Function(QueryBuilder<T> query, V value) callback, [
+    void Function(QueryBuilder<T> query)? otherwise,
+  ]) {
+    if (value != null) {
+      callback(queryBuilder, value);
+    } else {
+      otherwise?.call(queryBuilder);
+    }
+    return queryBuilder;
+  }
+
   /// run [sql] and return the first row, or null
   Future<T?> _first(String sql) async {
     // ignore: always_specify_types
@@ -775,12 +831,30 @@ mixin Get<T> implements SharedMixin<T> {
   /// ```
   /// String query = Blog().where('status', 'active').toSql();
   /// ```
-  String toSql() {
+  /// The values are put in as they are, with no quotes, like
+  /// `status = active`. Use [toRawSql] for SQL with quoted values.
+  String toSql() => _withValues((dynamic value) => value.toString());
+
+  /// the SQL with each value quoted for the database, like Laravel's
+  /// `toRawSql()`. It is for logs and debugging: run queries with
+  /// bound values, not with this text.
+  ///
+  /// ```
+  /// // SELECT * FROM "blog" WHERE "status" = 'it''s'
+  /// String sql = Blog().where('status', "it's").toRawSql();
+  /// ```
+  String toRawSql() {
+    SchemaGrammar grammar = SchemaGrammar.of(dbDriver.getName());
+    return _withValues((dynamic value) => grammar.literal(value));
+  }
+
+  /// the SQL with each `@name` replaced by [show] of its value
+  String _withValues(String Function(dynamic value) show) {
     String q = _buildQuery();
     Map<String, dynamic> values = queryBuilder.substitutionValues;
     return q.replaceAllMapped(RegExp(r'@(\w+)'), (Match m) {
       String key = m.group(1)!;
-      return values.containsKey(key) ? values[key].toString() : m.group(0)!;
+      return values.containsKey(key) ? show(values[key]) : m.group(0)!;
     });
   }
 

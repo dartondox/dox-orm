@@ -299,6 +299,118 @@ void main() {
     });
   });
 
+  group('more column helpers |', () {
+    test('ulid, foreignUlid, year, ipAddress', () {
+      types((Table t) => t.ulid(), <String>[
+        '"ulid" CHAR(26) NOT NULL',
+        '`ulid` CHAR(26) NOT NULL',
+        '"ulid" CHAR(26) NOT NULL',
+      ]);
+      types((Table t) => t.foreignUlid('user_id').nullable(), <String>[
+        '"user_id" CHAR(26)',
+        '`user_id` CHAR(26) NULL',
+        '"user_id" CHAR(26)',
+      ]);
+      types((Table t) => t.year('born'), <String>[
+        '"born" INTEGER NOT NULL',
+        '`born` YEAR NOT NULL',
+        '"born" INTEGER NOT NULL',
+      ]);
+      types((Table t) => t.ipAddress(), <String>[
+        '"ip_address" VARCHAR(45) NOT NULL',
+        '`ip_address` VARCHAR(45) NOT NULL',
+        '"ip_address" VARCHAR(45) NOT NULL',
+      ]);
+      types((Table t) => t.softDeletesTz(), <String>[
+        '"deleted_at" TIMESTAMPTZ',
+        '`deleted_at` TIMESTAMP NULL',
+        '"deleted_at" TIMESTAMP',
+      ]);
+    });
+
+    test('nullableMorphs and uuidMorphs', () {
+      expect(create(pg, (Table t) => t.nullableMorphs('owner')), <String>[
+        'CREATE TABLE "t" ("owner_id" BIGINT, "owner_type" VARCHAR(255))',
+        'CREATE INDEX "t_owner_type_owner_id_index" ON "t" ("owner_type", "owner_id")',
+      ]);
+      expect(create(pg, (Table t) => t.uuidMorphs('owner')), <String>[
+        'CREATE TABLE "t" ("owner_id" UUID NOT NULL, "owner_type" VARCHAR(255) NOT NULL)',
+        'CREATE INDEX "t_owner_type_owner_id_index" ON "t" ("owner_type", "owner_id")',
+      ]);
+    });
+
+    test('foreignIdFor uses the model table and key', () {
+      void build(Table t) {
+        t.foreignIdFor(Writer()).constrained().nullOnUpdate();
+        t.foreignIdFor(Writer(), 'author_id');
+      }
+
+      expect(create(pg, build), <String>[
+        'CREATE TABLE "t" ("writer_id" BIGINT NOT NULL, "author_id" BIGINT NOT NULL, '
+            'CONSTRAINT "t_writer_id_foreign" FOREIGN KEY ("writer_id") '
+            'REFERENCES "writers" ("wid") ON UPDATE SET NULL)',
+      ]);
+      Table t = Table('t', creating: true);
+      t.foreignId('a_id').constrained('a').restrictOnUpdate().cascadeOnDelete();
+      expect(
+        pg.compile(t).first,
+        contains('ON DELETE CASCADE ON UPDATE RESTRICT'),
+      );
+    });
+
+    test('drop helpers', () {
+      void build(Table t) {
+        t.dropTimestamps();
+        t.dropSoftDeletes();
+        t.dropConstrainedForeignId('user_id');
+      }
+
+      expect(alter(pg, build), <String>[
+        'ALTER TABLE "t" DROP COLUMN "created_at"',
+        'ALTER TABLE "t" DROP COLUMN "updated_at"',
+        'ALTER TABLE "t" DROP COLUMN "deleted_at"',
+        'ALTER TABLE "t" DROP CONSTRAINT "t_user_id_foreign"',
+        'ALTER TABLE "t" DROP COLUMN "user_id"',
+      ]);
+      expect(alter(my, build).sublist(3), <String>[
+        'ALTER TABLE `t` DROP FOREIGN KEY `t_user_id_foreign`',
+        'ALTER TABLE `t` DROP COLUMN `user_id`',
+      ]);
+    });
+
+    test('dropPrimary, renameIndex, fullText', () {
+      void build(Table t) {
+        t.dropPrimary();
+        t.renameIndex('a_index', 'b_index');
+        t.fullText(<String>['title', 'body']);
+      }
+
+      expect(alter(pg, build), <String>[
+        'ALTER TABLE "t" DROP CONSTRAINT "t_pkey"',
+        'ALTER INDEX "a_index" RENAME TO "b_index"',
+        'CREATE INDEX "t_title_body_fulltext" ON "t" USING gin '
+            "((to_tsvector('english', \"title\") || to_tsvector('english', \"body\")))",
+      ]);
+      expect(alter(my, build), <String>[
+        'ALTER TABLE `t` DROP PRIMARY KEY',
+        'ALTER TABLE `t` RENAME INDEX `a_index` TO `b_index`',
+        'CREATE FULLTEXT INDEX `t_title_body_fulltext` ON `t` (`title`, `body`)',
+      ]);
+      expect(
+        () => alter(lite, (Table t) => t.dropPrimary()),
+        throwsUnsupportedError,
+      );
+      expect(
+        () => alter(lite, (Table t) => t.fullText('title')),
+        throwsUnsupportedError,
+      );
+      expect(
+        () => alter(lite, (Table t) => t.renameIndex('a', 'b')),
+        throwsUnsupportedError,
+      );
+    });
+  });
+
   group('modifiers |', () {
     test('nullable', () {
       types((Table t) => t.string('n').nullable(), <String>[
@@ -785,4 +897,13 @@ void main() {
       expect(lite.compileColumnListing(), contains('pragma_table_info'));
     });
   });
+}
+
+/// a model with its own table and key name, for foreignIdFor()
+class Writer extends Model<Writer> {
+  @override
+  String get tableName => 'writers';
+
+  @override
+  String get primaryKey => 'wid';
 }

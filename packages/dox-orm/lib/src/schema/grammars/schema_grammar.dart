@@ -174,7 +174,32 @@ abstract class SchemaGrammar {
         return <String>['ALTER TABLE $t ADD ${foreignSql(command.foreign!)}'];
       case CommandType.dropForeign:
         return <String>[compileDropForeign(table, command.name!)];
+      case CommandType.dropPrimary:
+        return <String>[compileDropPrimary(table, command.name!)];
+      case CommandType.renameIndex:
+        return <String>[compileRenameIndex(table, command.name!, command.to!)];
+      case CommandType.fullText:
+        return <String>[compileFullText(table, command.name!, command.columns)];
     }
+  }
+
+  /// postgres, mysql overrides it
+  String compileDropPrimary(Table table, String name) {
+    return 'ALTER TABLE ${wrap(table.name)} DROP CONSTRAINT ${wrap(name)}';
+  }
+
+  /// postgres, mysql overrides it
+  String compileRenameIndex(Table table, String from, String to) {
+    return 'ALTER INDEX ${wrap(from)} RENAME TO ${wrap(to)}';
+  }
+
+  /// postgres, like Laravel: a gin index on the words of the columns.
+  /// mysql overrides it.
+  String compileFullText(Table table, String name, List<String> columns) {
+    String words = columns
+        .map((String c) => "to_tsvector('english', ${wrap(c)})")
+        .join(' || ');
+    return 'CREATE INDEX ${wrap(name)} ON ${wrap(table.name)} USING gin (($words))';
   }
 
   String compileIndex(

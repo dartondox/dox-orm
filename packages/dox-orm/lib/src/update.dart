@@ -5,7 +5,7 @@ import 'shared_mixin.dart';
 /// run [query] of [qb] and return the number of rows it changed
 Future<int> runAffectingQuery(QueryBuilder<dynamic> qb, String query) {
   Map<String, dynamic> values = qb.substitutionValues;
-  if (qb.shouldDebug) qb.logger.log(query, values);
+  if (qb.shouldDebug) qb.logger.log(query, values, qb.connection);
   return qb.dbDriver.affectingStatement(query, substitutionValues: values);
 }
 

@@ -167,8 +167,24 @@ mixin Where<T> implements SharedMixin<T> {
   /// ```
   /// A row where a column in the bracket is null can match neither the
   /// bracket nor NOT of it (sql null rules).
-  QueryBuilder<T> whereNot(void Function(QueryBuilder<T> query) callback) {
-    return _group('AND', 'NOT ', callback);
+  ///
+  /// It also takes the args of [where], like Laravel:
+  ///
+  /// ```
+  /// // WHERE NOT ("status" = @status_p0)
+  /// List blogs = await Blog().whereNot('status', 'draft').get();
+  /// List blogs = await Blog().whereNot('views', '<', 10).get();
+  /// ```
+  ///
+  /// ponytail: [arg1] is an `Object` so it takes a callback or a column.
+  /// A callback with no type on its arg gets a `dynamic` query, so give
+  /// the type: `(QueryBuilder<Blog> q) {...}`.
+  QueryBuilder<T> whereNot(
+    Object arg1, [
+    dynamic arg2 = _missing,
+    dynamic arg3 = _missing,
+  ]) {
+    return _not('AND', arg1, arg2, arg3);
   }
 
   /// or where the conditions in the bracket are not true, see [whereNot]
@@ -178,9 +194,33 @@ mixin Where<T> implements SharedMixin<T> {
   ///     .where('id', 1)
   ///     .orWhereNot((QueryBuilder<Blog> q) => q.where('status', 'draft'))
   ///     .get();
+  /// List blogs = await Blog().where('id', 1).orWhereNot('status', 'draft').get();
   /// ```
-  QueryBuilder<T> orWhereNot(void Function(QueryBuilder<T> query) callback) {
-    return _group('OR', 'NOT ', callback);
+  QueryBuilder<T> orWhereNot(
+    Object arg1, [
+    dynamic arg2 = _missing,
+    dynamic arg3 = _missing,
+  ]) {
+    return _not('OR', arg1, arg2, arg3);
+  }
+
+  /// NOT of a callback group, or of one [where] condition
+  QueryBuilder<T> _not(String type, Object arg1, dynamic arg2, dynamic arg3) {
+    if (arg1 is String) {
+      return _group(
+        type,
+        'NOT ',
+        (QueryBuilder<T> q) => q._query('AND', arg1, arg2, arg3),
+      );
+    }
+    if (arg1 is void Function(QueryBuilder<T> query)) {
+      return _group(type, 'NOT ', arg1);
+    }
+    throw ArgumentError.value(
+      arg1,
+      'arg1',
+      'must be a column name or a void Function(QueryBuilder<$T>)',
+    );
   }
 
   /// where column is between [values] (from and to, both included)

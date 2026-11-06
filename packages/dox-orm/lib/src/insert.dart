@@ -129,6 +129,48 @@ mixin Insert<T> implements SharedMixin<T> {
     return _insert(list, helper.wrap(primaryKey));
   }
 
+  /// insert many rows and read nothing back, like Laravel's bulk
+  /// `insert()`. It returns true. An empty [rows] runs no query.
+  ///
+  /// ```
+  /// await QueryBuilder.table('tag').insertMany([
+  ///   {'name': 'dart'},
+  ///   {'name': 'php'},
+  /// ]);
+  /// ```
+  ///
+  /// It has no `RETURNING`, so it also works on a table with no `id`
+  /// column, like a pivot table. It fires no model events and sets no
+  /// timestamps. On a model, keys that `fillable` and `guarded` do not
+  /// allow are dropped from each row. The same column rules as
+  /// [insertMultiple].
+  Future<bool> insertMany(List<Map<String, dynamic>> rows) async {
+    await _insert(rows, null);
+    resetSubstitutionValues();
+    return true;
+  }
+
+  /// insert one row and return its new id, like Laravel's
+  /// `insertGetId()`. The id is the auto increment id, or the id in
+  /// [data] when the table has no auto increment.
+  ///
+  /// ```
+  /// dynamic id = await QueryBuilder.table('blog').insertGetId({
+  ///   'title': 'Blog title',
+  /// });
+  /// ```
+  ///
+  /// It fires no model events and sets no timestamps. On a model, keys
+  /// that `fillable` and `guarded` do not allow are dropped.
+  Future<dynamic> insertGetId(Map<String, dynamic> data) async {
+    List<Map<String, dynamic>> rows = await insertMultiple(
+      <Map<String, dynamic>>[data],
+    );
+    resetSubstitutionValues();
+    return (rows.isNotEmpty ? rows.first[primaryKey] : null) ??
+        data[primaryKey];
+  }
+
   /// insert [rows], or update the row that has the same [uniqueBy]
   /// values. [updateColumns] are the columns to update on a match, the
   /// default is every column that is not in [uniqueBy]. An empty
@@ -355,10 +397,10 @@ mixin Insert<T> implements SharedMixin<T> {
   }
 
   /// insert [list] and return the [returning] columns of the new rows,
-  /// when the driver supports RETURNING
+  /// when the driver supports RETURNING. A null [returning] reads nothing.
   Future<List<Map<String, dynamic>>> _insert(
     List<Map<String, dynamic>> list,
-    String returning,
+    String? returning,
   ) async {
     if (list.isEmpty) {
       return <Map<String, dynamic>>[];
@@ -400,7 +442,8 @@ mixin Insert<T> implements SharedMixin<T> {
       values.add("(${ret.join(',')})");
     }
 
-    String returningQuery = queryBuilder.dbDriver.supportsReturning
+    String returningQuery =
+        returning != null && queryBuilder.dbDriver.supportsReturning
         ? 'RETURNING $returning'
         : '';
 

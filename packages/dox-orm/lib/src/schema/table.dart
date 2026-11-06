@@ -1,3 +1,4 @@
+import '../model.dart';
 import 'grammars/schema_grammar.dart';
 import 'table.column.dart';
 
@@ -14,6 +15,9 @@ enum CommandType {
   dropUnique,
   foreign,
   dropForeign,
+  dropPrimary,
+  renameIndex,
+  fullText,
 }
 
 /// one table level change (index, foreign key, drop, rename, ...)
@@ -217,6 +221,49 @@ class Table {
     return col;
   }
 
+  /// big unsigned integer for a foreign key to [model], like Laravel.
+  /// The column is the default foreign key of the model (`User` gives
+  /// `user_id`), or [column]. `.constrained()` points to the model table
+  /// and primary key.
+  ///
+  /// ```
+  /// table.foreignIdFor(User()).constrained().cascadeOnDelete();
+  /// ```
+  ///
+  /// ponytail: it is always a big integer. Use [foreignUuid] or
+  /// [foreignUlid] for a model with a text key.
+  ForeignIdColumnDefinition foreignIdFor(
+    Model<dynamic> model, [
+    String? column,
+  ]) {
+    return foreignId(column ?? model.foreignKeyName)
+      ..modelTable = model.tableName
+      ..modelKey = model.primaryKey;
+  }
+
+  /// `CHAR(26)` for a ULID
+  ColumnDefinition ulid([String name = 'ulid']) => char(name, 26);
+
+  /// `CHAR(26)` for a foreign key to a ULID, add `.constrained()`
+  ForeignIdColumnDefinition foreignUlid(String name) {
+    ForeignIdColumnDefinition col = ForeignIdColumnDefinition(
+      this,
+      name,
+      ColumnType.char,
+      length: 26,
+    );
+    columns.add(col);
+    return col;
+  }
+
+  /// a year. YEAR on mysql, INTEGER on postgres and sqlite.
+  ColumnDefinition year(String name) => _col(name, ColumnType.year);
+
+  /// `VARCHAR(45)`, long enough for an IPv6 address
+  ColumnDefinition ipAddress([String name = 'ip_address']) {
+    return string(name, 45);
+  }
+
   /// nullable `created_at` and `updated_at`
   /// (TIMESTAMPTZ on postgres, TIMESTAMP on others)
   void timestamps() {
@@ -234,11 +281,40 @@ class Table {
     return string('remember_token', 100).nullable();
   }
 
+  /// the same as [softDeletes]: it is already a time with a zone
+  ColumnDefinition softDeletesTz([String name = 'deleted_at']) {
+    return softDeletes(name);
+  }
+
   /// `{name}_id` and `{name}_type` with an index on both
-  void morphs(String name) {
-    unsignedBigInteger('${name}_id');
-    string('${name}_type');
-    index(<String>['${name}_type', '${name}_id']);
+  void morphs(String name) => _morphs(name, unsignedBigInteger('${name}_id'));
+
+  /// [morphs] where both columns can be null
+  void nullableMorphs(String name) {
+    _morphs(name, unsignedBigInteger('${name}_id').nullable(), true);
+  }
+
+  /// [morphs] with a uuid `{name}_id`
+  void uuidMorphs(String name) => _morphs(name, uuid('${name}_id'));
+
+  void _morphs(String name, ColumnDefinition id, [bool nullable = false]) {
+    string('${name}_type').nullable(nullable);
+    index(<String>['${name}_type', id.name]);
+  }
+
+  /// drop `created_at` and `updated_at`
+  void dropTimestamps() {
+    dropColumns(<String>['created_at', 'updated_at']);
+  }
+
+  /// drop `deleted_at` (or [name])
+  void dropSoftDeletes([String name = 'deleted_at']) => dropColumn(name);
+
+  /// drop the foreign key of [name] (made by `foreignId(name)
+  /// .constrained()`), then the column
+  void dropConstrainedForeignId(String name) {
+    dropForeign(<String>[name]);
+    dropColumn(name);
   }
 
   // ---------------------------------------------------------------
@@ -292,6 +368,27 @@ class Table {
     commands.add(
       TableCommand(CommandType.primary, columns: columnList(columns)),
     );
+  }
+
+  /// drop the primary key. [name] is for postgres, the default is
+  /// `{table}_pkey`. mysql drops the primary key by no name. sqlite can
+  /// not drop it.
+  void dropPrimary([String? name]) {
+    commands.add(
+      TableCommand(CommandType.dropPrimary, name: name ?? '${this.name}_pkey'),
+    );
+  }
+
+  /// rename the index [from] to [to]
+  void renameIndex(String from, String to) {
+    commands.add(TableCommand(CommandType.renameIndex, name: from, to: to));
+  }
+
+  /// a full text index. mysql: `FULLTEXT`. postgres: a `gin` index on
+  /// `to_tsvector('english', ...)`. sqlite has none, it throws an
+  /// [UnsupportedError].
+  void fullText(Object columns, [String? name]) {
+    _index(CommandType.fullText, 'fulltext', columns, name);
   }
 
   ForeignKeyDefinition foreign(Object columns, [String? name]) {

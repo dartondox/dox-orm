@@ -139,10 +139,17 @@ class Model<T> extends QueryBuilder<T> {
             (allowed.contains(e.key) ||
                 (allowed.isEmpty &&
                     !blockAll &&
-                    (columns.isEmpty || columns.contains(e.key)))))
+                    (columns.isEmpty
+                        ? _ascii.hasMatch(e.key)
+                        : columns.contains(e.key)))))
           e.key: e.value,
     };
   }
+
+  /// a key with only ASCII chars. With no [tableColumns], a key with
+  /// other chars is dropped: MySQL folds case of more chars than Dart
+  /// toLowerCase(), so `'İS_ADMIN'` could set `is_admin`.
+  static final RegExp _ascii = RegExp(r'^[\x00-\x7F]*$');
 
   /// the column name that the database sees for [key]. The SQL builder
   /// trims the name, a table prefix points to the same column, and
@@ -265,13 +272,20 @@ class Model<T> extends QueryBuilder<T> {
       /// null, so a model loaded with select() does not clear the other
       /// columns.
       Map<String, dynamic> saved = _savedValues ?? originalMap;
+
+      /// an updated_at that the user set is kept, like Laravel
+      bool keepUpdatedAt =
+          updatedAtColumn != null &&
+          values[updatedAtColumn] != null &&
+          !_sameTime(values[updatedAtColumn], saved[updatedAtColumn]);
       values.removeWhere((String key, dynamic value) {
-        return key == updatedAtColumn || _same(value, saved[key]);
+        return (key == updatedAtColumn && !keepUpdatedAt) ||
+            _same(value, saved[key]);
       });
 
       /// nothing changed: no query, and updated_at stays as it is
       if (values.isEmpty) return;
-      if (updatedAtColumn != null) {
+      if (updatedAtColumn != null && !keepUpdatedAt) {
         values[updatedAtColumn] = currentTime;
         updatedAt = currentTime;
       }
@@ -299,6 +313,15 @@ class Model<T> extends QueryBuilder<T> {
       updatedAt = currentTime;
     }
     return values;
+  }
+
+  /// true when [a] and [b] are the same time. A time can be a
+  /// [DateTime] or a text, by driver, so both are read as a time first.
+  static bool _sameTime(dynamic a, dynamic b) {
+    DateTime? x = a is DateTime ? a : DateTime.tryParse('${a ?? ''}');
+    DateTime? y = b is DateTime ? b : DateTime.tryParse('${b ?? ''}');
+    if (x == null || y == null) return x == y;
+    return x.isAtSameMomentAs(y);
   }
 
   /// true when the model value [a] is the same as the saved value [b].
@@ -505,11 +528,15 @@ class Model<T> extends QueryBuilder<T> {
 
   /// set the fields of [values] (column name => value) and mark them as
   /// saved, so save() does not send them again. a column that
-  /// [setColumnValue] does not take is skipped.
+  /// [setColumnValue] does not take is skipped. The updated_at column
+  /// is kept too: the caller set the updatedAt field, also for a custom
+  /// column that setColumnValue does not know. Else the next save()
+  /// sees a changed time and keeps the old one.
   void _setSavedColumns(Map<String, dynamic> values) {
+    String? updatedAtColumn = timestampsColumn['updated_at'];
     List<String> done = <String>[
       for (MapEntry<String, dynamic> e in values.entries)
-        if (setColumnValue(e.key, e.value)) e.key,
+        if (setColumnValue(e.key, e.value) || e.key == updatedAtColumn) e.key,
     ];
 
     /// a model that was not read or saved keeps exists false
@@ -1237,16 +1264,18 @@ class Model<T> extends QueryBuilder<T> {
       data = _onlyFillable(data);
       if (data.isEmpty) return 0;
       String? updatedAtColumn = timestampsColumn['updated_at'];
-      DateTime? time;
       if (updatedAtColumn != null && !data.containsKey(updatedAtColumn)) {
-        time = now();
-        data = <String, dynamic>{...data, updatedAtColumn: time};
+        data = <String, dynamic>{...data, updatedAtColumn: now()};
       }
       int count = await _thisRecord().update(data);
       if (count > 0) {
         /// like save(): also for a custom column that setColumnValue
-        /// does not know
-        if (time != null) updatedAt = time;
+        /// does not know, and when [data] has the time
+        dynamic given = data[updatedAtColumn];
+        DateTime? stamp = given is DateTime
+            ? given
+            : DateTime.tryParse('${given ?? ''}');
+        if (stamp != null) updatedAt = stamp;
         _setSavedColumns(data);
       }
       return count;
@@ -1321,6 +1350,16 @@ class Model<T> extends QueryBuilder<T> {
   @override
   Future<int> insertOrIgnore(List<Map<String, dynamic>> rows) async {
     return await super.insertOrIgnore(<Map<String, dynamic>>[
+      for (Map<String, dynamic> row in rows) _onlyFillable(row),
+    ]);
+  }
+
+  /// insert many rows and read nothing back, see
+  /// [QueryBuilder.insertMany]. keys that [fillable] and [guarded] do not
+  /// allow are dropped from each row. It fires no model events.
+  @override
+  Future<bool> insertMany(List<Map<String, dynamic>> rows) async {
+    return await super.insertMany(<Map<String, dynamic>>[
       for (Map<String, dynamic> row in rows) _onlyFillable(row),
     ]);
   }

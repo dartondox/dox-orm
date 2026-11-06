@@ -165,7 +165,9 @@ class QueryBuilderHelper<T> {
     Map<String, dynamic>? values,
   ]) {
     values ??= queryBuilder.substitutionValues;
-    if (queryBuilder.shouldDebug) queryBuilder.logger.log(query, values);
+    if (queryBuilder.shouldDebug) {
+      queryBuilder.logger.log(query, values, queryBuilder.connection);
+    }
     return queryBuilder.dbDriver.query(
       query,
       substitutionValues: values,

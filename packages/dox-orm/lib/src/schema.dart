@@ -85,16 +85,75 @@ class Schema {
 
   /// run the sql of [table], one statement at a time
   Future<void> build(Table table) async {
-    if (grammar is SqliteGrammar && table.needsSqliteRebuild) {
+    if (grammar is! SqliteGrammar) return await _run(grammar.compile(table));
+
+    /// sqlite has no rename of an index, it is made again at the end
+    List<TableCommand> renames = _take(
+      table,
+      (TableCommand c) => c.type == CommandType.renameIndex,
+    );
+    if (table.needsSqliteRebuild) {
+      /// sqlite can not drop a column that a foreign key uses, so drop
+      /// it after the rebuild dropped the key (dropConstrainedForeignId)
+      Set<String> droppedKeys = <String>{
+        for (TableCommand c in table.commands)
+          if (c.type == CommandType.dropForeign) c.name!,
+      };
+      List<TableCommand> drops = _take(
+        table,
+        (TableCommand c) =>
+            c.type == CommandType.dropColumn &&
+            droppedKeys.contains(table.indexName('foreign', c.columns)),
+      );
       await _run(grammar.compile(table.withoutSqliteRebuild()));
       await SqliteTableRebuilder(
         driver,
         grammar as SqliteGrammar,
       ).rebuild(table);
-      return;
+      await _run(grammar.compile(Table(table.name)..commands.addAll(drops)));
+    } else {
+      await _run(grammar.compile(table));
     }
-    await _run(grammar.compile(table));
+    for (TableCommand c in renames) {
+      await _renameSqliteIndex(c.name!, c.to!);
+    }
   }
+
+  /// removes the commands of [table] that pass [test] and returns them
+  static List<TableCommand> _take(
+    Table table,
+    bool Function(TableCommand c) test,
+  ) {
+    List<TableCommand> taken = table.commands.where(test).toList();
+    table.commands.removeWhere(test);
+    return taken;
+  }
+
+  /// sqlite: make the index [from] again with the name [to], from its
+  /// saved sql
+  Future<void> _renameSqliteIndex(String from, String to) async {
+    List<Map<String, dynamic>> rows = await driver.query(
+      "SELECT sql FROM sqlite_schema WHERE type = 'index' AND name = @name",
+      substitutionValues: <String, dynamic>{'name': from},
+    );
+    Object? sql = rows.isEmpty ? null : rows.first['sql'];
+    if (sql == null) {
+      throw StateError('sqlite: index $from not found, or it has no sql');
+    }
+    String created = '$sql'.replaceFirstMapped(_indexName, (Match m) {
+      return '${m[1]}${grammar.wrap(to)}';
+    });
+    await driver.transaction(() async {
+      await driver.execute('DROP INDEX ${grammar.wrap(from)}');
+      await driver.execute(created);
+    });
+  }
+
+  /// the name in `CREATE [UNIQUE] INDEX [IF NOT EXISTS] name`
+  static final RegExp _indexName = RegExp(
+    r'^(CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?)("(?:[^"]|"")*"|`[^`]*`|\[[^\]]*\]|\S+)',
+    caseSensitive: false,
+  );
 
   Future<void> _run(List<String> statements) async {
     for (String sql in statements) {
