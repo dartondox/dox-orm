@@ -20,6 +20,7 @@ class SqliteGrammar extends SchemaGrammar {
       case ColumnType.bigInteger:
       case ColumnType.smallInteger:
       case ColumnType.tinyInteger:
+      case ColumnType.year:
         return 'INTEGER';
       case ColumnType.char:
         return 'CHAR(${column.length})';
@@ -103,6 +104,18 @@ class SqliteGrammar extends SchemaGrammar {
     if (!table.creating && command.type == CommandType.primary) {
       throw UnsupportedError(
         'sqlite: can not add a primary key to an existing table',
+      );
+    }
+    if (command.type == CommandType.dropPrimary) {
+      throw UnsupportedError('sqlite: can not drop a primary key');
+    }
+    if (command.type == CommandType.fullText) {
+      throw UnsupportedError('sqlite: has no full text index');
+    }
+    if (command.type == CommandType.renameIndex) {
+      throw UnsupportedError(
+        'sqlite: renameIndex() makes the index again, it only runs on a '
+        'database',
       );
     }
     return super.compileCommand(table, command);

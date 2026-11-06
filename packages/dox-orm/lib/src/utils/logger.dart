@@ -3,11 +3,13 @@ import 'package:dox_orm/src/drivers/db_driver.dart';
 
 class Logger {
   /// print [query] with each `@name` as `?`, and its values in the order
-  /// of the `?`. values that the query does not use come last.
-  void log(String query, [dynamic params]) {
+  /// of the `?`. values that the query does not use come last. values
+  /// named in `logRedact` of the default connection or of the named
+  /// [connection] show as `***`.
+  void log(String query, [dynamic params, String? connection]) {
     Map<String, dynamic> values =
         params as Map<String, dynamic>? ?? const <String, dynamic>{};
-    List<String> redact = SqlQueryBuilder().logRedact;
+    List<String> redact = SqlQueryBuilder().logRedactOf(connection);
     List<String> list = <String>[];
     Set<String> used = <String>{};
     StringBuffer out = StringBuffer();

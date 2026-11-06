@@ -59,6 +59,8 @@ class MysqlGrammar extends SchemaGrammar {
         return 'BLOB';
       case ColumnType.enumeration:
         return 'ENUM(${column.allowed.map(quoteString).join(', ')})';
+      case ColumnType.year:
+        return 'YEAR';
     }
   }
 
@@ -122,6 +124,21 @@ class MysqlGrammar extends SchemaGrammar {
   @override
   String compileDropIndex(Table table, String name) {
     return 'DROP INDEX ${wrap(name)} ON ${wrap(table.name)}';
+  }
+
+  @override
+  String compileDropPrimary(Table table, String name) {
+    return 'ALTER TABLE ${wrap(table.name)} DROP PRIMARY KEY';
+  }
+
+  @override
+  String compileRenameIndex(Table table, String from, String to) {
+    return 'ALTER TABLE ${wrap(table.name)} RENAME INDEX ${wrap(from)} TO ${wrap(to)}';
+  }
+
+  @override
+  String compileFullText(Table table, String name, List<String> columns) {
+    return compileIndex(table, 'FULLTEXT INDEX', name, columns);
   }
 
   @override

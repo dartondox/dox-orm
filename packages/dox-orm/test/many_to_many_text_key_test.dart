@@ -55,6 +55,28 @@ void main() async {
       expect(await keys(), <String>['7']);
     });
 
+    test('toggle of an id with two rows reads the rows once', () async {
+      await artist.attach('songs', <dynamic>['X', 'y']);
+      await artist.attach('songs', <dynamic>['X']);
+      QueryPrinter old = SqlQueryBuilder().printer;
+      _Selects selects = _Selects();
+      SqlQueryBuilder().printer = selects;
+      PivotSyncResult r;
+      try {
+        artist.debug(true);
+        r = await artist.toggle('songs', <dynamic>['X']);
+      } finally {
+        artist.debug(false);
+        SqlQueryBuilder().printer = old;
+      }
+      expect(r.detached, <String>['X']);
+      expect(await keys(), <String>['y']);
+
+      /// the delete count is the number of rows of 'X', so the rows are
+      /// not read again
+      expect(selects.count, 1);
+    });
+
     test('sync returns 007 as text', () async {
       PivotSyncResult r = await artist.sync('songs', <dynamic>['007']);
       expect(r.attached, <String>['007']);
@@ -232,6 +254,38 @@ void main() async {
 
       /// the pivot rows, then one query for all text ids
       expect(selects.count, 2);
+    });
+
+    test('more than 100 case-only ids run one query per 100', () async {
+      List<String> upper = <String>[for (int i = 0; i < 150; i++) 'ID$i', 'x'];
+      await artist.attach('songs', upper);
+      QueryPrinter old = SqlQueryBuilder().printer;
+      _Selects selects = _Selects();
+      SqlQueryBuilder().printer = selects;
+      PivotSyncResult r;
+      try {
+        artist.debug(true);
+        r = await artist.sync('songs', <String>[
+          for (int i = 0; i < 150; i++) 'id$i',
+        ]);
+      } finally {
+        artist.debug(false);
+        SqlQueryBuilder().printer = old;
+      }
+      expect(r.attached, isEmpty);
+      expect(r.detached, <String>['x']);
+      expect(await keys(), hasLength(150));
+
+      /// the pivot rows, then 2 queries: ids 0-99 and 100-149
+      expect(selects.count, 3);
+    });
+
+    test('toggle with two rows of one id and a case pair', () async {
+      await artist.attach('songs', <dynamic>['X', 'ABC']);
+      await artist.attach('songs', <dynamic>['X', 'abc']);
+      PivotSyncResult r = await artist.toggle('songs', <dynamic>['X', 'ABC']);
+      expect(r.detached, unorderedEquals(<String>['X', 'ABC', 'abc']));
+      expect(await keys(), isEmpty);
     });
 
     test('the database, not Dart, decides which ids are the same', () async {

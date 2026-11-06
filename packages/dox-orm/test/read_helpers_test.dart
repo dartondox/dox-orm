@@ -788,6 +788,146 @@ void main() async {
             .pluck('name');
         expect(other, <String>['pear']);
       });
+
+      test('unless and whenValue', () async {
+        await seedItems();
+        Future<List<dynamic>> unless(bool all) {
+          return item()
+              .unless(all, (QueryBuilder<Map<String, dynamic>> q) {
+                q.where('category', 'veg');
+              })
+              .orderBy('id')
+              .pluck('name');
+        }
+
+        expect(await unless(false), <String>['kale', 'leek']);
+        expect((await unless(true)).length, 4);
+
+        Future<List<dynamic>> byCategory(String? category) {
+          return item()
+              .whenValue(category, (
+                QueryBuilder<Map<String, dynamic>> q,
+                String value,
+              ) {
+                q.where('category', value);
+              }, (QueryBuilder<Map<String, dynamic>> q) => q.where('id', 2))
+              .orderBy('id')
+              .pluck('name');
+        }
+
+        expect(await byCategory('veg'), <String>['kale', 'leek']);
+        expect(await byCategory(null), <String>['pear']);
+      });
+    });
+
+    group('Laravel names |', () {
+      test('first and doesntExist', () async {
+        expect(await item().first(), isNull);
+        expect(await item().doesntExist(), isTrue);
+        await seedItems();
+        expect((await item().orderBy('id').first())?['name'], 'apple');
+        expect(await item().where('name', 'apple').doesntExist(), isFalse);
+        expect(await item().where('name', 'none').doesntExist(), isTrue);
+      });
+
+      test('whereNot and orWhereNot with a column', () async {
+        await seedItems();
+        expect(
+          await item()
+              .whereNot('category', 'fruit')
+              .orderBy('id')
+              .pluck('name'),
+          <String>['kale', 'leek'],
+        );
+        expect(
+          await item().whereNot('qty', '<', 7).orderBy('id').pluck('name'),
+          <String>['apple', 'leek'],
+        );
+        expect(
+          await item()
+              .where('name', 'apple')
+              .orWhereNot('category', 'fruit')
+              .orderBy('id')
+              .pluck('name'),
+          <String>['apple', 'kale', 'leek'],
+        );
+
+        /// the callback form works as before
+        expect(
+          await item()
+              .whereNot((QueryBuilder<Map<String, dynamic>> q) {
+                q.where('category', 'fruit');
+              })
+              .orderBy('id')
+              .pluck('name'),
+          <String>['kale', 'leek'],
+        );
+        expect(() => item().whereNot(1), throwsArgumentError);
+      });
+
+      test('insertGetId and insertMany', () async {
+        dynamic id = await item().insertGetId(<String, dynamic>{
+          'name': 'fig',
+          'category': 'fruit',
+          'price': 1,
+          'qty': 1,
+        });
+        expect((await item().find(id))?['name'], 'fig');
+
+        expect(
+          await item().insertMany(<Map<String, dynamic>>[
+            <String, dynamic>{
+              'name': 'plum',
+              'category': 'fruit',
+              'price': 1,
+              'qty': 1,
+            },
+            <String, dynamic>{
+              'name': 'leek',
+              'category': 'veg',
+              'price': 2,
+              'qty': 2,
+            },
+          ]),
+          isTrue,
+        );
+        expect(await item().count(), 3);
+        expect(await item().insertMany(<Map<String, dynamic>>[]), isTrue);
+
+        /// a table with no id column: no RETURNING
+        await Schema().create('item_tag', (Table table) {
+          table.integer('item_id');
+          table.integer('tag_id');
+        });
+        try {
+          await QueryBuilder.table('item_tag')
+              .insertMany(<Map<String, dynamic>>[
+                <String, dynamic>{'item_id': 1, 'tag_id': 2},
+                <String, dynamic>{'item_id': 1, 'tag_id': 3},
+              ]);
+          expect(await QueryBuilder.table('item_tag').count(), 2);
+        } finally {
+          await Schema().dropIfExists('item_tag');
+        }
+
+        /// a model drops keys that fillable does not allow
+        dynamic blogId = await Blog().insertGetId(<String, dynamic>{
+          'title': 't',
+          'body': 'b',
+        });
+        expect((await Blog().find(blogId))?.title, 't');
+      });
+
+      test('toRawSql quotes the values', () {
+        String sql = item()
+            .where('name', "it's")
+            .where('qty', 5)
+            .whereNull('made_at')
+            .toRawSql();
+        expect(sql, contains("'it''s'"));
+        expect(sql, contains('= 5'));
+        expect(item().where('name', 'pear').toSql(), contains('= pear'));
+      });
     });
   });
 }

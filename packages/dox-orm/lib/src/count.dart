@@ -69,6 +69,11 @@ mixin Count<T> implements SharedMixin<T> {
   /// ```
   Future<bool> hasNoRows() async => !await hasRows();
 
+  /// the same as [hasNoRows], like Laravel's `doesntExist()`. There is
+  /// no `exists()`: a model already has the getter `exists`. Use
+  /// [hasRows].
+  Future<bool> doesntExist() => hasNoRows();
+
   /// the sum of [column] of the rows. it is null when no row matches.
   /// like count(), it uses where, join and soft deletes, but not limit,
   /// offset or order by. after distinct() it adds up distinct values.

@@ -91,6 +91,40 @@ void main() async {
       expect((await modifiedAt(s.id))!.isAfter(old), isTrue);
     });
 
+    test('update with the custom column in the map sets updatedAt', () async {
+      Stamped s = await oldRow();
+      DateTime given = DateTime.utc(2021, 5, 6);
+      expect(
+        await s.update(<String, dynamic>{'title': 'b', 'modified_at': given}),
+        1,
+      );
+      expect(s.updatedAt!.isAtSameMomentAs(given), isTrue);
+      expect((await modifiedAt(s.id))!.year, 2021);
+    });
+
+    test('save keeps an updated_at that the user set', () async {
+      /// a loaded row: save() sets the time to now
+      Stamped s = await oldRow();
+      s.title = 'b';
+      await s.save();
+      expect(s.updatedAt!.isAfter(old), isTrue);
+      expect((await modifiedAt(s.id))!.isAfter(old), isTrue);
+
+      /// the user set it: save() keeps it, like Laravel
+      DateTime given = DateTime.utc(2021, 5, 6);
+      s
+        ..title = 'c'
+        ..updatedAt = given;
+      await s.save();
+      expect(s.updatedAt, given);
+      expect((await modifiedAt(s.id))!.year, 2021);
+
+      /// the next change sets it to now again
+      s.title = 'd';
+      await s.save();
+      expect(s.updatedAt!.isAfter(given), isTrue);
+    });
+
     test('restore sets the custom column', () async {
       Stamped s = await oldRow();
       await s.delete();

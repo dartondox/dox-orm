@@ -24,6 +24,7 @@ class PostgresGrammar extends SchemaGrammar {
       case ColumnType.longText:
         return 'TEXT';
       case ColumnType.integer:
+      case ColumnType.year:
         return 'INTEGER';
       case ColumnType.bigInteger:
         return 'BIGINT';

@@ -19,6 +19,13 @@ class GuardedUser extends User {
   List<String> get guarded => <String>['is_admin'];
 }
 
+/// a guarded user with no `tableColumns` (like a hand-written model),
+/// so only the normalized guarded check stops a changed key
+class NoColumnsGuardedUser extends GuardedUser {
+  @override
+  List<String> get tableColumns => const <String>[];
+}
+
 /// a user model with the default fillable and guarded
 class DefaultUser extends Model<DefaultUser> {
   int? get id => tempIdValue as int?;
@@ -402,6 +409,35 @@ void main() async {
         List<Map<String, dynamic>> rows = await QueryBuilder.table('users')
             .get();
         expect(rows, hasLength(4), reason: key);
+        for (Map<String, dynamic> row in rows) {
+          expect(row['name'], 'b', reason: key);
+          expect(row['is_admin'], 0, reason: key);
+        }
+        await QueryBuilder.table('users').forceDelete();
+      }
+    });
+
+    test('with no tableColumns, a changed guarded key is dropped', () async {
+      /// 'İS_ADMIN' is not ASCII: MySQL can fold it to is_admin, Dart
+      /// toLowerCase() does not, so it is dropped
+      for (String key in <String>[
+        ' is_admin',
+        'IS_ADMIN',
+        'users.is_admin',
+        'İS_ADMIN',
+      ]) {
+        Map<String, dynamic> body = <String, dynamic>{'name': 'b', key: 1};
+        User user = await NoColumnsGuardedUser().create(<String, dynamic>{
+          'name': 'a',
+        });
+        await NoColumnsGuardedUser().where('id', user.id).update(body);
+        await NoColumnsGuardedUser().insertMultiple(<Map<String, dynamic>>[
+          body,
+        ]);
+
+        List<Map<String, dynamic>> rows = await QueryBuilder.table('users')
+            .get();
+        expect(rows, hasLength(2), reason: key);
         for (Map<String, dynamic> row in rows) {
           expect(row['name'], 'b', reason: key);
           expect(row['is_admin'], 0, reason: key);

@@ -75,6 +75,42 @@ void main() {
       expect(capture.params, <String>['***', '***', 'c', '***']);
     });
 
+    test('a named connection uses its own logRedact too', () async {
+      SqlQueryBuilder sql = SqlQueryBuilder();
+      DatabaseConfig? oldConfig = sql.databaseConfig;
+      sql.logRedact = <String>['password'];
+      sql.databaseConfig = DatabaseConfig(
+        connection: 'main',
+        url: '',
+        connections: <String, ConnectionConfig>{
+          'main': ConnectionConfig(
+            driver: Driver.sqlite,
+            database: ':memory:',
+            debug: false,
+          ),
+          'other': ConnectionConfig(
+            driver: Driver.sqlite,
+            database: ':memory:',
+            debug: false,
+            logRedact: <String>['token'],
+          ),
+        },
+      );
+      try {
+        String q = 'UPDATE t SET password = @password_p1, token = @token_p2';
+        Map<String, dynamic> values = <String, dynamic>{
+          'password_p1': 'a',
+          'token_p2': 'b',
+        };
+        Logger().log(q, values);
+        expect(capture.params, <String>['***', 'b']);
+        Logger().log(q, values, 'other');
+        expect(capture.params, <String>['***', '***']);
+      } finally {
+        sql.databaseConfig = oldConfig;
+      }
+    });
+
     test('ConnectionConfig.logRedact is read on initialize', () async {
       ConnectionConfig config = ConnectionConfig(
         driver: Driver.sqlite,
