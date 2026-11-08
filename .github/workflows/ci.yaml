@@ -38,7 +38,8 @@ jobs:
   #   time, like one database. See ci/run-group.py.
   # The Postgres and MySQL drivers are native (dox_postgres_native and
   # dox_mysql_native). Their build hooks download ready-built libraries.
-  # sqlite3 bundles SQLite with a build hook. No system library needed.
+  # sqlite3 uses the SQLite of the runner (ci/system-sqlite.sh), so it
+  # downloads nothing.
   # The migration tests run on postgres, mysql and sqlite in one run.
   test:
     runs-on: ubuntu-latest
@@ -64,6 +65,8 @@ jobs:
             ../dox-mysql-native/native -> target
       # Builds the native libraries of the clones, for this machine only.
       - run: ci/use-siblings.sh build
+      # CI only: the sqlite3 hook uses the runner's SQLite, no download.
+      - run: ci/system-sqlite.sh pubspec.yaml
       - run: dart pub get
       - name: Wait for services
         run: ci/wait-services.sh postgres mariadb mysql84
