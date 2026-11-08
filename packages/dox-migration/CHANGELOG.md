@@ -1,4 +1,4 @@
-## Unreleased
+## 3.1.0
 
 - Fix: rollback no longer stops when the file of a migration that already ran is gone. Like Laravel, it prints "Migration not found: <name>", keeps the row of that migration, and rolls back the others. Before, it threw a `MigrationException`.
 - New public library `package:dox_migration/env.dart`. It exports `loadEnv`, the `.env` reader of the Migrator. The dox CLI uses it to read `APP_ENV`.

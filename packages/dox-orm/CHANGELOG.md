@@ -1,4 +1,4 @@
-## Unreleased
+## 3.1.0
 
 - Fix: `findOrFail()` and `firstOrFail()` with no row now answer 404 in a Dox app, like Laravel. Before, the `ModelNotFoundException` was a plain `Exception`, so Dox answered 500 and logged it as a server error. Now it extends `IHttpException` (from dox_annotation) with code 404. The body is `{"code": "not_found", "message": "Not Found"}`, the same as other 404 answers. The table, column and id are not sent to the client. The class name, the `table`, `id` and `column` fields, `toString()` and `on ModelNotFoundException catch` stay the same. The constructor is no longer `const`, because `IHttpException` has fields that can change.
 - New: `first()` is the same as `getFirst()`, and `doesntExist()` is the same as `hasNoRows()`, like Laravel. There is no `exists()` or `value()`: a model already has the getter `exists`, and `value` is a common column name. Use `hasRows()` and `valueOf()`.
