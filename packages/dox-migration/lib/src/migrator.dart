@@ -99,8 +99,8 @@ class Migrator {
 
   /// run a command from the command line and give the exit code:
   /// `run` (or `migrate`), `rollback [--step=<n>|--batch=<n>]`, `reset`,
-  /// `refresh`,
-  /// `fresh`, `status`. `migration:` or `migrate:` in front is fine too.
+  /// `refresh`, `fresh`, `status`. `migration:` or `migrate:` in front is
+  /// fine too. Other words after the rollback options are not used.
   Future<int> run(List<String> args) async {
     String command = args.isEmpty
         ? 'run'
@@ -160,10 +160,17 @@ class Migrator {
     for (int i = 0; i < args.length; i++) {
       RegExpMatch? m = RegExp(r'^--(step|batch)(?:=(.*))?$')
           .firstMatch(args[i]);
-      String? value = m?.group(2);
-      if (m != null && value == null && i + 1 < args.length) value = args[++i];
+
+      /// like before, a word that is not an option (like `--force`) is
+      /// not used
+      if (m == null) {
+        Logger.warn('Ignored option: ${args[i]}');
+        continue;
+      }
+      String? value = m.group(2);
+      if (value == null && i + 1 < args.length) value = args[++i];
       int? n = value == null ? null : int.tryParse(value);
-      if (m == null || n == null || n < 1 || found.containsKey(m.group(1))) {
+      if (n == null || n < 1 || found.containsKey(m.group(1))) {
         throw ArgumentError(
           'Invalid option ${args.join(' ')}, '
           'use --step=<count> or --batch=<number>',

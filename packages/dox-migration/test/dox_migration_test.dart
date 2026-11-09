@@ -476,7 +476,12 @@ DROP TABLE IF EXISTS mig_tag
         Migrator migrator = Migrator(migrations: dartMigrations);
         expect(await migrator.run(<String>['migration:run']), 0);
         expect(await migrator.run(<String>['status']), 0);
-        expect(await migrator.run(<String>['rollback', '--step=1']), 0);
+
+        /// an unknown word is not used, like before
+        expect(
+          await migrator.run(<String>['rollback', '--step=1', '--force']),
+          0,
+        );
         expect(await tableExists('mig_post'), false);
         expect(await migrator.run(<String>['rollback', '--step', '1']), 0);
         expect(await tableExists('mig_user'), false);
