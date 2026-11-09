@@ -477,7 +477,12 @@ DROP TABLE IF EXISTS mig_tag
         expect(await migrator.run(<String>['migration:run']), 0);
         expect(await migrator.run(<String>['status']), 0);
 
-        /// an unknown word is not used, like before
+        /// a typo in the first option fails and rolls back nothing
+        expect(await migrator.run(<String>['rollback', '--stpe=2']), 1);
+        expect(await migrator.run(<String>['rollback', '--force']), 1);
+        expect(await tableExists('mig_post'), true);
+
+        /// an unknown word after the option is not used, like before
         expect(
           await migrator.run(<String>['rollback', '--step=1', '--force']),
           0,

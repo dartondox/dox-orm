@@ -100,7 +100,8 @@ class Migrator {
   /// run a command from the command line and give the exit code:
   /// `run` (or `migrate`), `rollback [--step=<n>|--batch=<n>]`, `reset`,
   /// `refresh`, `fresh`, `status`. `migration:` or `migrate:` in front is
-  /// fine too. Other words after the rollback options are not used.
+  /// fine too. Words after the first rollback option that are not options
+  /// are not used.
   Future<int> run(List<String> args) async {
     String command = args.isEmpty
         ? 'run'
@@ -161,9 +162,16 @@ class Migrator {
       RegExpMatch? m = RegExp(r'^--(step|batch)(?:=(.*))?$')
           .firstMatch(args[i]);
 
-      /// like before, a word that is not an option (like `--force`) is
-      /// not used
+      /// like before, the first word must be an option, so a typo like
+      /// `--stpe=2` does not roll back the whole last batch. A word after
+      /// it that is not an option (like `--force`) is not used.
       if (m == null) {
+        if (i == 0) {
+          throw ArgumentError(
+            'Invalid option ${args.join(' ')}, '
+            'use --step=<count> or --batch=<number>',
+          );
+        }
         Logger.warn('Ignored option: ${args[i]}');
         continue;
       }
