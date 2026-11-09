@@ -11,13 +11,15 @@
 set -euo pipefail
 
 # libsqlite3.so (no version in the name) comes from the -dev package.
-if [ "$(uname)" = Linux ] && ! ldconfig -p | grep -q 'libsqlite3\.so '; then
+# grep reads all lines (no -q), so ldconfig gets no SIGPIPE: under
+# pipefail that would fail the check and run apt-get for nothing.
+if [ "$(uname)" = Linux ] && ! ldconfig -p | grep 'libsqlite3\.so ' >/dev/null; then
   sudo apt-get install -y libsqlite3-dev
 fi
 
 for file in "$@"; do
   if grep -q '^hooks:' "$file"; then
-    echo "$file: has a hooks block already, not changed"
+    echo "::warning file=$file::has a hooks block already, so sqlite3 was not set to the system library. Add 'sqlite3: source: system' under its user_defines by hand."
     continue
   fi
   printf '\nhooks:\n  user_defines:\n    sqlite3:\n      source: system\n' >> "$file"
