@@ -382,6 +382,36 @@ void main() async {
       ]);
     });
 
+    test('insertGetId and insertMany on a model drop a guarded key', () async {
+      Map<String, dynamic> body = <String, dynamic>{'name': 'a', 'is_admin': 1};
+      dynamic id = await GuardedUser().insertGetId(body);
+      expect(
+        await GuardedUser().insertMany(<Map<String, dynamic>>[body]),
+        true,
+      );
+      expect(
+        await FillableUser().insertMany(<Map<String, dynamic>>[body]),
+        true,
+      );
+
+      /// fillable drops the id, so the id of the new row comes back, not 99
+      dynamic newId = await FillableUser().insertGetId(<String, dynamic>{
+        'id': 99,
+        'name': 'b',
+      });
+      expect('$newId', isNot('99'));
+      expect((await QueryBuilder.table('users').find(newId))?['name'], 'b');
+      expect((await QueryBuilder.table('users').find(id))?['name'], 'a');
+
+      List<Map<String, dynamic>> rows = await QueryBuilder.table('users').get();
+      expect(rows.map((Map<String, dynamic> r) => r['is_admin']), <int>[
+        0,
+        0,
+        0,
+        0,
+      ]);
+    });
+
     test('a guarded column can not be set with a changed key', () async {
       /// the SQL builder trims the name, a table prefix points to the same
       /// column, and SQLite and MySQL match names without case

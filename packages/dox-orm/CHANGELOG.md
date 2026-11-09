@@ -4,6 +4,7 @@
 - New: `slowQueryMs` in `ConnectionConfig` logs each query that takes longer than this many milliseconds. It is off (null) by default and works with `debug` off. The line goes to the query printer, with the time, the connection and the SQL. Values named in `logRedact` show as `***`.
 - New: `toJson()` of a model read by a `@ManyToMany` relation now has a `pivot` key with the pivot values (the two keys, the `withPivot` columns and the timestamps), like Laravel. So `withPivot` values reach an API answer. Dates are ISO text. Other models have no `pivot` key, as before. Put `'pivot'` in `hidden` to leave it out.
 - Fix: `restore()` is now on the query builder too, so `Blog().where('status', 'old').restore()` compiles without a cast to the model. It restores the soft deleted rows of the query, like Laravel. `blog.restore()` works as before. On a query with no soft deletes, like `QueryBuilder.table()`, it throws a `StateError`.
+- Fix: `insertGetId()` on a model now drops the keys that `fillable` and `guarded` do not allow before it looks for the id. Before, when the database gave no id back (MySQL with no auto increment), it gave back the id from your data, even when `fillable` had dropped it and it was never inserted.
 
 ## 3.1.0
 

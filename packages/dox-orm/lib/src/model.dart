@@ -1378,6 +1378,15 @@ class Model<T> extends QueryBuilder<T> {
     ]);
   }
 
+  /// insert one row and return its new id, see
+  /// [QueryBuilder.insertGetId]. keys that [fillable] and [guarded] do not
+  /// allow are dropped first, so the id in [data] is used only when it was
+  /// inserted. It fires no model events.
+  @override
+  Future<dynamic> insertGetId(Map<String, dynamic> data) {
+    return super.insertGetId(_onlyFillable(data));
+  }
+
   /// insert many rows. keys that [fillable] and [guarded] do not allow
   /// are dropped from each row.
   @override
