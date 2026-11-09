@@ -14,7 +14,7 @@ class DatabaseConfig {
   ///
   /// The rule: when it is set, it wins. It replaces the config of
   /// [connection] (the default connection). That config still gives
-  /// `debug`, `printer`, `logRedact` and `extra`. Other named connections do not change.
+  /// `debug`, `printer`, `logRedact`, `slowQueryMs` and `extra`. Other named connections do not change.
   ///
   /// When not given, it is the `DATABASE_URL` environment variable.
   /// An empty text means no url.
@@ -39,6 +39,7 @@ class DatabaseConfig {
         debug: base?.debug ?? false,
         printer: base?.printer,
         logRedact: base?.logRedact ?? const <String>[],
+        slowQueryMs: base?.slowQueryMs,
         extra: base?.extra ?? const <String, dynamic>{},
       );
     }

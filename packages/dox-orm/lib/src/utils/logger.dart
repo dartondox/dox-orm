@@ -5,8 +5,14 @@ class Logger {
   /// print [query] with each `@name` as `?`, and its values in the order
   /// of the `?`. values that the query does not use come last. values
   /// named in `logRedact` of the default connection or of the named
-  /// [connection] show as `***`.
-  void log(String query, [dynamic params, String? connection]) {
+  /// [connection] show as `***`. [prefix] goes before the query text,
+  /// eg. the time of a slow query.
+  void log(
+    String query, [
+    dynamic params,
+    String? connection,
+    String prefix = '',
+  ]) {
     Map<String, dynamic> values =
         params as Map<String, dynamic>? ?? const <String, dynamic>{};
     List<String> redact = SqlQueryBuilder().logRedactOf(connection);
@@ -28,7 +34,21 @@ class Logger {
     for (MapEntry<String, dynamic> e in values.entries) {
       if (!used.contains(e.key)) list.add(_show(e.key, e.value, redact));
     }
-    SqlQueryBuilder().printer.log(out.toString(), list);
+    SqlQueryBuilder().printer.log('$prefix$out', list);
+  }
+
+  /// a copy of [values] where each value named in `logRedact` of the
+  /// default connection or of [connection] is `***`
+  static Map<String, dynamic> redact(
+    Map<String, dynamic>? values,
+    String? connection,
+  ) {
+    if (values == null || values.isEmpty) return <String, dynamic>{};
+    List<String> redact = SqlQueryBuilder().logRedactOf(connection);
+    return <String, dynamic>{
+      for (MapEntry<String, dynamic> e in values.entries)
+        e.key: _hidden(e.key, redact) ? '***' : e.value,
+    };
   }
 
   static String _show(String key, dynamic value, List<String> redact) =>

@@ -165,13 +165,22 @@ class QueryBuilderHelper<T> {
     Map<String, dynamic>? values,
   ]) {
     values ??= queryBuilder.substitutionValues;
+    String? connection = queryBuilder.connection;
     if (queryBuilder.shouldDebug) {
-      queryBuilder.logger.log(query, values, queryBuilder.connection);
+      queryBuilder.logger.log(query, values, connection);
     }
-    return queryBuilder.dbDriver.query(
+    SqlQueryBuilder sql = SqlQueryBuilder();
+    Stopwatch? watch = sql.startQueryWatch(connection);
+    return sql.timeQuery(
+      queryBuilder.dbDriver.query(
+        query,
+        substitutionValues: values,
+        primaryKey: queryBuilder.primaryKey,
+      ),
+      watch,
       query,
-      substitutionValues: values,
-      primaryKey: queryBuilder.primaryKey,
+      values,
+      connection,
     );
   }
 
