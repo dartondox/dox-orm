@@ -3,6 +3,7 @@
 - New: `SqlQueryBuilder().listen(listener)` runs your function after each query, like Laravel `DB::listen`. The `QueryEvent` has the `sql`, the `bindings` (values named in `logRedact` show as `***`), the `time` the query took and the `connection` name. It works on every driver and in a transaction. An error in a listener is logged, the query does not fail. `removeListener(listener)` stops it. With no listener the query does not measure its time.
 - New: `slowQueryMs` in `ConnectionConfig` logs each query that takes longer than this many milliseconds. It is off (null) by default and works with `debug` off. The line goes to the query printer, with the time, the connection and the SQL. Values named in `logRedact` show as `***`.
 - New: `toJson()` of a model read by a `@ManyToMany` relation now has a `pivot` key with the pivot values (the two keys, the `withPivot` columns and the timestamps), like Laravel. So `withPivot` values reach an API answer. Dates are ISO text. Other models have no `pivot` key, as before. Put `'pivot'` in `hidden` to leave it out.
+- Fix: `restore()` is now on the query builder too, so `Blog().where('status', 'old').restore()` compiles without a cast to the model. It restores the soft deleted rows of the query, like Laravel. `blog.restore()` works as before. On a query with no soft deletes, like `QueryBuilder.table()`, it throws a `StateError`.
 
 ## 3.1.0
 

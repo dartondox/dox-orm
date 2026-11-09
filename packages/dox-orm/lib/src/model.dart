@@ -647,6 +647,7 @@ class Model<T> extends QueryBuilder<T> {
   /// restores every soft deleted row of the query, with no events, like
   /// Laravel. It returns true when it changed a row. With no where(), it
   /// throws a [StateError], so it can not restore every row by mistake.
+  @override
   Future<bool> restore() async {
     if (tempIdValue == null) {
       _needKeyOrWhere('restore');

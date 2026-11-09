@@ -24,6 +24,28 @@ mixin Delete<T> implements SharedMixin<T> {
     return await forceDelete();
   }
 
+  /// restore the soft deleted rows of this query, like
+  /// `Blog().where('status', 'old').restore()`. It sets `deleted_at` to
+  /// null and fires no events, like Laravel. It returns true when it
+  /// changed a row. A model also sets `updated_at` and has an instance
+  /// `blog.restore()`, see [Model.restore].
+  ///
+  /// With no soft deletes (like a `QueryBuilder.table()` query) it throws
+  /// a [StateError].
+  Future<bool> restore() async {
+    if (!isSoftDeletes) {
+      throw StateError(
+        'restore() needs a model with soft deletes, like '
+        '@DoxModel(softDelete: true).',
+      );
+    }
+    withTrashed = true;
+
+    /// only deleted rows, so every database counts the same rows
+    queryBuilder.whereNotNull('$tableName.deleted_at');
+    return await queryBuilder.update(<String, dynamic>{'deleted_at': null}) > 0;
+  }
+
   /// force delete the rows of this query and return how many rows it
   /// deleted
   ///

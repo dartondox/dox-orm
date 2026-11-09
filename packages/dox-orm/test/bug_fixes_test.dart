@@ -323,6 +323,26 @@ void main() async {
       expect(rows.map((dynamic r) => r['slug']), <String?>[null]);
     });
 
+    test('restore() compiles on a query, without a cast', () async {
+      for (String s in <String>['old', 'new']) {
+        await (Blog()
+              ..title = s
+              ..description = s
+              ..status = s)
+            .save();
+      }
+      await Blog().whereRaw('1 = 1').delete();
+      expect(await Blog().where('status', 'old').restore(), isTrue);
+      List<Blog> blogs = await Blog().get();
+      expect(blogs.map((Blog b) => b.status), <String>['old']);
+
+      /// no soft deletes: it throws
+      expect(
+        () => QueryBuilder.table('blog').where('id', 1).restore(),
+        throwsStateError,
+      );
+    });
+
     test('restore on a query restores the matching rows', () async {
       for (String s in <String>['old', 'old', 'new']) {
         await (Blog()
