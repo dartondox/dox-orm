@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import '../dox_orm.dart';
+import 'relationships/keys.dart';
 import 'union.dart';
 
 class Model<T> extends QueryBuilder<T> {
@@ -889,8 +890,20 @@ class Model<T> extends QueryBuilder<T> {
   /// Blog? blog = Blog().find(1);
   /// Map<String, dynamic> m = blog?.toJson();
   /// ```
+  ///
+  /// A model read by a `@ManyToMany` relation also has a `pivot` key with
+  /// its [ManyToManyWrites.pivot] values, like Laravel. Put `'pivot'` in
+  /// [hidden] to leave it out.
   Map<String, dynamic> toJson() {
     Map<String, dynamic> data = toMap(removeHiddenField: true);
+    if (manyToManyRow[this] != null) {
+      data['pivot'] = <String, dynamic>{
+        for (MapEntry<String, dynamic> e in pivot.entries)
+          e.key: e.value is DateTime
+              ? (e.value as DateTime).toIso8601String()
+              : e.value,
+      };
+    }
     for (String h in hidden) {
       data.remove(h);
     }

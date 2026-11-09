@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:dox_orm/dox_orm.dart';
@@ -172,6 +173,29 @@ void main() async {
 
         Song? first = await artist.related<Song>('songs')!.getFirst();
         expect('${first!.pivot['song_id']}', '2');
+      });
+
+      test('toJson() has pivot only for many to many rows', () async {
+        await artist.attach('songs', 2, <String, dynamic>{'role': 'singer'});
+        Artist? a = await Artist().preload('songs').find(artist.id);
+        Map<String, dynamic> json = a!.toJson();
+        expect(json.containsKey('pivot'), isFalse);
+        Map<String, dynamic> song = (json['songs'] as List<dynamic>).first;
+        Map<String, dynamic> pivot = song['pivot'];
+        expect(pivot['role'], 'singer');
+        expect('${pivot['song_id']}', '2');
+        expect(pivot['created_at'], isA<String>());
+
+        /// jsonEncode works, so the pivot dates are strings
+        expect(jsonEncode(json), contains('"role":"singer"'));
+
+        /// a model not read by a many to many relation has no pivot key
+        expect((await Song().find(2))!.toJson().containsKey('pivot'), isFalse);
+
+        /// hidden can leave it out
+        Song s = a.songs.first;
+        s.hidden = <String>['pivot'];
+        expect(s.toJson().containsKey('pivot'), isFalse);
       });
 
       test('a new query made from a loaded row has no pivot', () async {
