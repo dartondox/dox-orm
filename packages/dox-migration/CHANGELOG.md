@@ -1,3 +1,7 @@
+## Unreleased
+
+- New: `Migrator().rollback(batch: 3)` rolls back only the migrations of batch 3, newest first. `bin/migrate.dart rollback --batch=3` (or `--batch 3`) does the same. Give `--step` or `--batch`, not both. An unknown rollback option now fails with exit code 1.
+
 ## 3.1.0
 
 - Fix: rollback no longer stops when the file of a migration that already ran is gone. Like Laravel, it prints "Migration not found: <name>", keeps the row of that migration, and rolls back the others. Before, it threw a `MigrationException`.

@@ -235,6 +235,19 @@ DROP TABLE mig_tag
           <String>['2023_01_01_000000_create_blog'],
         );
 
+        // batch undoes only the migrations of that batch
+        await Migrator().migrate();
+        expect(
+          (await migrations()).map((Map<String, dynamic> r) => r['batch']),
+          <int>[1, 2, 2],
+        );
+        await Migrator().rollback(batch: 1);
+        expect(await tableExists('mig_blog'), false);
+        expect(await tableExists('mig_comment'), true);
+        await Migrator().run(<String>['rollback', '--batch', '2']);
+        expect(await migrations(), isEmpty);
+        await Migrator().rollback(batch: 9);
+
         await Migrator().migrate();
         await Migrator().reset();
         expect(await tableExists('mig_blog'), false);
@@ -470,6 +483,11 @@ DROP TABLE IF EXISTS mig_tag
         expect(await migrator.run(<String>['refresh']), 0);
         expect(await migrator.run(<String>['reset']), 0);
         expect(await migrator.run(<String>['rollback', '--step=x']), 1);
+        expect(await migrator.run(<String>['rollback', '--batch=0']), 1);
+        expect(
+          await migrator.run(<String>['rollback', '--step=1', '--batch=1']),
+          1,
+        );
         expect(await migrator.run(<String>['nope']), 1);
         expect(await migrations(), isEmpty);
       });
