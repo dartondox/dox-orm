@@ -289,8 +289,16 @@ class QueryBuilder<T>
     Map<String, dynamic>? substitutionValues = const <String, dynamic>{},
     String? connection,
   }) {
-    return SqlQueryBuilder()
-        .getDBDriver(connection)
-        .query(query, substitutionValues: substitutionValues);
+    SqlQueryBuilder sql = SqlQueryBuilder();
+    Stopwatch? watch = sql.startQueryWatch(connection);
+    return sql.timeQuery(
+      sql
+          .getDBDriver(connection)
+          .query(query, substitutionValues: substitutionValues),
+      watch,
+      query,
+      substitutionValues,
+      connection,
+    );
   }
 }

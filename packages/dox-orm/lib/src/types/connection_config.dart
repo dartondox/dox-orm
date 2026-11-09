@@ -30,6 +30,11 @@ class ConnectionConfig {
   /// real values.
   List<String> logRedact;
 
+  /// log each query that takes longer than this many milliseconds. null
+  /// (the default) turns it off. it works with [debug] off. the line goes
+  /// to the query printer and hides the `logRedact` values.
+  int? slowQueryMs;
+
   /// database host
   String host;
 
@@ -85,6 +90,7 @@ class ConnectionConfig {
     this.printer,
     this.driverFactory,
     this.logRedact = const <String>[],
+    this.slowQueryMs,
   });
 
   /// Makes a config from a database url, like `DATABASE_URL`.
@@ -121,6 +127,7 @@ class ConnectionConfig {
     QueryPrinter? printer,
     Map<String, dynamic> extra = const <String, dynamic>{},
     List<String> logRedact = const <String>[],
+    int? slowQueryMs,
   }) {
     url = url.trim();
     int colon = url.indexOf(':');
@@ -137,6 +144,7 @@ class ConnectionConfig {
         debug: debug,
         printer: printer,
         logRedact: logRedact,
+        slowQueryMs: slowQueryMs,
         extra: extra,
       );
     }
@@ -197,6 +205,7 @@ class ConnectionConfig {
       debug: debug,
       printer: printer,
       logRedact: logRedact,
+      slowQueryMs: slowQueryMs,
       extra: options,
     );
   }

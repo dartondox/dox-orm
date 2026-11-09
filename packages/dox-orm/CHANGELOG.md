@@ -1,3 +1,8 @@
+## Unreleased
+
+- New: `SqlQueryBuilder().listen(listener)` runs your function after each query, like Laravel `DB::listen`. The `QueryEvent` has the `sql`, the `bindings` (values named in `logRedact` show as `***`), the `time` the query took and the `connection` name. It works on every driver and in a transaction. An error in a listener is logged, the query does not fail. `removeListener(listener)` stops it. With no listener the query does not measure its time.
+- New: `slowQueryMs` in `ConnectionConfig` logs each query that takes longer than this many milliseconds. It is off (null) by default and works with `debug` off. The line goes to the query printer, with the time, the connection and the SQL. Values named in `logRedact` show as `***`.
+
 ## 3.1.0
 
 - Fix: `findOrFail()` and `firstOrFail()` with no row now answer 404 in a Dox app, like Laravel. Before, the `ModelNotFoundException` was a plain `Exception`, so Dox answered 500 and logged it as a server error. Now it extends `IHttpException` (from dox_annotation) with code 404. The body is `{"code": "not_found", "message": "Not Found"}`, the same as other 404 answers. The table, column and id are not sent to the client. The class name, the `table`, `id` and `column` fields, `toString()` and `on ModelNotFoundException catch` stay the same. The constructor is no longer `const`, because `IHttpException` has fields that can change.

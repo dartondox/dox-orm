@@ -1,5 +1,26 @@
 import 'package:dox_orm/dox_orm.dart';
+import 'package:dox_orm/src/utils/logger.dart';
 import 'package:dox_validation/dox_validation.dart' show PresenceVerifier;
+
+/// one query that ran, see [SqlQueryBuilder.listen]
+class QueryEvent {
+  /// the sql text, with `@name` placeholders
+  final String sql;
+
+  /// the values of the query. values named in `logRedact` are `***`.
+  final Map<String, dynamic> bindings;
+
+  /// how long the query took
+  final Duration time;
+
+  /// the name of the connection that ran the query
+  final String connection;
+
+  const QueryEvent(this.sql, this.bindings, this.time, this.connection);
+}
+
+/// a function that gets each query, see [SqlQueryBuilder.listen]
+typedef QueryListener = void Function(QueryEvent event);
 
 /// one driver per connection name, so each name keeps its own pool and
 /// its own statement caches
@@ -42,7 +63,92 @@ class SqlQueryBuilder {
   /// [ConnectionConfig.logRedact]. empty by default: nothing is hidden.
   List<String> logRedact = <String>[];
 
+  /// log a query of the default connection that takes longer than this
+  /// many milliseconds. null (the default) turns it off. see
+  /// [ConnectionConfig.slowQueryMs].
+  int? slowQueryMs;
+
   DatabaseConfig? databaseConfig;
+
+  final List<QueryListener> _listeners = <QueryListener>[];
+
+  /// run [listener] after each query of every connection, like Laravel
+  /// `DB::listen`. it gets the sql, the values (`logRedact` names are
+  /// hidden), the time and the connection name. it runs after the query
+  /// ends well, not after a failed query. an error in [listener] is
+  /// logged, the query does not fail.
+  /// ```
+  /// SqlQueryBuilder().listen(onQuery);
+  /// void onQuery(QueryEvent e) => print('${e.time} ${e.sql}');
+  /// ```
+  void listen(QueryListener listener) => _listeners.add(listener);
+
+  /// stop calling [listener]. it returns false when it was not listening.
+  bool removeListener(QueryListener listener) => _listeners.remove(listener);
+
+  /// the slow query limit of [connection] in milliseconds, or null
+  int? slowQueryMsOf(String? connection) => connection == null
+      ? slowQueryMs
+      : databaseConfig?.connections[connection]?.slowQueryMs;
+
+  /// a started [Stopwatch] when a query on [connection] needs its time (a
+  /// listener or a slow query limit is set), else null. pass it to
+  /// [timeQuery].
+  Stopwatch? startQueryWatch(String? connection) =>
+      _listeners.isEmpty && slowQueryMsOf(connection) == null
+      ? null
+      : (Stopwatch()..start());
+
+  /// wait for [result] of [query], then log it when it is slow and tell
+  /// the listeners. with no [watch] it gives [result] as it is.
+  Future<R> timeQuery<R>(
+    Future<R> result,
+    Stopwatch? watch,
+    String query,
+    Map<String, dynamic>? values,
+    String? connection,
+  ) {
+    if (watch == null) return result;
+    return _afterQuery(result, watch, query, values, connection);
+  }
+
+  Future<R> _afterQuery<R>(
+    Future<R> result,
+    Stopwatch watch,
+    String query,
+    Map<String, dynamic>? values,
+    String? connection,
+  ) async {
+    R rows = await result;
+    Duration time = watch.elapsed;
+    String name = connection ?? databaseConfig?.connection ?? 'default';
+    int? slowMs = slowQueryMsOf(connection);
+    if (slowMs != null && time.inMilliseconds > slowMs) {
+      Logger().log(
+        query,
+        values,
+        connection,
+        'Slow query (${time.inMilliseconds} ms, $name): ',
+      );
+    }
+    if (_listeners.isNotEmpty) {
+      QueryEvent event = QueryEvent(
+        query,
+        Logger.redact(values, connection),
+        time,
+        name,
+      );
+      // a copy: a listener may remove itself
+      for (QueryListener listener in List<QueryListener>.of(_listeners)) {
+        try {
+          listener(event);
+        } catch (e, s) {
+          Logger.danger('A query listener failed: $e\n$s');
+        }
+      }
+    }
+    return rows;
+  }
 
   /// the names to hide in the log of a query on [connection]: [logRedact]
   /// and the `logRedact` of that named connection
@@ -65,6 +171,7 @@ class SqlQueryBuilder {
     sql.dbDriver = connConfig.createDriver();
     sql.debug = connConfig.debug;
     sql.logRedact = connConfig.logRedact;
+    sql.slowQueryMs = connConfig.slowQueryMs;
     if (connConfig.printer != null) {
       sql.printer = connConfig.printer!;
     }
