@@ -927,6 +927,13 @@ void main() async {
         expect(sql, contains("'it''s'"));
         expect(sql, contains('= 5'));
         expect(item().where('name', 'pear').toSql(), contains('= pear'));
+
+        /// MySQL reads a backslash as an escape char, so it is doubled
+        bool mysql = SqlQueryBuilder().dbDriver.getName() == Driver.mysql;
+        expect(
+          item().where('name', r'a\b').toRawSql(),
+          contains(mysql ? r"'a\\b'" : r"'a\b'"),
+        );
       });
     });
   });

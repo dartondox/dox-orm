@@ -47,6 +47,14 @@ void main() {
     expect(SchemaGrammar.of(Driver.sqlite), isA<SqliteGrammar>());
   });
 
+  /// toRawSql() quotes each value with literal() of the driver grammar
+  test('literal quotes a backslash for MySQL only', () {
+    String value = r"it's a\b";
+    expect(my.literal(value), r"'it''s a\\b'");
+    expect(pg.literal(value), r"'it''s a\b'");
+    expect(lite.literal(value), r"'it''s a\b'");
+  });
+
   group('column types |', () {
     test('id, bigIncrements, increments', () {
       types((Table t) => t.id(), <String>[

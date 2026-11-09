@@ -59,9 +59,16 @@ class Migrator {
   /// run the migrations that did not run yet
   Future<void> migrate() => _withDriver(_migrate);
 
-  /// undo the last batch, or the last [step] migrations, newest first
-  Future<void> rollback({int? step}) {
-    return _withDriver((DbConnection d) => _rollback(d, step: step));
+  /// undo the last batch, the last [step] migrations, or only the
+  /// migrations of [batch], newest first. Give [step] or [batch], not
+  /// both.
+  Future<void> rollback({int? step, int? batch}) {
+    if (step != null && batch != null) {
+      throw ArgumentError('Give --step or --batch, not both.');
+    }
+    return _withDriver(
+      (DbConnection d) => _rollback(d, step: step, batch: batch),
+    );
   }
 
   /// undo all migrations, newest first
@@ -91,8 +98,10 @@ class Migrator {
   Future<List<MigrationStatus>> status() => _withDriver(_status);
 
   /// run a command from the command line and give the exit code:
-  /// `run` (or `migrate`), `rollback [--step=<n>]`, `reset`, `refresh`,
-  /// `fresh`, `status`. `migration:` or `migrate:` in front is fine too.
+  /// `run` (or `migrate`), `rollback [--step=<n>|--batch=<n>]`, `reset`,
+  /// `refresh`, `fresh`, `status`. `migration:` or `migrate:` in front is
+  /// fine too. Words after the first rollback option that are not options
+  /// are not used.
   Future<int> run(List<String> args) async {
     String command = args.isEmpty
         ? 'run'
@@ -103,7 +112,8 @@ class Migrator {
         case 'migrate':
           await migrate();
         case 'rollback':
-          await rollback(step: _step(args.skip(1).toList()));
+          Map<String, int> options = _rollbackOptions(args.skip(1).toList());
+          await rollback(step: options['step'], batch: options['batch']);
         case 'reset':
           await reset();
         case 'refresh':
@@ -144,19 +154,39 @@ class Migrator {
     }
   }
 
-  /// `--step=2` or `--step 2`
-  static int? _step(List<String> args) {
-    if (args.isEmpty) return null;
-    String value = args.first == '--step' && args.length > 1
-        ? args[1]
-        : args.first.replaceFirst('--step=', '');
-    int? step = int.tryParse(value);
-    if (step == null || step < 1 || !args.first.startsWith('--step')) {
-      throw ArgumentError(
-        'Invalid option ${args.join(' ')}, use --step=<count>',
-      );
+  /// `--step=2`, `--step 2`, `--batch=3` or `--batch 3`, as
+  /// `{'step': 2}` or `{'batch': 3}`
+  static Map<String, int> _rollbackOptions(List<String> args) {
+    Map<String, int> found = <String, int>{};
+    for (int i = 0; i < args.length; i++) {
+      RegExpMatch? m = RegExp(r'^--(step|batch)(?:=(.*))?$')
+          .firstMatch(args[i]);
+
+      /// like before, the first word must be an option, so a typo like
+      /// `--stpe=2` does not roll back the whole last batch. A word after
+      /// it that is not an option (like `--force`) is not used.
+      if (m == null) {
+        if (i == 0) {
+          throw ArgumentError(
+            'Invalid option ${args.join(' ')}, '
+            'use --step=<count> or --batch=<number>',
+          );
+        }
+        Logger.warn('Ignored option: ${args[i]}');
+        continue;
+      }
+      String? value = m.group(2);
+      if (value == null && i + 1 < args.length) value = args[++i];
+      int? n = value == null ? null : int.tryParse(value);
+      if (n == null || n < 1 || found.containsKey(m.group(1))) {
+        throw ArgumentError(
+          'Invalid option ${args.join(' ')}, '
+          'use --step=<count> or --batch=<number>',
+        );
+      }
+      found[m.group(1)!] = n;
     }
-    return step;
+    return found;
   }
 
   /// one driver for the whole run. the run holds the migration lock,
@@ -223,9 +253,17 @@ class Migrator {
     }
   }
 
-  Future<void> _rollback(DbConnection d, {int? step, bool all = false}) async {
+  Future<void> _rollback(
+    DbConnection d, {
+    int? step,
+    int? batch,
+    bool all = false,
+  }) async {
     String query = 'SELECT migration FROM dox_db_migration';
-    if (step != null && !all) {
+    if (batch != null && !all) {
+      /// batch is an int, so it is safe in the SQL text
+      query += ' WHERE batch = $batch ORDER BY id DESC';
+    } else if (step != null && !all) {
       query += ' ORDER BY id DESC LIMIT $step';
     } else if (!all) {
       query +=

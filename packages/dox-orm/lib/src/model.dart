@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import '../dox_orm.dart';
+import 'relationships/keys.dart';
 import 'union.dart';
 
 class Model<T> extends QueryBuilder<T> {
@@ -646,6 +647,7 @@ class Model<T> extends QueryBuilder<T> {
   /// restores every soft deleted row of the query, with no events, like
   /// Laravel. It returns true when it changed a row. With no where(), it
   /// throws a [StateError], so it can not restore every row by mistake.
+  @override
   Future<bool> restore() async {
     if (tempIdValue == null) {
       _needKeyOrWhere('restore');
@@ -889,8 +891,20 @@ class Model<T> extends QueryBuilder<T> {
   /// Blog? blog = Blog().find(1);
   /// Map<String, dynamic> m = blog?.toJson();
   /// ```
+  ///
+  /// A model read by a `@ManyToMany` relation also has a `pivot` key with
+  /// its [ManyToManyWrites.pivot] values, like Laravel. Put `'pivot'` in
+  /// [hidden] to leave it out.
   Map<String, dynamic> toJson() {
     Map<String, dynamic> data = toMap(removeHiddenField: true);
+    if (manyToManyRow[this] != null) {
+      data['pivot'] = <String, dynamic>{
+        for (MapEntry<String, dynamic> e in pivot.entries)
+          e.key: e.value is DateTime
+              ? (e.value as DateTime).toIso8601String()
+              : e.value,
+      };
+    }
     for (String h in hidden) {
       data.remove(h);
     }
@@ -1362,6 +1376,15 @@ class Model<T> extends QueryBuilder<T> {
     return await super.insertMany(<Map<String, dynamic>>[
       for (Map<String, dynamic> row in rows) _onlyFillable(row),
     ]);
+  }
+
+  /// insert one row and return its new id, see
+  /// [QueryBuilder.insertGetId]. keys that [fillable] and [guarded] do not
+  /// allow are dropped first, so the id in [data] is used only when it was
+  /// inserted. It fires no model events.
+  @override
+  Future<dynamic> insertGetId(Map<String, dynamic> data) {
+    return super.insertGetId(_onlyFillable(data));
   }
 
   /// insert many rows. keys that [fillable] and [guarded] do not allow

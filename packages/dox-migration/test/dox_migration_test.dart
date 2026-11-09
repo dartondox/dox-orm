@@ -235,6 +235,38 @@ DROP TABLE mig_tag
           <String>['2023_01_01_000000_create_blog'],
         );
 
+        // batch undoes only the migrations of that batch
+        await Migrator().migrate();
+        expect(
+          (await migrations()).map((Map<String, dynamic> r) => r['batch']),
+          <int>[1, 2, 2],
+        );
+        writeMigration('2023_01_04_000000_create_note', '''
+-- up
+CREATE TABLE mig_note (id INTEGER PRIMARY KEY)
+
+-- down
+DROP TABLE mig_note
+''');
+        await Migrator().migrate();
+
+        // batch 2 is not the last batch. mig_comment needs mig_blog, so
+        // batch 1 can only go after batch 2.
+        await Migrator().rollback(batch: 2);
+        expect(await tableExists('mig_comment'), false);
+        expect(await tableExists('mig_tag'), false);
+        expect(await tableExists('mig_blog'), true);
+        expect(await tableExists('mig_note'), true);
+        expect(
+          (await migrations()).map((Map<String, dynamic> r) => r['batch']),
+          <int>[1, 3],
+        );
+        await Migrator().run(<String>['rollback', '--batch', '1']);
+        expect(await tableExists('mig_blog'), false);
+        await Migrator().rollback(batch: 3);
+        expect(await migrations(), isEmpty);
+        await Migrator().rollback(batch: 9);
+
         await Migrator().migrate();
         await Migrator().reset();
         expect(await tableExists('mig_blog'), false);
@@ -242,7 +274,7 @@ DROP TABLE mig_tag
 
         await Migrator().refresh();
         expect(await tableExists('mig_tag'), true);
-        expect((await migrations()).length, 3);
+        expect((await migrations()).length, 4);
       });
 
       test('sql with dashes, semicolons in strings and comments', () async {
@@ -463,13 +495,28 @@ DROP TABLE IF EXISTS mig_tag
         Migrator migrator = Migrator(migrations: dartMigrations);
         expect(await migrator.run(<String>['migration:run']), 0);
         expect(await migrator.run(<String>['status']), 0);
-        expect(await migrator.run(<String>['rollback', '--step=1']), 0);
+
+        /// a typo in the first option fails and rolls back nothing
+        expect(await migrator.run(<String>['rollback', '--stpe=2']), 1);
+        expect(await migrator.run(<String>['rollback', '--force']), 1);
+        expect(await tableExists('mig_post'), true);
+
+        /// an unknown word after the option is not used, like before
+        expect(
+          await migrator.run(<String>['rollback', '--step=1', '--force']),
+          0,
+        );
         expect(await tableExists('mig_post'), false);
         expect(await migrator.run(<String>['rollback', '--step', '1']), 0);
         expect(await tableExists('mig_user'), false);
         expect(await migrator.run(<String>['refresh']), 0);
         expect(await migrator.run(<String>['reset']), 0);
         expect(await migrator.run(<String>['rollback', '--step=x']), 1);
+        expect(await migrator.run(<String>['rollback', '--batch=0']), 1);
+        expect(
+          await migrator.run(<String>['rollback', '--step=1', '--batch=1']),
+          1,
+        );
         expect(await migrator.run(<String>['nope']), 1);
         expect(await migrations(), isEmpty);
       });
