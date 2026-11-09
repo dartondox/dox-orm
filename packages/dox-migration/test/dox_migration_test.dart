@@ -241,10 +241,29 @@ DROP TABLE mig_tag
           (await migrations()).map((Map<String, dynamic> r) => r['batch']),
           <int>[1, 2, 2],
         );
-        await Migrator().rollback(batch: 1);
+        writeMigration('2023_01_04_000000_create_note', '''
+-- up
+CREATE TABLE mig_note (id INTEGER PRIMARY KEY)
+
+-- down
+DROP TABLE mig_note
+''');
+        await Migrator().migrate();
+
+        // batch 2 is not the last batch. mig_comment needs mig_blog, so
+        // batch 1 can only go after batch 2.
+        await Migrator().rollback(batch: 2);
+        expect(await tableExists('mig_comment'), false);
+        expect(await tableExists('mig_tag'), false);
+        expect(await tableExists('mig_blog'), true);
+        expect(await tableExists('mig_note'), true);
+        expect(
+          (await migrations()).map((Map<String, dynamic> r) => r['batch']),
+          <int>[1, 3],
+        );
+        await Migrator().run(<String>['rollback', '--batch', '1']);
         expect(await tableExists('mig_blog'), false);
-        expect(await tableExists('mig_comment'), true);
-        await Migrator().run(<String>['rollback', '--batch', '2']);
+        await Migrator().rollback(batch: 3);
         expect(await migrations(), isEmpty);
         await Migrator().rollback(batch: 9);
 
@@ -255,7 +274,7 @@ DROP TABLE mig_tag
 
         await Migrator().refresh();
         expect(await tableExists('mig_tag'), true);
-        expect((await migrations()).length, 3);
+        expect((await migrations()).length, 4);
       });
 
       test('sql with dashes, semicolons in strings and comments', () async {
