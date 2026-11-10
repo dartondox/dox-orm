@@ -138,10 +138,14 @@ class ConnectionConfig {
       Map<String, dynamic> options = <String, dynamic>{...extra};
       int query = path.indexOf('?');
       if (query >= 0) {
-        for (MapEntry<String, String> e in Uri.splitQueryString(
-          path.substring(query + 1),
-        ).entries) {
-          options[e.key] = _urlValue(e.value);
+        try {
+          for (MapEntry<String, String> e in Uri.splitQueryString(
+            path.substring(query + 1),
+          ).entries) {
+            options[e.key] = _urlValue(e.value);
+          }
+        } on ArgumentError {
+          // options that can not be read are left out, as before
         }
         path = path.substring(0, query);
       }

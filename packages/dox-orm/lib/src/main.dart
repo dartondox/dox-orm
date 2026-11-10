@@ -121,6 +121,7 @@ class SqlQueryBuilder {
   /// builder. a driver that the ORM did not make (eg. one that the
   /// migrator opened from `.env`) has no connection name, so its queries
   /// run as they are.
+  /// app code does not need it: use the query builder.
   Future<List<Map<String, dynamic>>> queryOn(
     DBDriver driver,
     String query, {
@@ -137,7 +138,9 @@ class SqlQueryBuilder {
     );
   }
 
-  /// like [queryOn], with [DBDriver.execute]
+  /// like [queryOn], with [DBDriver.execute]: it runs [query] on [driver]
+  /// and gives nothing back. it is for the schema builder and the
+  /// migrator, not for app code.
   Future<void> executeOn(
     DBDriver driver,
     String query, {

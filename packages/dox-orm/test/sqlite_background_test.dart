@@ -268,6 +268,24 @@ void main() {
       );
       await d.close();
     });
+
+    test('a query that waits for a transaction gets a StateError on close '
+        '(background: $background)', () async {
+      DBDriver d = sqliteDriver(background: background);
+      Completer<void> inside = Completer<void>();
+      Completer<void> end = Completer<void>();
+      Future<void> tx = d.transaction(() async {
+        inside.complete();
+        await end.future;
+      });
+      await inside.future;
+      Future<void> waiting = d.execute('SELECT 1');
+      Future<void> checked = expectLater(waiting, throwsStateError);
+      await d.close();
+      end.complete();
+      await tx.catchError((Object _) {});
+      await checked;
+    });
   }
 
   test('a file database opens with WAL and busy_timeout', () async {

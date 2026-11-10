@@ -66,7 +66,9 @@ class SqliteDriver extends DBDriver {
   Object? _ready() {
     Object? c = conn;
     if (c is Future) return null;
-    Object db = c as Object;
+    // close() ran while this query waited
+    if (c == null) throw StateError('the sqlite database is closed');
+    Object db = c;
     if (!_inTransaction(db) && _transactionDone[db] != null) return null;
     return db;
   }
@@ -78,7 +80,7 @@ class SqliteDriver extends DBDriver {
       conn = await c;
       return;
     }
-    await _transactionDone[c as Object];
+    if (c != null) await _transactionDone[c];
   }
 
   /// close the kept statements and the database

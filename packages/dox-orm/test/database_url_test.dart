@@ -136,6 +136,12 @@ void main() {
       );
     });
 
+    test('sqlite url options that can not be read are left out', () {
+      ConnectionConfig c = ConnectionConfig.fromUrl('sqlite://a.db?a=%zz');
+      expect(c.database, 'a.db');
+      expect(c.extra, isEmpty);
+    });
+
     test('background accepts true, 1, "true" and "1"', () {
       bool on(Object? value) => ConnectionConfig(
         driver: Driver.sqlite,
