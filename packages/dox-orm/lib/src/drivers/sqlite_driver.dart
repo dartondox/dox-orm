@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
+import 'dart:isolate';
 
 import 'package:dox_orm/dox_orm.dart';
 import 'package:sqlite3/sqlite3.dart';
@@ -18,7 +20,11 @@ const int _kDate = 3;
 /// runs. there is one connection per isolate, and while a transaction is
 /// open, other queries of this isolate wait until it ends. good for dev,
 /// tests and small apps. use postgres or mysql when you need more.
+///
+/// with `extra['background']` the database lives in a helper isolate
+/// ([SqliteIsolate]), so a slow query does not block this isolate.
 class SqliteDriver extends DBDriver {
+  /// a sqlite `Database`, a `Future` of it, or a [SqliteIsolate]
   dynamic conn;
 
   /// max prepared statements kept for the database
@@ -49,11 +55,12 @@ class SqliteDriver extends DBDriver {
   @override
   bool get supportsReturning => _hasReturning;
 
-  Future<Database> _getConnection() async {
+  /// the `Database`, or the [SqliteIsolate] that owns it
+  Future<Object> _getConnection() async {
     if (conn is Future) {
       conn = await conn;
     }
-    Database db = conn;
+    Object db = conn;
 
     /// wait for a transaction from outside this zone to end
     if (!_inTransaction(db)) {
@@ -74,14 +81,19 @@ class SqliteDriver extends DBDriver {
       conn = null;
       return;
     }
+    if (c is SqliteIsolate) {
+      conn = null;
+      await c.close();
+      return;
+    }
     if (c is! Database) return;
     clearStatementCache();
     conn = null;
     c.close();
   }
 
-  bool _inTransaction(Database db) {
-    Set<Database>? open = Zone.current[_txKey];
+  bool _inTransaction(Object db) {
+    Set<Object>? open = Zone.current[_txKey];
     return open?.contains(db) ?? false;
   }
 
@@ -92,7 +104,24 @@ class SqliteDriver extends DBDriver {
     String? primaryKey,
     Map<String, dynamic>? substitutionValues,
   }) async {
-    Database db = await _getConnection();
+    Object db = await _getConnection();
+    if (db is SqliteIsolate) {
+      return await db._call(
+        _SqliteOp.query,
+        query,
+        substitutionValues,
+        primaryKey,
+      ) as List<Map<String, dynamic>>;
+    }
+    return _query(db as Database, query, substitutionValues, primaryKey);
+  }
+
+  List<Map<String, dynamic>> _query(
+    Database db,
+    String query,
+    Map<String, dynamic>? substitutionValues,
+    String? primaryKey,
+  ) {
     var (String sql, List<Object?> params) = toPositionalParams(
       query,
       substitutionValues,
@@ -127,7 +156,19 @@ class SqliteDriver extends DBDriver {
     String query, {
     Map<String, dynamic>? substitutionValues,
   }) async {
-    Database db = await _getConnection();
+    Object db = await _getConnection();
+    if (db is SqliteIsolate) {
+      return await db._call(_SqliteOp.affecting, query, substitutionValues)
+          as int;
+    }
+    return _affecting(db as Database, query, substitutionValues);
+  }
+
+  int _affecting(
+    Database db,
+    String query,
+    Map<String, dynamic>? substitutionValues,
+  ) {
     var (String sql, List<Object?> params) = toPositionalParams(
       query,
       substitutionValues,
@@ -150,7 +191,19 @@ class SqliteDriver extends DBDriver {
     String query, {
     Map<String, dynamic>? substitutionValues,
   }) async {
-    Database db = await _getConnection();
+    Object db = await _getConnection();
+    if (db is SqliteIsolate) {
+      await db._call(_SqliteOp.execute, query, substitutionValues);
+      return;
+    }
+    _execute(db as Database, query, substitutionValues);
+  }
+
+  void _execute(
+    Database db,
+    String query,
+    Map<String, dynamic>? substitutionValues,
+  ) {
     var (String sql, List<Object?> params) = toPositionalParams(
       query,
       substitutionValues,
@@ -201,7 +254,7 @@ class SqliteDriver extends DBDriver {
 
   @override
   Future<R> transaction<R>(Future<R> Function() callback) async {
-    Database db = await _getConnection();
+    Object db = await _getConnection();
 
     /// a nested transaction uses a savepoint
     if (_inTransaction(db)) {
@@ -215,26 +268,57 @@ class SqliteDriver extends DBDriver {
     Completer<void> done = Completer<void>();
     _transactionDone[db] = done.future;
 
-    Set<Database> open = <Database>{...?Zone.current[_txKey], db};
+    Set<Object> open = <Object>{...?Zone.current[_txKey], db};
     try {
       /// IMMEDIATE takes the write lock now, so two isolates do not both
       /// read and then fail to upgrade to a write
-      db.execute('BEGIN IMMEDIATE');
+      await _now(db, _SqliteOp.execute, 'BEGIN IMMEDIATE');
       R result = await runZoned(
         callback,
         zoneValues: <Symbol, dynamic>{_txKey: open},
       );
-      db.execute('COMMIT');
+      await _now(db, _SqliteOp.execute, 'COMMIT');
       return result;
     } catch (error) {
-      if (!db.autocommit) {
-        db.execute('ROLLBACK');
-      }
+      await _now(db, _SqliteOp.rollback, '');
       rethrow;
     } finally {
       _transactionDone[db] = null;
       done.complete();
     }
+  }
+
+  /// run [op] with no params on [db] right away. it does not wait for the
+  /// open transaction, so the transaction itself uses it.
+  Future<void> _now(Object db, _SqliteOp op, String sql) async {
+    if (db is SqliteIsolate) {
+      await db._call(op, sql, null);
+      return;
+    }
+    _run(db as Database, op, sql, null, null);
+  }
+
+  /// run [op] on [db]. the helper isolate runs each request with it.
+  Object? _run(
+    Database db,
+    _SqliteOp op,
+    String sql,
+    Map<String, dynamic>? values,
+    String? primaryKey,
+  ) {
+    switch (op) {
+      case _SqliteOp.query:
+        return _query(db, sql, values, primaryKey);
+      case _SqliteOp.affecting:
+        return _affecting(db, sql, values);
+      case _SqliteOp.execute:
+        _execute(db, sql, values);
+      case _SqliteOp.rollback:
+        if (!db.autocommit) {
+          db.execute('ROLLBACK');
+        }
+    }
+    return null;
   }
 
   /// sqlite gives int, double, String, Uint8List or null. it has no bool,
@@ -375,5 +459,274 @@ class _Schema {
       }
     }
     return kinds;
+  }
+}
+
+/// SQLITE_BUSY: the database file is locked by another connection.
+const int _sqliteBusy = 5;
+
+/// open sqlite database file (made if missing), or `:memory:`.
+/// - WAL: readers do not wait for the writer, faster writes.
+/// - busy_timeout: wait for a lock (eg. another isolate writing)
+///   instead of failing right away.
+/// - foreign_keys: sqlite turns them off by default.
+Database openSqliteDatabase(String database, int busyTimeout) {
+  Database db = database == ':memory:'
+      ? sqlite3.openInMemory()
+      : sqlite3.open(database);
+  db.execute('PRAGMA busy_timeout = $busyTimeout');
+  if (database != ':memory:') {
+    _switchToWal(db, busyTimeout);
+    db.execute('PRAGMA synchronous = NORMAL');
+  }
+  db.execute('PRAGMA foreign_keys = ON');
+  return db;
+}
+
+/// switching a new file to WAL fails right away with SQLITE_BUSY when
+/// another isolate does the same at that moment: sqlite does not use
+/// busy_timeout here. So retry until [busyTimeout] ms have passed.
+void _switchToWal(Database db, int busyTimeout) {
+  Stopwatch watch = Stopwatch()..start();
+  while (true) {
+    try {
+      db.execute('PRAGMA journal_mode = WAL');
+      return;
+    } on SqliteException catch (e) {
+      if (e.resultCode != _sqliteBusy ||
+          watch.elapsedMilliseconds >= busyTimeout) {
+        rethrow;
+      }
+      sleep(const Duration(milliseconds: 10));
+    }
+  }
+}
+
+/// the work a request asks the helper isolate to do
+enum _SqliteOp { query, affecting, execute, rollback }
+
+/// a sqlite database that lives in a helper isolate. the helper opens it,
+/// runs every request on it in the order they come, and closes it. this
+/// isolate only waits for the answer, so a slow query does not stop it.
+///
+/// each request is one message to the helper and one back. a SQL error
+/// comes back as the same `SqliteException`. when the helper stops, every
+/// waiting request gets a [StateError].
+class SqliteIsolate {
+  /// the answers from the helper, and its exit
+  final RawReceivePort _port = RawReceivePort();
+
+  /// the port of the helper, set when the database is open
+  final Completer<SendPort> _requests = Completer<SendPort>();
+
+  /// done when the helper isolate has ended
+  final Completer<void> _exited = Completer<void>();
+
+  /// the requests that wait for an answer, by id
+  final Map<int, Completer<Object?>> _waiting = <int, Completer<Object?>>{};
+
+  int _nextId = 0;
+
+  /// why no more requests can run: closed, or the helper stopped
+  String? _stopped;
+
+  /// the helper isolate, null until it has started
+  Isolate? isolate;
+
+  /// start a helper isolate that opens [database], like
+  /// [openSqliteDatabase] does.
+  SqliteIsolate(String database, int busyTimeout, int statementCacheSize) {
+    _port.handler = _onMessage;
+    _requests.future.ignore();
+    unawaited(_start(database, busyTimeout, statementCacheSize));
+  }
+
+  Future<void> _start(
+    String database,
+    int busyTimeout,
+    int statementCacheSize,
+  ) async {
+    try {
+      isolate = await Isolate.spawn(
+        _SqliteHelper.main,
+        (
+          _port.sendPort,
+          database,
+          busyTimeout,
+          statementCacheSize,
+          Isolate.current,
+        ),
+        onExit: _port.sendPort,
+        debugName: 'dox sqlite',
+      );
+    } catch (error, stack) {
+      _stop('the sqlite helper isolate did not start');
+      if (!_requests.isCompleted) _requests.completeError(error, stack);
+      _port.close();
+      _exited.complete();
+    }
+  }
+
+  /// send one request to the helper and wait for its answer
+  Future<Object?> _call(
+    _SqliteOp op,
+    String sql,
+    Map<String, dynamic>? values, [
+    String? primaryKey,
+  ]) async {
+    SendPort requests = await _requests.future;
+    if (_stopped != null) {
+      throw StateError(_stopped!);
+    }
+
+    /// plain values only: they can always go to the other isolate
+    Map<String, dynamic>? sendable = values == null
+        ? null
+        : <String, dynamic>{
+            for (MapEntry<String, dynamic> e in values.entries)
+              e.key: SqliteDriver._toSqliteValue(e.value),
+          };
+    int id = _nextId++;
+    Completer<Object?> answer = Completer<Object?>();
+    _waiting[id] = answer;
+    _port.keepIsolateAlive = true;
+    requests.send((id, op, sql, sendable, primaryKey));
+    return answer.future;
+  }
+
+  void _onMessage(Object? message) {
+    switch (message) {
+      case SendPort requests:
+        _requests.complete(requests);
+        _port.keepIsolateAlive = _waiting.isNotEmpty;
+      case (int id, Object? result):
+        _answer(id)?.complete(result);
+      case (int id, Object error, String stack):
+        Completer<Object?>? answer = _answer(id);
+        if (answer != null) {
+          answer.completeError(error, StackTrace.fromString(stack));
+        } else if (!_requests.isCompleted) {
+          /// the database did not open
+          _stop('the sqlite database did not open: $error');
+          _requests.completeError(error, StackTrace.fromString(stack));
+        }
+      case null:
+
+        /// the helper isolate ended
+        _stop('the sqlite helper isolate stopped');
+        if (!_requests.isCompleted) {
+          _requests.completeError(StateError(_stopped!));
+        }
+        _port.close();
+        _exited.complete();
+    }
+  }
+
+  Completer<Object?>? _answer(int id) {
+    Completer<Object?>? answer = _waiting.remove(id);
+    if (_waiting.isEmpty) {
+      /// idle: do not keep this isolate (or `dart run`) alive
+      _port.keepIsolateAlive = false;
+    }
+    return answer;
+  }
+
+  /// no more requests. every waiting request gets an error with [reason].
+  void _stop(String reason) {
+    _stopped ??= reason;
+    for (Completer<Object?> answer in _waiting.values) {
+      answer.completeError(StateError(_stopped!));
+    }
+    _waiting.clear();
+  }
+
+  /// close the database and end the helper isolate. requests sent before
+  /// it finish first. requests after it throw a [StateError].
+  Future<void> close() async {
+    if (_stopped == null) {
+      _stopped = 'the sqlite database is closed';
+      try {
+        SendPort requests = await _requests.future;
+        _port.keepIsolateAlive = true;
+        requests.send(null);
+      } catch (_) {
+        /// it did not start: nothing to close
+      }
+    }
+    await _exited.future;
+  }
+}
+
+/// runs in the helper isolate: owns the database and answers requests
+class _SqliteHelper {
+  final Database db;
+  final SqliteDriver driver;
+  final SendPort answers;
+  final RawReceivePort requests = RawReceivePort();
+
+  _SqliteHelper(this.db, this.driver, this.answers);
+
+  static void main((SendPort, String, int, int, Isolate) setup) {
+    var (
+      SendPort answers,
+      String database,
+      int busyTimeout,
+      int cacheSize,
+      Isolate parent,
+    ) = setup;
+    Database db;
+    try {
+      db = openSqliteDatabase(database, busyTimeout);
+    } catch (error, stack) {
+      _sendError(answers, -1, error, stack);
+      return;
+    }
+    _SqliteHelper helper = _SqliteHelper(
+      db,
+      SqliteDriver(conn: db, statementCacheSize: cacheSize),
+      answers,
+    );
+    helper.requests.handler = helper.onRequest;
+
+    /// close the database when the isolate that made it ends
+    parent.addOnExitListener(helper.requests.sendPort);
+    answers.send(helper.requests.sendPort);
+  }
+
+  void onRequest(Object? message) {
+    if (message case (
+      int id,
+      _SqliteOp op,
+      String sql,
+      Map<String, dynamic>? values,
+      String? primaryKey,
+    )) {
+      try {
+        answers.send((id, driver._run(db, op, sql, values, primaryKey)));
+      } catch (error, stack) {
+        _sendError(answers, id, error, stack);
+      }
+      return;
+    }
+
+    /// null: close, or the isolate that made it has ended
+    driver.clearStatementCache();
+    db.close();
+    requests.close();
+  }
+
+  /// send [error] as it is (eg. a `SqliteException` with all its fields),
+  /// or as a [StateError] with its text when it can not be sent
+  static void _sendError(
+    SendPort answers,
+    int id,
+    Object error,
+    StackTrace stack,
+  ) {
+    try {
+      answers.send((id, error, '$stack'));
+    } catch (_) {
+      answers.send((id, StateError('$error'), '$stack'));
+    }
   }
 }

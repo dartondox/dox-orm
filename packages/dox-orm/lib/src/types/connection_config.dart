@@ -1,11 +1,5 @@
-import 'dart:io';
-
 import 'package:dox_orm/dox_orm.dart';
 import 'package:dox_orm/src/drivers/sqlite_driver.dart';
-import 'package:sqlite3/sqlite3.dart' as sqlite;
-
-/// SQLITE_BUSY: the database file is locked by another connection.
-const int _sqliteBusy = 5;
 
 class ConnectionConfig {
   /// Database driver
@@ -64,7 +58,8 @@ class ConnectionConfig {
 
   /// extra configuration for the connection
   /// eg. `maxConnectionCount` for postgres and mysql,
-  /// `sslMode` for postgres, `busyTimeout` for sqlite.
+  /// `sslMode` for postgres, `busyTimeout` and `background` for sqlite
+  /// (see [sqliteBackground]).
   Map<String, dynamic> extra;
 
   /// use your own driver class instead of the built-in one.
@@ -243,6 +238,19 @@ class ConnectionConfig {
   int get statementCacheSize =>
       extra['preparedStatementCacheSize'] as int? ?? defaultStatementCacheSize;
 
+  /// sqlite only: run the queries in a helper isolate when
+  /// `extra['background']` is true. off by default.
+  ///
+  /// sqlite is synchronous, so a query blocks the isolate that runs it.
+  /// with this on, the helper isolate owns the database and this isolate
+  /// only waits for the answer, so it can serve other requests in the
+  /// meantime. each query costs one message to the helper and one back.
+  /// it helps when some queries are slow. it does not help an app that
+  /// runs many tiny queries: they get a little slower.
+  bool get sqliteBackground => extra['background'] as bool? ?? false;
+
+  int get _busyTimeout => extra['busyTimeout'] as int? ?? 5000;
+
   /// make the driver of this connection: [driverFactory] when it is set,
   /// else the native driver for postgres and mysql, else the sqlite
   /// driver. postgres and mysql throw an [UnsupportedError] when their
@@ -255,47 +263,11 @@ class ConnectionConfig {
       Driver.postgres => PostgresNativeDriver.fromConfig(this),
       Driver.mysql => MysqlNativeDriver.fromConfig(this),
       Driver.sqlite => SqliteDriver(
-        conn: _openSqlite(),
+        conn: sqliteBackground
+            ? SqliteIsolate(database, _busyTimeout, statementCacheSize)
+            : openSqliteDatabase(database, _busyTimeout),
         statementCacheSize: statementCacheSize,
       ),
     };
-  }
-
-  /// open sqlite database file (made if missing), or `:memory:`.
-  /// - WAL: readers do not wait for the writer, faster writes.
-  /// - busy_timeout: wait for a lock (eg. another isolate writing)
-  ///   instead of failing right away.
-  /// - foreign_keys: sqlite turns them off by default.
-  sqlite.Database _openSqlite() {
-    sqlite.Database db = database == ':memory:'
-        ? sqlite.sqlite3.openInMemory()
-        : sqlite.sqlite3.open(database);
-    int busyTimeout = extra['busyTimeout'] as int? ?? 5000;
-    db.execute('PRAGMA busy_timeout = $busyTimeout');
-    if (database != ':memory:') {
-      _switchToWal(db, busyTimeout);
-      db.execute('PRAGMA synchronous = NORMAL');
-    }
-    db.execute('PRAGMA foreign_keys = ON');
-    return db;
-  }
-
-  /// switching a new file to WAL fails right away with SQLITE_BUSY when
-  /// another isolate does the same at that moment: sqlite does not use
-  /// busy_timeout here. So retry until [busyTimeout] ms have passed.
-  void _switchToWal(sqlite.Database db, int busyTimeout) {
-    Stopwatch watch = Stopwatch()..start();
-    while (true) {
-      try {
-        db.execute('PRAGMA journal_mode = WAL');
-        return;
-      } on sqlite.SqliteException catch (e) {
-        if (e.resultCode != _sqliteBusy ||
-            watch.elapsedMilliseconds >= busyTimeout) {
-          rethrow;
-        }
-        sleep(const Duration(milliseconds: 10));
-      }
-    }
   }
 }
