@@ -221,6 +221,73 @@ void main() {
     await d.close();
   });
 
+  for (bool background in <bool>[false, true]) {
+    test('a query in the same turn does not join a transaction '
+        '(background: $background)', () async {
+      DBDriver d = sqliteDriver(background: background);
+      await d.execute('CREATE TABLE t (n INTEGER)');
+
+      /// the transaction and the plain insert start in one turn. the
+      /// rollback must not undo the plain insert.
+      Future<void> tx = d.transaction(() async {
+        await d.execute('INSERT INTO t VALUES (1)');
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+        throw StateError('undo');
+      });
+      Future<void> plain = d.execute('INSERT INTO t VALUES (2)');
+      await expectLater(tx, throwsStateError);
+      await plain;
+      expect(await d.query('SELECT n FROM t'), <Map<String, dynamic>>[
+        <String, dynamic>{'n': 2},
+      ]);
+
+      /// a plain insert that waited for one transaction must not join the
+      /// next one, that starts when the first ends
+      Completer<void> inside = Completer<void>();
+      Future<void> first = d.transaction(() async {
+        inside.complete();
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+      });
+      await inside.future;
+      Future<void> waiting = d.execute('INSERT INTO t VALUES (3)');
+      Future<void> second = d.transaction(() async {
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+        throw StateError('undo');
+      });
+      await first;
+      await expectLater(second, throwsStateError);
+      await waiting;
+      expect(
+        <Object?>[
+          for (Map<String, dynamic> r in await d.query(
+            'SELECT n FROM t ORDER BY n',
+          ))
+            r['n'],
+        ],
+        <int>[2, 3],
+      );
+      await d.close();
+    });
+
+    test('a query that waits for a transaction gets a StateError on close '
+        '(background: $background)', () async {
+      DBDriver d = sqliteDriver(background: background);
+      Completer<void> inside = Completer<void>();
+      Completer<void> end = Completer<void>();
+      Future<void> tx = d.transaction(() async {
+        inside.complete();
+        await end.future;
+      });
+      await inside.future;
+      Future<void> waiting = d.execute('SELECT 1');
+      Future<void> checked = expectLater(waiting, throwsStateError);
+      await d.close();
+      end.complete();
+      await tx.catchError((Object _) {});
+      await checked;
+    });
+  }
+
   test('a file database opens with WAL and busy_timeout', () async {
     Directory dir = Directory.systemTemp.createTempSync('dox_sqlite_bg_');
     addTearDown(() => dir.deleteSync(recursive: true));

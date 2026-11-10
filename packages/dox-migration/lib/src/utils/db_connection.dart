@@ -71,7 +71,7 @@ class DbConnection {
     String query, [
     Map<String, dynamic>? values,
   ]) {
-    return driver.query(query, substitutionValues: values);
+    return SqlQueryBuilder().queryOn(driver, query, substitutionValues: values);
   }
 
   /// run [callback] in one transaction on one connection. commit when it

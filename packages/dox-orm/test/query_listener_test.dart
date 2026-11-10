@@ -113,6 +113,45 @@ void main() {
       expect(sql.removeListener(onQuery), isFalse);
     });
 
+    test('a failed query is not sent', () async {
+      SqlQueryBuilder().listen(onQuery);
+      SqlQueryBuilder().slowQueryMs = 0;
+      await expectLater(
+        QueryBuilder.query('SELECT * FROM nope'),
+        throwsA(anything),
+      );
+      expect(events, isEmpty);
+      expect(capture.queries, isEmpty);
+    });
+
+    test('gets truncate and schema queries', () async {
+      SqlQueryBuilder sql = SqlQueryBuilder();
+      await Schema().create('posts', (Table t) {
+        t.id();
+        t.string('title');
+      });
+      sql.listen(onQuery);
+      await Schema().table('posts', (Table t) => t.string('body').nullable());
+      await QueryBuilder.table('posts').truncate();
+      List<String> seen = <String>[for (QueryEvent e in events) e.sql];
+      expect(seen, contains(startsWith('ALTER TABLE')));
+      expect(seen, contains(startsWith('DELETE FROM sqlite_sequence')));
+      expect(events.map((QueryEvent e) => e.connection).toSet(), <String>{
+        'main',
+      });
+
+      // a driver that the ORM did not make has no name: not sent
+      events.clear();
+      DBDriver own = ConnectionConfig(
+        driver: Driver.sqlite,
+        database: ':memory:',
+        debug: false,
+      ).createDriver();
+      await sql.queryOn(own, 'SELECT 1');
+      await own.close();
+      expect(events, isEmpty);
+    });
+
     test('no listener and no slow log: no stopwatch', () {
       expect(SqlQueryBuilder().startQueryWatch(null), isNull);
       SqlQueryBuilder().listen(onQuery);
@@ -122,16 +161,15 @@ void main() {
 
   group('slow query log', () {
     test('logs a query above the limit, with debug off', () async {
+      // 0 logs every query, so the test does not need a slow query
       SqlQueryBuilder().slowQueryMs = 0;
-      // a query that takes more than 0 ms
       await QueryBuilder.query(
-        'WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c '
-        'WHERE x < 300000) SELECT count(*) FROM c WHERE @password_p1 = @password_p1',
+        'SELECT 1 WHERE @password_p1 = @password_p1',
         substitutionValues: <String, dynamic>{'password_p1': 'secret'},
       );
       expect(capture.queries.length, 1);
       expect(capture.queries.first, startsWith('Slow query ('));
-      expect(capture.queries.first, contains('ms, main): WITH RECURSIVE'));
+      expect(capture.queries.first, contains('ms, main): SELECT 1'));
       expect(capture.params.first, <String>['***', '***']);
     });
 

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:dox_orm/dox_orm.dart';
+import 'package:dox_orm/src/relationships/keys.dart' show manyToManyRow;
 import 'package:dox_orm/src/relationships/pivot_ids.dart';
 import 'package:test/test.dart';
 
@@ -9,6 +10,15 @@ import 'connection.dart';
 import 'models/artist/artist.model.dart';
 import 'models/artist_song/artist_song.model.dart';
 import 'models/song/song.model.dart';
+
+/// a song with a real `pivot` column
+class _SongWithPivotColumn extends Song {
+  @override
+  Map<String, dynamic> convertToMap(dynamic i) => <String, dynamic>{
+    ...super.convertToMap(i),
+    'pivot': 'my column',
+  };
+}
 
 void main() async {
   await initQueryBuilder();
@@ -196,6 +206,18 @@ void main() async {
         Song s = a.songs.first;
         s.hidden = <String>['pivot'];
         expect(s.toJson().containsKey('pivot'), isFalse);
+      });
+
+      test('toJson() keeps a real column named pivot', () async {
+        await artist.attach('songs', 2, <String, dynamic>{'role': 'singer'});
+        Song loaded = (await Artist().preload('songs').find(artist.id))!
+            .songs
+            .first;
+        _SongWithPivotColumn s = _SongWithPivotColumn();
+        s.originalMap = loaded.originalMap;
+        manyToManyRow[s] = manyToManyRow[loaded];
+        expect(s.pivot['role'], 'singer');
+        expect(s.toJson()['pivot'], 'my column');
       });
 
       test('a new query made from a loaded row has no pivot', () async {
