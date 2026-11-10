@@ -47,9 +47,13 @@ DatabaseConfig databaseConfig = DatabaseConfig(
     /// -------------------------------
     /// DB_DATABASE is a file path, default is an in memory database
     /// (one per test file, each file runs in its own isolate).
+    /// SQLITE_BACKGROUND=true runs the queries in a helper isolate.
     'sqlite': ConnectionConfig(
       driver: Driver.sqlite,
       database: Platform.environment['DB_DATABASE'] ?? ':memory:',
+      extra: <String, dynamic>{
+        'background': Platform.environment['SQLITE_BACKGROUND'] == 'true',
+      },
       debug: false,
       printer: ConsoleQueryPrinter(),
     ),
