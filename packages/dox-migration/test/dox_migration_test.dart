@@ -499,6 +499,12 @@ DROP TABLE IF EXISTS mig_tag
         /// a typo in the first option fails and rolls back nothing
         expect(await migrator.run(<String>['rollback', '--stpe=2']), 1);
         expect(await migrator.run(<String>['rollback', '--force']), 1);
+
+        /// the first word must be an option, also when one comes later
+        expect(
+          await migrator.run(<String>['rollback', '--force', '--step=1']),
+          1,
+        );
         expect(await tableExists('mig_post'), true);
 
         /// an unknown word after the option is not used, like before

@@ -894,10 +894,12 @@ class Model<T> extends QueryBuilder<T> {
   ///
   /// A model read by a `@ManyToMany` relation also has a `pivot` key with
   /// its [ManyToManyWrites.pivot] values, like Laravel. Put `'pivot'` in
-  /// [hidden] to leave it out.
+  /// [hidden] to leave it out. A model with its own `pivot` column (or
+  /// relation) keeps that value in the key: the pivot values are then
+  /// only in [ManyToManyWrites.pivot].
   Map<String, dynamic> toJson() {
     Map<String, dynamic> data = toMap(removeHiddenField: true);
-    if (manyToManyRow[this] != null) {
+    if (manyToManyRow[this] != null && !data.containsKey('pivot')) {
       data['pivot'] = <String, dynamic>{
         for (MapEntry<String, dynamic> e in pivot.entries)
           e.key: e.value is DateTime

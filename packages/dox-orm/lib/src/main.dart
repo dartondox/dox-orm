@@ -64,7 +64,8 @@ class SqlQueryBuilder {
   List<String> logRedact = <String>[];
 
   /// log a query of the default connection that takes longer than this
-  /// many milliseconds. null (the default) turns it off. see
+  /// many milliseconds. 0 logs every query. null (the default) turns it
+  /// off. see
   /// [ConnectionConfig.slowQueryMs].
   int? slowQueryMs;
 
@@ -75,8 +76,10 @@ class SqlQueryBuilder {
   /// run [listener] after each query of every connection, like Laravel
   /// `DB::listen`. it gets the sql, the values (`logRedact` names are
   /// hidden), the time and the connection name. it runs after the query
-  /// ends well, not after a failed query. an error in [listener] is
-  /// logged, the query does not fail.
+  /// ends well. a failed query is not sent to the listeners and not to
+  /// the slow query log: its error goes to the caller. the queries of the
+  /// schema builder and the migrator are sent too, see [queryOn]. an
+  /// error in [listener] is logged, the query does not fail.
   /// ```
   /// SqlQueryBuilder().listen(onQuery);
   /// void onQuery(QueryEvent e) => print('${e.time} ${e.sql}');
@@ -112,6 +115,55 @@ class SqlQueryBuilder {
     return _afterQuery(result, watch, query, values, connection);
   }
 
+  /// run [query] on [driver] and give the rows. like [timeQuery], the slow
+  /// query log and the listeners see it. it is for the queries of the
+  /// schema builder and the migrator, that have a driver, not a query
+  /// builder. a driver that the ORM did not make (eg. one that the
+  /// migrator opened from `.env`) has no connection name, so its queries
+  /// run as they are.
+  Future<List<Map<String, dynamic>>> queryOn(
+    DBDriver driver,
+    String query, {
+    Map<String, dynamic>? substitutionValues,
+  }) {
+    var (bool known, String? connection) = _connectionOf(driver);
+    Stopwatch? watch = known ? startQueryWatch(connection) : null;
+    return timeQuery(
+      driver.query(query, substitutionValues: substitutionValues),
+      watch,
+      query,
+      substitutionValues,
+      connection,
+    );
+  }
+
+  /// like [queryOn], with [DBDriver.execute]
+  Future<void> executeOn(
+    DBDriver driver,
+    String query, {
+    Map<String, dynamic>? substitutionValues,
+  }) {
+    var (bool known, String? connection) = _connectionOf(driver);
+    Stopwatch? watch = known ? startQueryWatch(connection) : null;
+    return timeQuery(
+      driver.execute(query, substitutionValues: substitutionValues),
+      watch,
+      query,
+      substitutionValues,
+      connection,
+    );
+  }
+
+  /// the connection name of [driver]: null for the default driver. false
+  /// when the ORM did not make it.
+  (bool, String?) _connectionOf(DBDriver driver) {
+    if (identical(driver, _dbDriver)) return (true, null);
+    for (MapEntry<String, DBDriver> e in _globalDrivers.entries) {
+      if (identical(e.value, driver)) return (true, e.key);
+    }
+    return (false, null);
+  }
+
   Future<R> _afterQuery<R>(
     Future<R> result,
     Stopwatch watch,
@@ -123,7 +175,9 @@ class SqlQueryBuilder {
     Duration time = watch.elapsed;
     String name = connection ?? databaseConfig?.connection ?? 'default';
     int? slowMs = slowQueryMsOf(connection);
-    if (slowMs != null && time.inMilliseconds > slowMs) {
+
+    /// 0 logs every query, also one that took less than 1 ms
+    if (slowMs != null && (slowMs == 0 || time.inMilliseconds > slowMs)) {
       Logger().log(
         query,
         values,

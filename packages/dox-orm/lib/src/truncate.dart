@@ -29,13 +29,14 @@ mixin Truncate<T> implements SharedMixin<T> {
 
   /// sqlite_sequence only exists after a table with AUTOINCREMENT is made
   Future<void> _resetSqliteSequence() async {
-    List<Map<String, dynamic>> exists = await queryBuilder.dbDriver.query(
+    List<Map<String, dynamic>> exists = await helper.runQuery(
       "SELECT 1 FROM sqlite_schema WHERE name = 'sqlite_sequence'",
+      const <String, dynamic>{},
     );
     if (exists.isNotEmpty) {
-      await queryBuilder.dbDriver.execute(
+      await helper.runQuery(
         'DELETE FROM sqlite_sequence WHERE name = @table',
-        substitutionValues: <String, dynamic>{'table': tableName},
+        <String, dynamic>{'table': tableName},
       );
     }
   }

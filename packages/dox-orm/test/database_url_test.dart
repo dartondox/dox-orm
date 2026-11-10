@@ -117,6 +117,40 @@ void main() {
       );
     });
 
+    test('sqlite options go to extra, so the url can turn on background', () {
+      ConnectionConfig c = ConnectionConfig.fromUrl(
+        'sqlite://db/dox.sqlite?background=true&busyTimeout=100',
+        extra: <String, dynamic>{'busyTimeout': 5, 'keep': 'me'},
+      );
+      expect(c.database, 'db/dox.sqlite');
+      expect(c.extra, <String, dynamic>{
+        'busyTimeout': 100,
+        'keep': 'me',
+        'background': true,
+      });
+      expect(c.sqliteBackground, isTrue);
+      expect(
+        ConnectionConfig.fromUrl('sqlite::memory:?background=1')
+            .sqliteBackground,
+        isTrue,
+      );
+    });
+
+    test('background accepts true, 1, "true" and "1"', () {
+      bool on(Object? value) => ConnectionConfig(
+        driver: Driver.sqlite,
+        database: ':memory:',
+        debug: false,
+        extra: <String, dynamic>{'background': value},
+      ).sqliteBackground;
+      for (Object value in <Object>[true, 1, 'true', 'TRUE', '1']) {
+        expect(on(value), isTrue, reason: '$value');
+      }
+      for (Object? value in <Object?>[null, false, 0, 'false', '0', 'yes']) {
+        expect(on(value), isFalse, reason: '$value');
+      }
+    });
+
     test('unknown scheme throws', () {
       expect(
         () => ConnectionConfig.fromUrl('redis://h'),

@@ -37,6 +37,18 @@ class Schema {
 
   Schema._(this.driver) : grammar = SchemaGrammar.of(driver.getName());
 
+  /// run [sql] on [driver], so the query listeners see it
+  Future<List<Map<String, dynamic>>> _query(
+    String sql, {
+    Map<String, dynamic>? substitutionValues,
+  }) => SqlQueryBuilder().queryOn(
+    driver,
+    sql,
+    substitutionValues: substitutionValues,
+  );
+
+  Future<void> _execute(String sql) => SqlQueryBuilder().executeOn(driver, sql);
+
   /// create a table
   Future<void> create(String table, void Function(Table table) callback) {
     Table blueprint = Table(table, creating: true);
@@ -62,7 +74,7 @@ class Schema {
   }
 
   Future<bool> hasTable(String table) async {
-    List<Map<String, dynamic>> rows = await driver.query(
+    List<Map<String, dynamic>> rows = await _query(
       grammar.compileTableExists(),
       substitutionValues: <String, dynamic>{'table': table},
     );
@@ -74,7 +86,7 @@ class Schema {
   }
 
   Future<List<String>> getColumnListing(String table) async {
-    List<Map<String, dynamic>> rows = await driver.query(
+    List<Map<String, dynamic>> rows = await _query(
       grammar.compileColumnListing(),
       substitutionValues: <String, dynamic>{'table': table},
     );
@@ -132,7 +144,7 @@ class Schema {
   /// sqlite: make the index [from] again with the name [to], from its
   /// saved sql
   Future<void> _renameSqliteIndex(String from, String to) async {
-    List<Map<String, dynamic>> rows = await driver.query(
+    List<Map<String, dynamic>> rows = await _query(
       "SELECT sql FROM sqlite_schema WHERE type = 'index' AND name = @name",
       substitutionValues: <String, dynamic>{'name': from},
     );
@@ -144,8 +156,8 @@ class Schema {
       return '${m[1]}${grammar.wrap(to)}';
     });
     await driver.transaction(() async {
-      await driver.execute('DROP INDEX ${grammar.wrap(from)}');
-      await driver.execute(created);
+      await _execute('DROP INDEX ${grammar.wrap(from)}');
+      await _execute(created);
     });
   }
 
@@ -157,7 +169,7 @@ class Schema {
 
   Future<void> _run(List<String> statements) async {
     for (String sql in statements) {
-      await driver.execute(sql);
+      await _execute(sql);
     }
   }
 }

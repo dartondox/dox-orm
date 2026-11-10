@@ -1,4 +1,5 @@
 import '../drivers/db_driver.dart';
+import '../main.dart';
 import 'grammars/sqlite_grammar.dart';
 import 'table.column.dart';
 import 'table.dart';
@@ -13,6 +14,18 @@ class SqliteTableRebuilder {
   final SqliteGrammar grammar;
 
   const SqliteTableRebuilder(this.driver, this.grammar);
+
+  /// run [sql] on [driver], so the query listeners see it
+  Future<List<Map<String, dynamic>>> _query(
+    String sql, {
+    Map<String, dynamic>? substitutionValues,
+  }) => SqlQueryBuilder().queryOn(
+    driver,
+    sql,
+    substitutionValues: substitutionValues,
+  );
+
+  Future<void> _execute(String sql) => SqlQueryBuilder().executeOn(driver, sql);
 
   /// `CHECK ("col" IN ('a', 'b'))` as made by [SqliteGrammar.enumCheck]
   static final RegExp _enumCheck = RegExp(
@@ -39,7 +52,7 @@ class SqliteTableRebuilder {
         if (c.type == CommandType.dropForeign) c.name!,
     };
 
-    List<Map<String, dynamic>> info = await driver.query(
+    List<Map<String, dynamic>> info = await _query(
       'SELECT * FROM pragma_table_xinfo(@table)',
       substitutionValues: params,
     );
@@ -60,7 +73,7 @@ class SqliteTableRebuilder {
       }
     }
 
-    List<Map<String, dynamic>> createSql = await driver.query(
+    List<Map<String, dynamic>> createSql = await _query(
       "SELECT sql FROM sqlite_schema WHERE type = 'table' AND name = @table",
       substitutionValues: params,
     );
@@ -114,7 +127,7 @@ class SqliteTableRebuilder {
     /// foreign keys, one row per column, grouped by id
     Map<int, List<Map<String, dynamic>>> fks =
         <int, List<Map<String, dynamic>>>{};
-    for (Map<String, dynamic> fk in await driver.query(
+    for (Map<String, dynamic> fk in await _query(
       'SELECT * FROM pragma_foreign_key_list(@table) ORDER BY id, seq',
       substitutionValues: params,
     )) {
@@ -149,18 +162,18 @@ class SqliteTableRebuilder {
     /// indexes made with CREATE INDEX keep their sql. UNIQUE constraints
     /// (auto indexes, no sql) are made again as unique indexes.
     List<String> indexes = <String>[
-      for (Map<String, dynamic> i in await driver.query(
+      for (Map<String, dynamic> i in await _query(
         "SELECT sql FROM sqlite_schema WHERE type = 'index' AND tbl_name = @table AND sql IS NOT NULL",
         substitutionValues: params,
       ))
         i['sql'] as String,
     ];
-    for (Map<String, dynamic> i in await driver.query(
+    for (Map<String, dynamic> i in await _query(
       "SELECT name FROM pragma_index_list(@table) WHERE origin = 'u'",
       substitutionValues: params,
     )) {
       List<String> cols = <String>[
-        for (Map<String, dynamic> c in await driver.query(
+        for (Map<String, dynamic> c in await _query(
           'SELECT name FROM pragma_index_info(@index) ORDER BY seqno',
           substitutionValues: <String, dynamic>{'index': i['name']},
         ))
@@ -178,23 +191,21 @@ class SqliteTableRebuilder {
 
     /// foreign_keys can only be changed outside a transaction.
     /// in a migration it is already off (the migrator turns it off).
-    List<Map<String, dynamic>> fkState = await driver.query(
-      'PRAGMA foreign_keys',
-    );
+    List<Map<String, dynamic>> fkState = await _query('PRAGMA foreign_keys');
     bool fkOn = fkState.first.values.first == 1;
-    if (fkOn) await driver.execute('PRAGMA foreign_keys = OFF');
+    if (fkOn) await _execute('PRAGMA foreign_keys = OFF');
     try {
       await driver.transaction(() async {
-        await driver.execute('CREATE TABLE $temp (${defs.join(', ')})');
-        await driver.execute(
+        await _execute('CREATE TABLE $temp (${defs.join(', ')})');
+        await _execute(
           'INSERT INTO $temp ($columns) SELECT $columns FROM $quoted',
         );
-        await driver.execute('DROP TABLE $quoted');
-        await driver.execute('ALTER TABLE $temp RENAME TO $quoted');
+        await _execute('DROP TABLE $quoted');
+        await _execute('ALTER TABLE $temp RENAME TO $quoted');
         for (String index in indexes) {
-          await driver.execute(index);
+          await _execute(index);
         }
-        List<Map<String, dynamic>> broken = await driver.query(
+        List<Map<String, dynamic>> broken = await _query(
           'PRAGMA foreign_key_check($quoted)',
         );
         if (broken.isNotEmpty) {
@@ -202,7 +213,7 @@ class SqliteTableRebuilder {
         }
       });
     } finally {
-      if (fkOn) await driver.execute('PRAGMA foreign_keys = ON');
+      if (fkOn) await _execute('PRAGMA foreign_keys = ON');
     }
   }
 }

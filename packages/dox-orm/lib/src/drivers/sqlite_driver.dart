@@ -55,20 +55,30 @@ class SqliteDriver extends DBDriver {
   @override
   bool get supportsReturning => _hasReturning;
 
-  /// the `Database`, or the [SqliteIsolate] that owns it
-  Future<Object> _getConnection() async {
-    if (conn is Future) {
-      conn = await conn;
-    }
-    Object db = conn;
-
-    /// wait for a transaction from outside this zone to end
-    if (!_inTransaction(db)) {
-      while (_transactionDone[db] != null) {
-        await _transactionDone[db];
-      }
-    }
+  /// the `Database` (or the [SqliteIsolate] that owns it) when this zone
+  /// can use it now, else null: it is still opening, or a transaction of
+  /// another zone is open on it.
+  ///
+  /// the callers check it and use the database with no `await` in
+  /// between. so a transaction that starts in the same event-loop turn
+  /// can not take the database in that gap, and a plain query can not
+  /// slip into it.
+  Object? _ready() {
+    Object? c = conn;
+    if (c is Future) return null;
+    Object db = c as Object;
+    if (!_inTransaction(db) && _transactionDone[db] != null) return null;
     return db;
+  }
+
+  /// wait until [_ready] may give the database
+  Future<void> _waitReady() async {
+    Object? c = conn;
+    if (c is Future) {
+      conn = await c;
+      return;
+    }
+    await _transactionDone[c as Object];
   }
 
   /// close the kept statements and the database
@@ -104,7 +114,10 @@ class SqliteDriver extends DBDriver {
     String? primaryKey,
     Map<String, dynamic>? substitutionValues,
   }) async {
-    Object db = await _getConnection();
+    Object? db;
+    while ((db = _ready()) == null) {
+      await _waitReady();
+    }
     if (db is SqliteIsolate) {
       return await db._call(
         _SqliteOp.query,
@@ -156,7 +169,10 @@ class SqliteDriver extends DBDriver {
     String query, {
     Map<String, dynamic>? substitutionValues,
   }) async {
-    Object db = await _getConnection();
+    Object? db;
+    while ((db = _ready()) == null) {
+      await _waitReady();
+    }
     if (db is SqliteIsolate) {
       return await db._call(_SqliteOp.affecting, query, substitutionValues)
           as int;
@@ -191,7 +207,10 @@ class SqliteDriver extends DBDriver {
     String query, {
     Map<String, dynamic>? substitutionValues,
   }) async {
-    Object db = await _getConnection();
+    Object? db;
+    while ((db = _ready()) == null) {
+      await _waitReady();
+    }
     if (db is SqliteIsolate) {
       await db._call(_SqliteOp.execute, query, substitutionValues);
       return;
@@ -254,17 +273,18 @@ class SqliteDriver extends DBDriver {
 
   @override
   Future<R> transaction<R>(Future<R> Function() callback) async {
-    Object db = await _getConnection();
+    Object? ready;
+    while ((ready = _ready()) == null) {
+      await _waitReady();
+    }
+    Object db = ready as Object;
 
     /// a nested transaction uses a savepoint
     if (_inTransaction(db)) {
       return savepoint(callback);
     }
 
-    /// another transaction can start while we wait, so check again
-    while (_transactionDone[db] != null) {
-      await _transactionDone[db];
-    }
+    /// [_ready] checked that no other transaction is open
     Completer<void> done = Completer<void>();
     _transactionDone[db] = done.future;
 

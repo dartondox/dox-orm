@@ -14,7 +14,8 @@ class DatabaseConfig {
   ///
   /// The rule: when it is set, it wins. It replaces the config of
   /// [connection] (the default connection). That config still gives
-  /// `debug`, `printer`, `logRedact`, `slowQueryMs` and `extra`. Other named connections do not change.
+  /// `debug`, `printer`, `logRedact`, `slowQueryMs` and `extra`. Other
+  /// named connections do not change.
   ///
   /// When not given, it is the `DATABASE_URL` environment variable.
   /// An empty text means no url.

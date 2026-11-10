@@ -24,9 +24,12 @@ class ConnectionConfig {
   /// real values.
   List<String> logRedact;
 
-  /// log each query that takes longer than this many milliseconds. null
-  /// (the default) turns it off. it works with [debug] off. the line goes
-  /// to the query printer and hides the `logRedact` values.
+  /// log each query that takes longer than this many milliseconds. 0 logs
+  /// every query. null (the default) turns it off. it works with [debug]
+  /// off. the line goes to the query printer and hides the `logRedact`
+  /// values. a failed query is not logged here. with [debug] on, a slow
+  /// query of the query builder shows twice: the debug line before it
+  /// runs, and the slow line with its time after it.
   int? slowQueryMs;
 
   /// database host
@@ -113,7 +116,8 @@ class ConnectionConfig {
   /// - `sslrootcert=/path/ca.pem` (Postgres): the CA certificates to trust
   ///   for `verify-full`. See [postgresSslRootCert].
   /// - any other option goes to [extra]. `10` becomes an int, and `true` or
-  ///   `false` a bool. Eg. `?maxConnectionCount=20`.
+  ///   `false` a bool. Eg. `?maxConnectionCount=20`. For SQLite every
+  ///   option goes to [extra], eg. `sqlite://db/dox.sqlite?background=true`.
   ///
   /// [extra] is the base, the url options win over it.
   factory ConnectionConfig.fromUrl(
@@ -131,8 +135,16 @@ class ConnectionConfig {
     if (scheme == 'sqlite' || scheme == 'file') {
       String path = url.substring(colon + 1);
       if (path.startsWith('//')) path = path.substring(2);
+      Map<String, dynamic> options = <String, dynamic>{...extra};
       int query = path.indexOf('?');
-      if (query >= 0) path = path.substring(0, query);
+      if (query >= 0) {
+        for (MapEntry<String, String> e in Uri.splitQueryString(
+          path.substring(query + 1),
+        ).entries) {
+          options[e.key] = _urlValue(e.value);
+        }
+        path = path.substring(0, query);
+      }
       return ConnectionConfig(
         driver: Driver.sqlite,
         database: Uri.decodeComponent(path),
@@ -140,7 +152,7 @@ class ConnectionConfig {
         printer: printer,
         logRedact: logRedact,
         slowQueryMs: slowQueryMs,
-        extra: extra,
+        extra: options,
       );
     }
 
@@ -177,7 +189,7 @@ class ConnectionConfig {
         case 'sslrootcert' when driver == Driver.postgres:
           options['sslRootCert'] = value;
         default:
-          options[key] = int.tryParse(value) ?? bool.tryParse(value) ?? value;
+          options[key] = _urlValue(value);
       }
     });
     List<String> userInfo = uri.userInfo.split(':');
@@ -204,6 +216,10 @@ class ConnectionConfig {
       extra: options,
     );
   }
+
+  /// a url option value: `10` becomes an int, `true` or `false` a bool
+  static Object _urlValue(String value) =>
+      int.tryParse(value) ?? bool.tryParse(value) ?? value;
 
   /// true when [host] is a Unix socket: a path that starts with `/`.
   /// For Postgres it is the folder of the socket, like libpq. For MySQL it
@@ -247,7 +263,14 @@ class ConnectionConfig {
   /// meantime. each query costs one message to the helper and one back.
   /// it helps when some queries are slow. it does not help an app that
   /// runs many tiny queries: they get a little slower.
-  bool get sqliteBackground => extra['background'] as bool? ?? false;
+  ///
+  /// `true`, `1`, `'true'` and `'1'` turn it on, so `?background=true`
+  /// in the database url works too.
+  bool get sqliteBackground => switch (extra['background']) {
+    true || 1 => true,
+    String s => s.toLowerCase() == 'true' || s == '1',
+    _ => false,
+  };
 
   int get _busyTimeout => extra['busyTimeout'] as int? ?? 5000;
 
