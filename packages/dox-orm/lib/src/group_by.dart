@@ -1,7 +1,7 @@
-import 'package:dox_orm/dox_orm.dart' show OrmFlags, SqlQueryBuilder;
-
+import 'main.dart';
 import 'query_builder.dart';
 import 'shared_mixin.dart';
+import 'types/orm_flags.dart';
 import 'where.dart';
 
 mixin GroupBy<T> implements SharedMixin<T> {
