@@ -152,7 +152,9 @@ abstract class DBDriver {
   /// - a late call from code that outlived its transaction (a `Timer`, a
   ///   future that was not awaited) runs at once when that transaction
   ///   committed, and is dropped when it rolled back. it never joins a
-  ///   later transaction.
+  ///   later transaction. a late call that throws gives the error to the
+  ///   future it returns: await it or catch it, else it is an uncaught
+  ///   async error.
   ///
   /// ```
   /// await driver.afterCommit(() => sendMail(user));

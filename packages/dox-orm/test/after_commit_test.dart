@@ -182,6 +182,60 @@ void main() async {
       expect(log, isEmpty);
     });
 
+    test('a late call from a released savepoint joins the outer', () async {
+      List<String> log = <String>[];
+      await QueryBuilder.transaction(() async {
+        Completer<void> called = Completer<void>();
+        await QueryBuilder.transaction(() async {
+          Timer(const Duration(milliseconds: 20), () async {
+            await QueryBuilder.afterCommit(() => log.add('late'));
+            called.complete();
+          });
+        });
+        await called.future;
+        log.add('outer body');
+      });
+      expect(log, <String>['outer body', 'late']);
+    });
+
+    test('a late call from a rolled back savepoint is dropped', () async {
+      List<String> log = <String>[];
+      await QueryBuilder.transaction(() async {
+        Completer<void> called = Completer<void>();
+        try {
+          await QueryBuilder.transaction(() async {
+            Timer(const Duration(milliseconds: 20), () async {
+              await QueryBuilder.afterCommit(() => log.add('late'));
+              called.complete();
+            });
+            throw StateError('stop');
+          });
+        } on StateError {
+          // the outer transaction goes on
+        }
+        await called.future;
+      });
+      expect(log, isEmpty);
+    });
+
+    test('a call while a slow callback runs runs once', () async {
+      List<String> log = <String>[];
+      Completer<void> slowStarted = Completer<void>();
+      Future<void>? late;
+      await QueryBuilder.transaction(() async {
+        late = slowStarted.future.then(
+          (_) => QueryBuilder.afterCommit(() => log.add('late')),
+        );
+        await QueryBuilder.afterCommit(() async {
+          slowStarted.complete();
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+          log.add('slow');
+        });
+      });
+      await late;
+      expect(log, <String>['late', 'slow']);
+    });
+
     test('a callback that throws outside a transaction throws', () async {
       await expectLater(
         QueryBuilder.afterCommit(() => throw StateError('x')),
