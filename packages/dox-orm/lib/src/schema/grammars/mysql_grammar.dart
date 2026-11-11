@@ -158,4 +158,20 @@ class MysqlGrammar extends SchemaGrammar {
         'WHERE table_schema = DATABASE() AND table_name = @table '
         'ORDER BY ordinal_position';
   }
+
+  /// the primary key is `primary`, like Laravel
+  @override
+  String compileIndexListing() {
+    return "SELECT CASE WHEN index_name = 'PRIMARY' THEN 'primary' "
+        'ELSE index_name END AS name, column_name AS col, '
+        'seq_in_index AS pos FROM information_schema.statistics '
+        'WHERE table_schema = DATABASE() AND table_name = @table '
+        'ORDER BY 1, 3';
+  }
+
+  @override
+  String compileDisableForeignKeyConstraints() => 'SET FOREIGN_KEY_CHECKS = 0';
+
+  @override
+  String compileEnableForeignKeyConstraints() => 'SET FOREIGN_KEY_CHECKS = 1';
 }

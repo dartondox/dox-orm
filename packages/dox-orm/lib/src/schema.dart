@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import '/dox_orm.dart';
 import 'schema/sqlite_rebuilder.dart';
 
@@ -92,6 +94,117 @@ class Schema {
 
   Future<bool> hasColumn(String table, String column) async {
     return (await getColumnListing(table)).contains(column);
+  }
+
+  /// true when [table] has every one of [columns]
+  Future<bool> hasColumns(String table, List<String> columns) async {
+    return (await getColumnListing(table)).toSet().containsAll(columns);
+  }
+
+  /// true when [table] has the index [index]: an index name (a `String`),
+  /// or a `List<String>` of its columns, in the order of the index. the
+  /// primary key is named `primary` on mysql and sqlite.
+  ///
+  /// the name is compared like the database does: case-insensitive on
+  /// mysql, mariadb and sqlite, exact on postgres (dox quotes the name, so
+  /// postgres keeps its case).
+  ///
+  /// ```
+  /// await schema.hasIndex('users', 'users_email_unique');
+  /// await schema.hasIndex('users', <String>['first_name', 'last_name']);
+  /// ```
+  Future<bool> hasIndex(String table, Object index) async {
+    if (index is! String && index is! List) {
+      throw ArgumentError.value(index, 'index', 'must be a name or a list');
+    }
+    Map<String, List<String?>> indexes = <String, List<String?>>{};
+    for (Map<String, dynamic> row in await _query(
+      grammar.compileIndexListing(),
+      substitutionValues: <String, dynamic>{'table': table},
+    )) {
+      (indexes[row['name'].toString()] ??= <String?>[]).add(
+        row['col']?.toString(),
+      );
+    }
+    if (index is String) {
+      if (grammar is PostgresGrammar) return indexes.containsKey(index);
+      String name = index.toLowerCase();
+      return indexes.keys.any((String k) => k.toLowerCase() == name);
+    }
+    String key = jsonEncode(index);
+    return indexes.values.any((List<String?> c) => jsonEncode(c) == key);
+  }
+
+  /// turn the foreign key checks off, until [enableForeignKeyConstraints].
+  /// [withoutForeignKeyConstraints] is the safe way to use it.
+  ///
+  /// - sqlite: `PRAGMA foreign_keys = OFF`. it is for the one connection
+  ///   of this isolate, so other code of this isolate is not checked
+  ///   either while it is off. inside a transaction it does nothing.
+  /// - mysql and mariadb: `SET FOREIGN_KEY_CHECKS = 0`. it is a setting
+  ///   of one pool connection, so it must run inside a transaction (a
+  ///   migration runs in one), else a [StateError] is thrown. turn it on
+  ///   again before the transaction ends: the connection goes back to the
+  ///   pool with the setting.
+  /// - postgres: `SET CONSTRAINTS ALL DEFERRED`, like Laravel. only keys
+  ///   made `DEFERRABLE` (with raw sql) wait, and only until the commit.
+  ///   it must run inside a transaction, else a [StateError] is thrown.
+  Future<void> disableForeignKeyConstraints() async {
+    await _foreignKeys(grammar.compileDisableForeignKeyConstraints());
+  }
+
+  /// turn the foreign key checks on again, see
+  /// [disableForeignKeyConstraints]
+  Future<void> enableForeignKeyConstraints() async {
+    await _foreignKeys(grammar.compileEnableForeignKeyConstraints());
+  }
+
+  Future<void> _foreignKeys(String sql) async {
+    if (grammar is! SqliteGrammar && !driver.hasOpenTransaction) {
+      throw StateError(
+        'the foreign key setting is for one connection: run it inside a '
+        'transaction, or use withoutForeignKeyConstraints()',
+      );
+    }
+    await _execute(sql);
+  }
+
+  /// run [callback] with the foreign key checks off, and turn them on
+  /// again after it, also when it throws. see
+  /// [disableForeignKeyConstraints] for each database.
+  ///
+  /// - mysql, mariadb and postgres: it runs in a transaction (a savepoint
+  ///   inside a transaction), so every query uses the same connection.
+  /// - sqlite: it must run outside a transaction. inside one the checks
+  ///   stay on.
+  ///
+  /// ```
+  /// await schema.withoutForeignKeyConstraints(() async {
+  ///   await QueryBuilder.table('users').truncate();
+  /// });
+  /// ```
+  Future<R> withoutForeignKeyConstraints<R>(
+    Future<R> Function() callback,
+  ) async {
+    Future<R> run() async {
+      await disableForeignKeyConstraints();
+      R result;
+      try {
+        result = await callback();
+      } catch (_) {
+        try {
+          await enableForeignKeyConstraints();
+        } catch (_) {
+          // keep the first error: it tells what went wrong
+        }
+        rethrow;
+      }
+      await enableForeignKeyConstraints();
+      return result;
+    }
+
+    if (grammar is SqliteGrammar) return run();
+    return driver.transaction(run);
   }
 
   Future<List<String>> getColumnListing(String table) async {

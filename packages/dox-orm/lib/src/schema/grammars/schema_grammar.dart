@@ -42,6 +42,20 @@ abstract class SchemaGrammar {
   /// sql that lists the column names (first column), uses `@table`
   String compileColumnListing();
 
+  /// sql that lists the indexes of `@table`: one row per index column,
+  /// with `name` (the index) and `col`, in index order. not abstract, so
+  /// a grammar of your own still builds.
+  String compileIndexListing() =>
+      throw UnsupportedError('$runtimeType can not list indexes');
+
+  /// sql that turns the foreign key checks off
+  String compileDisableForeignKeyConstraints() =>
+      throw UnsupportedError('$runtimeType can not turn off foreign keys');
+
+  /// sql that turns the foreign key checks on again
+  String compileEnableForeignKeyConstraints() =>
+      throw UnsupportedError('$runtimeType can not turn on foreign keys');
+
   String wrap(String name) {
     return name
         .split('.')
