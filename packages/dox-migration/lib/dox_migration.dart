@@ -6,6 +6,7 @@ export 'package:dox_orm/dox_orm.dart'
         DBDriver,
         ForeignIdColumnDefinition,
         ForeignKeyDefinition,
+        OrmFlags,
         Schema,
         Table;
 

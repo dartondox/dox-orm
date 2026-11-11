@@ -106,6 +106,7 @@ In a Dox app, start the ORM in a `DoxProvider`, so each isolate gets its own poo
 - Writes: `create` and `insert` return the new model or map. `update`, `delete`, `increment`, `decrement`, `upsert` and `insertOrIgnore` return the number of changed rows. `insertGetId` returns the new id. `insertMany` inserts many rows and reads nothing back. `firstOrCreate`, `firstOrNew` and `updateOrCreate`.
 - Transactions with `QueryBuilder.transaction()`, nested with savepoints, and row locks with `lockForUpdate()` and `sharedLock()`.
 - Schema builder for migrations (used by `dox_migration`).
+- Opt-in Laravel behaviors with `OrmFlags`, all off by default. Pass `flags: OrmFlags.all()` to `DatabaseConfig` to turn them all on. See [Database setup](https://dartondox.dev/latest/database/#orm-flags).
 - DTO rules `@Unique` and `@Exists` that check the database.
 
 ## Documentation

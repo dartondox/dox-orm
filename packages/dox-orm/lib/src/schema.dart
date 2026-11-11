@@ -30,12 +30,21 @@ class Schema {
   final DBDriver driver;
   final SchemaGrammar grammar;
 
-  /// [driver] default is the query builder driver (`SqlQueryBuilder`)
-  factory Schema([DBDriver? driver]) {
-    return Schema._(driver ?? SqlQueryBuilder().dbDriver);
+  /// the opt-in ORM behaviors for new tables, see
+  /// [OrmFlags.laravelPostgresTypes]
+  final OrmFlags flags;
+
+  /// [driver] default is the query builder driver (`SqlQueryBuilder`).
+  /// [flags] default is the query builder flags (`SqlQueryBuilder().flags`).
+  factory Schema([DBDriver? driver, OrmFlags? flags]) {
+    return Schema._(
+      driver ?? SqlQueryBuilder().dbDriver,
+      flags ?? SqlQueryBuilder().flags,
+    );
   }
 
-  Schema._(this.driver) : grammar = SchemaGrammar.of(driver.getName());
+  Schema._(this.driver, this.flags)
+    : grammar = SchemaGrammar.of(driver.getName());
 
   /// run [sql] on [driver], so the query listeners see it
   Future<List<Map<String, dynamic>>> _query(
@@ -51,7 +60,7 @@ class Schema {
 
   /// create a table
   Future<void> create(String table, void Function(Table table) callback) {
-    Table blueprint = Table(table, creating: true);
+    Table blueprint = Table(table, creating: true, flags: flags);
     callback(blueprint);
     return build(blueprint);
   }

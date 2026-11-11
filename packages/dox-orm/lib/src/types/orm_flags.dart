@@ -1,0 +1,80 @@
+/// opt-in ORM behaviors that work like Laravel. Each one is off by
+/// default, so the ORM works as it always does. Turn one on with its
+/// field, or turn all of them on with [OrmFlags.all].
+///
+/// Pass it to [DatabaseConfig] (or `SqlQueryBuilder.initialize`). The
+/// ORM keeps it in `SqlQueryBuilder().flags`, one per isolate. Each
+/// isolate sets up its own config, so each isolate gets the flags.
+///
+/// ```
+/// DatabaseConfig databaseConfig = DatabaseConfig(
+///   connection: 'postgres',
+///   connections: connections,
+///   flags: OrmFlags.all(),
+/// );
+/// ```
+class OrmFlags {
+  /// `save()` on a model with no changes fires `saving` and `saved`,
+  /// but not `updating` and `updated`. Off: it fires all four.
+  final bool skipCleanUpdateEvents;
+
+  /// the default foreign key of a `belongsTo` relation comes from the
+  /// relation name: `@BelongsTo(User) User? author` uses `author_id`.
+  /// Off: it comes from the class name (`user_id`).
+  final bool belongsToKeyFromRelation;
+
+  /// the default table name is plural: `User` uses `users`,
+  /// `BlogPost` uses `blog_posts`. Off: `user` and `blog_post`.
+  final bool pluralTableNames;
+
+  /// `create()` writes NULL for a key that is null in its data.
+  /// Off: a null key is not sent, so the column default is used.
+  final bool createWritesNull;
+
+  /// `sum()` gives 0 when no row matches. Off: it gives null.
+  final bool sumReturnsZero;
+
+  /// `selectRaw()` adds to the select list, so
+  /// `select('a').selectRaw('count(*) c')` selects both.
+  /// Off: it replaces the list.
+  final bool selectRawAdds;
+
+  /// a second `groupBy()` or `groupByRaw()` adds to the first.
+  /// Off: it replaces the first.
+  final bool groupByAdds;
+
+  /// `paginate()` gives `lastPage` 1 when there are no rows.
+  /// Off: it gives 0.
+  final bool lastPageAtLeastOne;
+
+  /// on Postgres, a new table made with `Schema.create` gets
+  /// `TIMESTAMP` (no time zone) for `timestamps()` and `softDeletes()`,
+  /// and `JSON` for `json()`. Off: `TIMESTAMPTZ` and `JSONB`. It never
+  /// changes a table that is already there. MySQL and SQLite do not
+  /// change.
+  final bool laravelPostgresTypes;
+
+  const OrmFlags({
+    this.skipCleanUpdateEvents = false,
+    this.belongsToKeyFromRelation = false,
+    this.pluralTableNames = false,
+    this.createWritesNull = false,
+    this.sumReturnsZero = false,
+    this.selectRawAdds = false,
+    this.groupByAdds = false,
+    this.lastPageAtLeastOne = false,
+    this.laravelPostgresTypes = false,
+  });
+
+  /// every flag on
+  const OrmFlags.all()
+    : skipCleanUpdateEvents = true,
+      belongsToKeyFromRelation = true,
+      pluralTableNames = true,
+      createWritesNull = true,
+      sumReturnsZero = true,
+      selectRawAdds = true,
+      groupByAdds = true,
+      lastPageAtLeastOne = true,
+      laravelPostgresTypes = true;
+}

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import '../dox_orm.dart';
 import 'relationships/keys.dart';
+import 'utils/plural.dart';
 import 'union.dart';
 
 class Model<T> extends QueryBuilder<T> {
@@ -168,6 +169,10 @@ class Model<T> extends QueryBuilder<T> {
 
   bool _debug = SqlQueryBuilder().debug;
 
+  /// keys that create() got as null, written as NULL on the insert.
+  /// Only set with [OrmFlags.createWritesNull].
+  Set<String> _createNullKeys = const <String>{};
+
   /// values we last saved, so save() can tell when a field was set to null
   Map<String, dynamic>? _savedValues;
 
@@ -176,8 +181,14 @@ class Model<T> extends QueryBuilder<T> {
   /// set yourself (like a UUID) is inserted, not updated.
   bool get exists => _savedValues != null || originalMap.isNotEmpty;
 
+  /// the class name in snake case: `BlogPost` uses `blog_post`. With
+  /// [OrmFlags.pluralTableNames] it is plural, like Laravel:
+  /// `blog_posts`. `@DoxModel(table: ...)` sets a name of your own.
   @override
-  String get tableName => helper.tableNameOf(runtimeType);
+  String get tableName {
+    String name = helper.tableNameOf(runtimeType);
+    return SqlQueryBuilder().flags.pluralTableNames ? pluralName(name) : name;
+  }
 
   /// the default foreign key that points to this model: the class name
   /// in snake case and `_id`, like Laravel. `User` gives `user_id`, also
@@ -224,21 +235,33 @@ class Model<T> extends QueryBuilder<T> {
   ///
   /// It fires the model events (saving, creating or updating, then
   /// created or updated, then saved). It returns false when a hook
-  /// throws [CancelModelEvent].
+  /// throws [CancelModelEvent]. With [OrmFlags.skipCleanUpdateEvents],
+  /// a saved model with no changes fires only saving and saved.
   Future<bool> save() async {
     if (!_eventsOn) {
       await _save();
       return true;
     }
     bool isNew = !exists;
+    bool clean = false;
     try {
       await _fire(ModelEvent.saving);
-      await _fire(isNew ? ModelEvent.creating : ModelEvent.updating);
+
+      /// checked after saving: a saving hook can change a field
+      clean =
+          !isNew &&
+          SqlQueryBuilder().flags.skipCleanUpdateEvents &&
+          _changes().$1.isEmpty;
+      if (!clean) {
+        await _fire(isNew ? ModelEvent.creating : ModelEvent.updating);
+      }
     } on CancelModelEvent {
       return false;
     }
-    await _save();
-    await _fire(isNew ? ModelEvent.created : ModelEvent.updated);
+    if (!clean) {
+      await _save();
+      await _fire(isNew ? ModelEvent.created : ModelEvent.updated);
+    }
     await _fire(ModelEvent.saved);
     return true;
   }
@@ -247,11 +270,11 @@ class Model<T> extends QueryBuilder<T> {
   Future<void> saveQuietly() => _save();
 
   Future<void> _save() async {
-    String? createdAtColumn = timestampsColumn['created_at'];
     String? updatedAtColumn = timestampsColumn['updated_at'];
 
     if (!exists) {
-      Map<String, dynamic> values = _newRowValues();
+      Map<String, dynamic> values = _newRowValues(_createNullKeys);
+      _createNullKeys = const <String>{};
 
       /// only the new id is needed, so no select of the new row
       List<Map<String, dynamic>> res = await _newQuery<dynamic>()
@@ -262,27 +285,10 @@ class Model<T> extends QueryBuilder<T> {
           (res.isNotEmpty ? res.first[primaryKey] : null) ?? values[primaryKey];
       _savedValues = <String, dynamic>{...values, primaryKey: tempIdValue};
     } else {
-      Map<String, dynamic> values = toMap(removeRelations: true);
+      var (Map<String, dynamic> values, dynamic id, bool keepUpdatedAt) =
+          _changes();
       DateTime currentTime = now();
-      dynamic id = values[primaryKey];
-      values.remove(primaryKey);
-      values.remove(createdAtColumn);
-
-      /// only send the columns that changed since the model was read or
-      /// saved. a field we never loaded or saved is skipped when it is
-      /// null, so a model loaded with select() does not clear the other
-      /// columns.
       Map<String, dynamic> saved = _savedValues ?? originalMap;
-
-      /// an updated_at that the user set is kept, like Laravel
-      bool keepUpdatedAt =
-          updatedAtColumn != null &&
-          values[updatedAtColumn] != null &&
-          !_sameTime(values[updatedAtColumn], saved[updatedAtColumn]);
-      values.removeWhere((String key, dynamic value) {
-        return (key == updatedAtColumn && !keepUpdatedAt) ||
-            _same(value, saved[key]);
-      });
 
       /// nothing changed: no query, and updated_at stays as it is
       if (values.isEmpty) return;
@@ -296,14 +302,43 @@ class Model<T> extends QueryBuilder<T> {
     }
   }
 
+  /// the columns of a saved model that changed since it was read or
+  /// saved, without the primary key and created_at, then the primary
+  /// key value, then true when the user set updated_at (it is kept,
+  /// like Laravel). A field we never
+  /// loaded or saved is skipped when it is null, so a model loaded with
+  /// select() does not clear the other columns.
+  (Map<String, dynamic>, dynamic, bool) _changes() {
+    String? updatedAtColumn = timestampsColumn['updated_at'];
+    Map<String, dynamic> values = toMap(removeRelations: true);
+    dynamic id = values.remove(primaryKey);
+    values.remove(timestampsColumn['created_at']);
+    Map<String, dynamic> saved = _savedValues ?? originalMap;
+    bool keepUpdatedAt =
+        updatedAtColumn != null &&
+        values[updatedAtColumn] != null &&
+        !_sameTime(values[updatedAtColumn], saved[updatedAtColumn]);
+    values.removeWhere((String key, dynamic value) {
+      return (key == updatedAtColumn && !keepUpdatedAt) ||
+          _same(value, saved[key]);
+    });
+    return (values, id, keepUpdatedAt);
+  }
+
   /// the columns to insert for this new model: no null values, and
   /// created_at and updated_at set to now when they have no value yet.
   /// It sets the createdAt and updatedAt fields too.
-  Map<String, dynamic> _newRowValues() {
+  /// A key of [nullKeys] (not the primary key) is kept when it is null.
+  Map<String, dynamic> _newRowValues([
+    Set<String> nullKeys = const <String>{},
+  ]) {
     String? createdAtColumn = timestampsColumn['created_at'];
     String? updatedAtColumn = timestampsColumn['updated_at'];
     Map<String, dynamic> values = toMap(removeRelations: true);
-    values.removeWhere((String key, dynamic value) => value == null);
+    values.removeWhere(
+      (String key, dynamic value) =>
+          value == null && (key == primaryKey || !nullKeys.contains(key)),
+    );
     DateTime currentTime = now();
     if (createdAtColumn != null && values[createdAtColumn] == null) {
       values[createdAtColumn] = currentTime;
@@ -1109,7 +1144,9 @@ class Model<T> extends QueryBuilder<T> {
   /// from [data], so only @Column fields are saved, and beforeSave and
   /// the casts run. It sets created_at and updated_at when the model has
   /// timestamps and [data] has no value for them. Null values are not
-  /// sent, so the column default is used.
+  /// sent, so the column default is used. With
+  /// [OrmFlags.createWritesNull], a key that is null in [data] is
+  /// written as NULL, like Laravel.
   ///
   /// When the model has events, it calls save(), so the hooks run. When
   /// a hook cancels, it returns the unsaved model (its id is null).
@@ -1119,8 +1156,17 @@ class Model<T> extends QueryBuilder<T> {
   /// [data], see [insert].
   @override
   Future<T> create(Map<String, dynamic> data) async {
-    Model<T> model = _newModel(_onlyFillable(data));
-    if (!_eventsOn) return await super.insert(model._newRowValues());
+    Map<String, dynamic> fill = _onlyFillable(data);
+    Model<T> model = _newModel(fill);
+    if (SqlQueryBuilder().flags.createWritesNull) {
+      model._createNullKeys = <String>{
+        for (MapEntry<String, dynamic> e in fill.entries)
+          if (e.value == null) e.key,
+      };
+    }
+    if (!_eventsOn) {
+      return await super.insert(model._newRowValues(model._createNullKeys));
+    }
     if (!await model.save()) return model as T;
     return await _readBack(model);
   }

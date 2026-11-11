@@ -337,6 +337,27 @@ DROP TABLE mig_blog
         expect(await tableExists('mig_user'), true);
       });
 
+      test('migrate gives its flags to the Schema', () async {
+        FlagsMigration off = FlagsMigration();
+        await Migrator(
+          migrations: <MigrationEntry>[
+            MigrationEntry('2023_01_01_000000_user', off),
+          ],
+          config: DbConnection.config(env),
+        ).migrate();
+        expect(off.flags?.laravelPostgresTypes, false);
+
+        FlagsMigration on = FlagsMigration();
+        await Migrator(
+          migrations: <MigrationEntry>[
+            MigrationEntry('2023_01_02_000000_user', on),
+          ],
+          config: DbConnection.config(env),
+          flags: const OrmFlags.all(),
+        ).migrate();
+        expect(on.flags?.laravelPostgresTypes, true);
+      });
+
       test('failed migration is not recorded', () async {
         writeMigration('2023_01_01_000000_fail', '''
 -- up
@@ -716,4 +737,15 @@ class SlowUserTable extends CreateUserTable {
 class NoTransaction extends CreateUserTable {
   @override
   bool get withinTransaction => false;
+}
+
+/// keeps the flags of the Schema it gets
+class FlagsMigration extends Migration {
+  OrmFlags? flags;
+
+  @override
+  Future<void> up(Schema schema) async => flags = schema.flags;
+
+  @override
+  Future<void> down(Schema schema) async {}
 }

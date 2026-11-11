@@ -50,6 +50,7 @@ class PostgresGrammar extends SchemaGrammar {
       case ColumnType.time:
         return 'TIME';
       case ColumnType.json:
+        return column.plainJson ? 'JSON' : 'JSONB';
       case ColumnType.jsonb:
         return 'JSONB';
       case ColumnType.uuid:
