@@ -115,6 +115,52 @@ void main() async {
       });
     }
 
+    group('a json path can not be written |', () {
+      SqlOnlyDriver driver = SqlOnlyDriver(Driver.sqlite);
+      Matcher plainName = throwsA(
+        isA<ArgumentError>().having(
+          (ArgumentError e) => e.message,
+          'message',
+          'is not a plain column name',
+        ),
+      );
+      Map<String, dynamic> data = <String, dynamic>{'meta->x': 1};
+
+      test('insert', () {
+        expect(() => t(driver).insert(data), plainName);
+        expect(
+          () => t(driver).insertOrIgnore(<Map<String, dynamic>>[data]),
+          plainName,
+        );
+      });
+
+      test('update', () {
+        expect(() => t(driver).where('id', 1).update(data), plainName);
+      });
+
+      test('upsert', () {
+        expect(
+          () => t(driver).upsert(<Map<String, dynamic>>[data], <String>['id']),
+          plainName,
+        );
+        expect(
+          () => t(driver).upsert(
+            <Map<String, dynamic>>[
+              <String, dynamic>{'id': 1},
+            ],
+            <String>['id'],
+            <String>['meta->x'],
+          ),
+          plainName,
+        );
+      });
+
+      test('increment and decrement', () {
+        expect(() => t(driver).where('id', 1).increment('meta->x'), plainName);
+        expect(() => t(driver).where('id', 1).decrement('meta->x'), plainName);
+      });
+    });
+
     test('a plain name gives the same sql as before', () {
       DBDriver sqlite = SqlOnlyDriver(Driver.sqlite);
       DBDriver mysql = SqlOnlyDriver(Driver.mysql);
@@ -494,6 +540,18 @@ void main() async {
         expect(page.total, 2);
       });
     }
+
+    test('a selectRaw value name that the query uses already throws', () {
+      for (int other in <int>[9, 2]) {
+        expect(
+          () => items()
+              .selectRaw('views * @r as s', <String, dynamic>{'r': 2})
+              .whereRaw('views > @r', <String, dynamic>{'r': other})
+              .get(),
+          throwsArgumentError,
+        );
+      }
+    });
 
     test('selectRaw without values replaces the old values', () async {
       List<Map<String, dynamic>> rows = await items()

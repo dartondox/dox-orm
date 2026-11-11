@@ -220,19 +220,19 @@ mixin Insert<T> implements SharedMixin<T> {
       /// ponytail: `VALUES(col)` is old in MySQL 8 but works there and in
       /// MariaDB. The new `AS alias` form does not work in MariaDB.
       /// `col = col` on a match changes nothing.
-      String first = helper.wrap(uniqueBy.first);
+      String first = helper.wrapWrite(uniqueBy.first);
       List<String> sets = update.isEmpty
           ? <String>['$first = $first']
           : <String>[
               for (String column in update)
-                '${helper.wrap(column)} = VALUES(${helper.wrap(column)})',
+                '${helper.wrapWrite(column)} = VALUES(${helper.wrapWrite(column)})',
             ];
       q += " ON DUPLICATE KEY UPDATE ${sets.join(',')}";
     } else {
-      String target = uniqueBy.map(helper.wrap).join(',');
+      String target = uniqueBy.map(helper.wrapWrite).join(',');
       q += update.isEmpty
           ? " ON CONFLICT ($target) DO NOTHING"
-          : " ON CONFLICT ($target) DO UPDATE SET ${<String>[for (String column in update) '${helper.wrap(column)} = excluded.${helper.wrap(column)}'].join(',')}";
+          : " ON CONFLICT ($target) DO UPDATE SET ${<String>[for (String column in update) '${helper.wrapWrite(column)} = excluded.${helper.wrapWrite(column)}'].join(',')}";
     }
     int count = await runAffectingQuery(queryBuilder, q);
     resetSubstitutionValues();
@@ -304,7 +304,7 @@ mixin Insert<T> implements SharedMixin<T> {
       }
       values.add("(${keys.join(',')})");
     }
-    return "(${columns.map(helper.wrap).join(',')}) VALUES ${values.join(',')}";
+    return "(${columns.map(helper.wrapWrite).join(',')}) VALUES ${values.join(',')}";
   }
 
   /// the first row that matches all [where] pairs, or a new row made from
@@ -481,7 +481,7 @@ mixin Insert<T> implements SharedMixin<T> {
         : '';
 
     String query =
-        "INSERT INTO ${helper.wrap(tableName)} (${columns.map(helper.wrap).join(',')}) VALUES ${values.join(',')} $returningQuery";
+        "INSERT INTO ${helper.wrap(tableName)} (${columns.map(helper.wrapWrite).join(',')}) VALUES ${values.join(',')} $returningQuery";
     return await helper.runQuery(query);
   }
 }

@@ -9,10 +9,11 @@ import 'types/orm_flags.dart';
 /// function, not a query method, so it can not clash with a model field.
 void dropSelectValues(QueryBuilder<dynamic> qb) {
   Map<String, dynamic>? values = qb._selectValues;
-  if (values == null) return;
+  if (values == null || !qb._selectValuesAdded) return;
   for (String key in values.keys) {
     qb.substitutionValues.remove(key);
   }
+  qb._selectValuesAdded = false;
 }
 
 mixin Select<T> implements SharedMixin<T> {
@@ -21,6 +22,9 @@ mixin Select<T> implements SharedMixin<T> {
   /// the values of selectRaw(). they are added when the select part is
   /// used, see [dropSelectValues].
   Map<String, dynamic>? _selectValues;
+
+  /// true while the [_selectValues] are in the values of the query
+  bool _selectValuesAdded = false;
 
   /// true after select() or selectRaw(), see [OrmFlags.selectRawAdds]
   bool _selectSet = false;
@@ -71,7 +75,24 @@ mixin Select<T> implements SharedMixin<T> {
   /// the select part, with `DISTINCT` in front after distinct()
   String getSelectQuery() {
     Map<String, dynamic>? values = _selectValues;
-    if (values != null) substitutionValues.addAll(values);
+    if (values != null) {
+      Map<String, dynamic> all = substitutionValues;
+      for (MapEntry<String, dynamic> e in values.entries) {
+        /// a name that another part of the query uses too would get one
+        /// value in both places, and count() would drop it from both
+        if (all.containsKey(e.key) &&
+            !(_selectValuesAdded && all[e.key] == e.value)) {
+          throw ArgumentError.value(
+            e.key,
+            'selectRaw',
+            'is a value name that the query uses already. '
+                'Use unique names for the selectRaw() values',
+          );
+        }
+      }
+      all.addAll(values);
+      _selectValuesAdded = true;
+    }
     return _distinct ? 'DISTINCT $_select' : _select;
   }
 
@@ -121,7 +142,9 @@ mixin Select<T> implements SharedMixin<T> {
 
   /// Select raw query, nothing is quoted. never put user input in
   /// [query]. pass user values in [params] as `@name`, they are bound
-  /// safely, like whereRaw().
+  /// safely, like whereRaw(). use unique names: a name that the query
+  /// uses in another place (eg. in whereRaw()) throws an [ArgumentError]
+  /// when the query runs.
   ///
   /// ```
   /// await Blog().selectRaw('DISTINCT title').get();

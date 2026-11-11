@@ -82,6 +82,19 @@ class QueryBuilderHelper<T> {
   /// quote a table or column name for the current driver
   String wrap(String value) => queryBuilder.dbDriver.wrap(value);
 
+  /// [wrap] for a column that is written (insert, update, upsert). a json
+  /// path (`meta->a`) can only be read, so it throws an [ArgumentError].
+  String wrapWrite(String value) {
+    if (value.contains('->')) {
+      throw ArgumentError.value(
+        value.trim(),
+        'name',
+        'is not a plain column name',
+      );
+    }
+    return wrap(value);
+  }
+
   /// [op] when it is a known compare operator, else it throws an
   /// [ArgumentError], so user input can not add sql to a where or join
   String operator(dynamic op) {
