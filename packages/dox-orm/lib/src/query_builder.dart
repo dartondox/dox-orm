@@ -275,6 +275,7 @@ class QueryBuilder<T>
   /// runs again: a nested one throws the error to it. the `afterCommit()`
   /// callbacks of a failed run are dropped. an error after the commit (eg.
   /// of an `afterCommit()` callback) never runs it again.
+  /// there is no wait between the runs.
   static Future<R> transaction<R>(
     Future<R> Function() callback, {
     String? connection,

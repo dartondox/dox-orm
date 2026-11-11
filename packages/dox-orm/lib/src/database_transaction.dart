@@ -17,6 +17,13 @@ import 'package:sqlite3/sqlite3.dart' show SqliteException;
 ///   free again.
 /// - use it only in the code that began it (the same request, job or
 ///   test). an error of [run] in another error zone does not reach you.
+/// - after the timeout, [run] and [commit] throw a [StateError] and the
+///   work is lost. on sqlite, a query or a `QueryBuilder.transaction()`
+///   outside [run] waits until this transaction ends or times out.
+/// - postgres: after a database error inside [run], call [rollBack]. a
+///   [commit] then saves nothing and gives no error (the server answers
+///   COMMIT with ROLLBACK). `QueryBuilder.transaction()` with a caught
+///   database error inside does the same.
 ///
 /// ```
 /// DatabaseTransaction tx = await QueryBuilder.beginTransaction();

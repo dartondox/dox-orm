@@ -196,6 +196,83 @@ void main() async {
           ? 'sqlite has one connection per isolate: no deadlock'
           : null,
     );
+
+    test('attempts 0 and below run once', () async {
+      for (int attempts in <int>[0, -1]) {
+        int runs = 0;
+        await expectLater(
+          QueryBuilder.transaction(() async {
+            runs++;
+            throw deadlock();
+          }, attempts: attempts),
+          throwsA(isA<PgServerException>()),
+        );
+        expect(runs, 1);
+      }
+    });
+
+    test('an error that wraps a deadlock is not run again', () async {
+      int runs = 0;
+      await expectLater(
+        QueryBuilder.transaction(() async {
+          runs++;
+          throw _Wrapped(deadlock());
+        }, attempts: 3),
+        throwsA(isA<_Wrapped>()),
+      );
+      expect(runs, 1);
+    });
+
+    test(
+      'a serialization failure at COMMIT is run again',
+      () async {
+        Completer<void> firstWrote = Completer<void>();
+        Completer<void> secondWrote = Completer<void>();
+        Completer<void> firstCommitted = Completer<void>();
+        int runs = 0;
+        int finished = 0;
+
+        /// write skew: each one reads the table, then adds a row. under
+        /// SERIALIZABLE the second COMMIT fails with 40001.
+        Future<void> addOne(
+          String title,
+          Completer<void> mine,
+          Future<void> waitFor,
+        ) {
+          return QueryBuilder.transaction(() async {
+            runs++;
+            await QueryBuilder.query(
+              'SET TRANSACTION ISOLATION LEVEL SERIALIZABLE',
+            );
+            await QueryBuilder.table('tx_retry').count();
+            await add(title);
+            if (!mine.isCompleted) mine.complete();
+            await waitFor;
+            finished++;
+          }, attempts: 3);
+        }
+
+        Future<void> first = addOne(
+          'first',
+          firstWrote,
+          secondWrote.future,
+        ).then((_) => firstCommitted.complete());
+        Future<void> second = addOne(
+          'second',
+          secondWrote,
+          firstCommitted.future,
+        );
+        await Future.wait(<Future<void>>[first, second]);
+
+        /// every callback ended, so the failed run failed at its COMMIT
+        expect(runs, 3);
+        expect(finished, 3);
+        expect(await titles(), <String>['first', 'second']);
+      },
+      skip: driver == Driver.postgres
+          ? null
+          : 'only postgres fails a COMMIT with a serialization failure',
+    );
   });
 
   group('beginTransaction |', () {
@@ -293,4 +370,10 @@ void main() async {
       expect(await titles(), <String>['b']);
     });
   });
+}
+
+/// an app error that keeps the database error inside
+class _Wrapped implements Exception {
+  final Object cause;
+  _Wrapped(this.cause);
 }

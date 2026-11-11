@@ -22,6 +22,7 @@ void main() async {
       table.string('first');
       table.string('last');
       table.index(<String>['first', 'last']);
+      table.index('last', 'Sh_Mixed_Idx');
     });
     await schema.create('sh_post', (Table table) {
       table.id();
@@ -64,6 +65,17 @@ void main() async {
     expect(await schema.hasIndex('sh_user', <String>['first']), isFalse);
     expect(await schema.hasIndex('nope', <String>['id']), isFalse);
     expect(() => schema.hasIndex('sh_user', 1), throwsArgumentError);
+  });
+
+  test('hasIndex by name compares case like the database', () async {
+    expect(await schema.hasIndex('sh_user', 'Sh_Mixed_Idx'), isTrue);
+
+    /// mysql, mariadb and sqlite: index names are case-insensitive
+    expect(
+      await schema.hasIndex('sh_user', 'sh_mixed_idx'),
+      driver == Driver.postgres ? isFalse : isTrue,
+    );
+    expect(await schema.hasIndex('sh_user', <String>['last']), isTrue);
   });
 
   test('withoutForeignKeyConstraints lets a row miss its parent', () async {

@@ -162,7 +162,8 @@ class MysqlGrammar extends SchemaGrammar {
   /// the primary key is `primary`, like Laravel
   @override
   String compileIndexListing() {
-    return 'SELECT LOWER(index_name) AS name, column_name AS col, '
+    return "SELECT CASE WHEN index_name = 'PRIMARY' THEN 'primary' "
+        'ELSE index_name END AS name, column_name AS col, '
         'seq_in_index AS pos FROM information_schema.statistics '
         'WHERE table_schema = DATABASE() AND table_name = @table '
         'ORDER BY 1, 3';

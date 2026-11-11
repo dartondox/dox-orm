@@ -105,6 +105,10 @@ class Schema {
   /// or a `List<String>` of its columns, in the order of the index. the
   /// primary key is named `primary` on mysql and sqlite.
   ///
+  /// the name is compared like the database does: case-insensitive on
+  /// mysql, mariadb and sqlite, exact on postgres (dox quotes the name, so
+  /// postgres keeps its case).
+  ///
   /// ```
   /// await schema.hasIndex('users', 'users_email_unique');
   /// await schema.hasIndex('users', <String>['first_name', 'last_name']);
@@ -122,7 +126,11 @@ class Schema {
         row['col']?.toString(),
       );
     }
-    if (index is String) return indexes.containsKey(index);
+    if (index is String) {
+      if (grammar is PostgresGrammar) return indexes.containsKey(index);
+      String name = index.toLowerCase();
+      return indexes.keys.any((String k) => k.toLowerCase() == name);
+    }
     String key = jsonEncode(index);
     return indexes.values.any((List<String?> c) => jsonEncode(c) == key);
   }
