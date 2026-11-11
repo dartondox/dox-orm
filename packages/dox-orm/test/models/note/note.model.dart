@@ -17,8 +17,12 @@ class Note extends NoteGenerator {
   @Column()
   bool? pinned;
 
+  /// how many times slugOf ran, for the OrmFlags test
+  static int slugCalls = 0;
+
   /// the slug is the title in lower case, with dashes for spaces
   static String? slugOf(Map<String, dynamic> map) {
+    slugCalls++;
     String? title = map['title'] as String?;
     return title?.toLowerCase().replaceAll(' ', '-');
   }

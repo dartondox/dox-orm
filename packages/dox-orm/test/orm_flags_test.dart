@@ -8,6 +8,7 @@ import 'models/blog/blog.model.dart';
 import 'models/blog_info/blog_info.model.dart';
 import 'models/book/book.model.dart';
 import 'models/event_post/event_post.model.dart';
+import 'models/note/note.model.dart';
 import 'models/owner/owner.model.dart';
 
 /// a Book that can not set `author_code` by mass assignment
@@ -24,6 +25,9 @@ class TitleObserver extends ModelObserver<EventPost> {
   @override
   void onSaving(EventPost model) => model.title = 'from hook';
 }
+
+/// turns on the events of Note
+class NoteObserver extends ModelObserver<Note> {}
 
 /// writes each event of BlogInfo
 class InfoObserver extends ModelObserver<BlogInfo> {
@@ -122,6 +126,7 @@ void main() async {
     });
 
     test('plural rules', () {
+      /// the Doctrine Inflector (Laravel Str::plural) value of each word
       Map<String, String> words = <String, String>{
         'user': 'users',
         'blog_post': 'blog_posts',
@@ -151,27 +156,69 @@ void main() async {
         'thief': 'thieves',
         'leaf': 'leaves',
         'knife': 'knives',
+        'life': 'lives',
         'index': 'indices',
         'matrix': 'matrices',
         'axis': 'axes',
-        // plural already: no change
+        'status': 'statuses',
+        'bus': 'buses',
+        'address': 'addresses',
+        'virus': 'viri',
+        'alias': 'aliases',
+        'cactus': 'cacti',
+        'news': 'news',
+        'series': 'series',
+        'analysis': 'analyses',
+        'lens': 'lenses',
+        'crisis': 'crises',
+        'basis': 'bases',
+        'diagnosis': 'diagnoses',
+        'iris': 'irises',
+        'focus': 'foci',
+        'radius': 'radii',
+        'self': 'selves',
+        'elf': 'elves',
+        'scarf': 'scarves',
+        'medium': 'media',
+        'datum': 'data',
+        'stadium': 'stadia',
+        'curriculum': 'curricula',
+        'buffalo': 'buffalo',
+        'volcano': 'volcanoes',
+        'tornado': 'tornadoes',
+        'veto': 'vetos',
+        'gas': 'gases',
+        'canvas': 'canvases',
+        'bonus': 'bonuses',
+        'campus': 'campuses',
+        'man': 'men',
+        'woman': 'women',
+        'mouse': 'mice',
+        'goose': 'geese',
+        'foot': 'feet',
+        'tooth': 'teeth',
+        'roof': 'roofs',
+        'chief': 'chiefs',
+        'city': 'cities',
+        'key': 'keys',
+        'class': 'classes',
+        'process': 'processes',
+        'business': 'businesses',
+        'fish': 'fish',
+        'species': 'species',
+        'user_data': 'user_data',
+        // plural already: Doctrine keeps a word that ends in s, and
+        // adds s to `children` and `men`
         'users': 'users',
         'settings': 'settings',
         'goods': 'goods',
         'people': 'people',
-        'children': 'children',
         'categories': 'categories',
         'statuses': 'statuses',
-        // singular words that end in s
-        'status': 'statuses',
-        'bus': 'buses',
-        'address': 'addresses',
-        'virus': 'viruses',
-        'alias': 'aliases',
-        'cactus': 'cactuses',
-        'news': 'news',
-        'series': 'series',
-        'analysis': 'analyses',
+        'addresses': 'addresses',
+        'boxes': 'boxes',
+        'children': 'childrens',
+        'men': 'mens',
       };
       for (MapEntry<String, String> e in words.entries) {
         expect(pluralName(e.key), e.value, reason: e.key);
@@ -223,6 +270,21 @@ void main() async {
             .selectRaw('max(a) m'),
       );
       expect(q, contains('select count(*) as c,max(a) m from'));
+    });
+
+    test('only groupByAdds on', () {
+      SqlQueryBuilder().flags = const OrmFlags(groupByAdds: true);
+      String q = sql(
+        QueryBuilder.table('t')
+            .select('a')
+            .selectRaw('count(*) as c')
+            .groupBy('a')
+            .groupBy('b'),
+      );
+      expect(q, matches(RegExp(r'group by .a.,.b.')));
+
+      /// selectRawAdds is off: selectRaw replaces
+      expect(q, contains('select count(*) as c from'));
     });
 
     test('on: selectRaw with no select() is the only column', () {
@@ -312,6 +374,14 @@ void main() async {
       /// createWritesNull is off: the default is used
       Book book = await Book().create(<String, dynamic>{'title': null});
       expect(book.title, 'untitled');
+    });
+
+    test('only createWritesNull on', () async {
+      SqlQueryBuilder().flags = const OrmFlags(createWritesNull: true);
+      Book book = await Book().create(<String, dynamic>{'title': null});
+      expect(book.title, isNull);
+      expect(Book().tableName, 'book');
+      expect(await QueryBuilder.table('event_posts').sum('id'), isNull);
     });
 
     test('paginate() off: lastPage 0 with no rows', () async {
@@ -452,6 +522,38 @@ void main() async {
       expect(await post.save(), isTrue);
       expect(queries, 0);
       expect(post.updatedAt, updatedAt);
+    });
+
+    test('save(): how many times beforeSave runs', () async {
+      await Schema().create('notes', (Table table) {
+        table.id();
+        table.string('slug').nullable();
+        table.string('title').nullable();
+        table.boolean('pinned').nullable();
+        table.timestamps();
+      });
+      addTearDown(() => Schema().dropIfExists('notes'));
+      Model.observe<Note>(NoteObserver());
+      Note note = await Note().create(<String, dynamic>{'title': 'a'});
+
+      /// [clean save, changed save]
+      Future<List<int>> calls() async {
+        List<int> out = <int>[];
+        Note.slugCalls = 0;
+        await note.save();
+        out.add(Note.slugCalls);
+        note.title = '${note.title}x';
+        Note.slugCalls = 0;
+        await note.save();
+        out.add(Note.slugCalls);
+        return out;
+      }
+
+      expect(await calls(), <int>[1, 1]);
+      SqlQueryBuilder().flags = const OrmFlags(skipCleanUpdateEvents: true);
+
+      /// a changed save reads the columns again after `updating`
+      expect(await calls(), <int>[1, 2]);
     });
 
     test('save() on: a Map or List field always counts as changed', () async {

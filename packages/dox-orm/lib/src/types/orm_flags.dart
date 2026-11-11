@@ -19,6 +19,10 @@ class OrmFlags {
   /// A model with a `Map` or `List` field always counts as changed: the
   /// field can be changed in place, so the ORM can not see that it is
   /// the same.
+  /// The clean check reads the columns, so `beforeSave` runs once for
+  /// it. When the model did change, `beforeSave` runs again for the
+  /// UPDATE, after the `updating` hook, so a change made by that hook is
+  /// saved. A clean save runs it once.
   final bool skipCleanUpdateEvents;
 
   /// the default foreign key of a `belongsTo` relation comes from the
@@ -27,7 +31,8 @@ class OrmFlags {
   final bool belongsToKeyFromRelation;
 
   /// the default table name is plural: `User` uses `users`,
-  /// `BlogPost` uses `blog_posts`. Off: `user` and `blog_post`.
+  /// `BlogPost` uses `blog_posts`. Off: `user` and `blog_post`. The
+  /// last word gets the English plural of Laravel `Str::plural`.
   final bool pluralTableNames;
 
   /// `create()` writes NULL for a key that is null in its data.
