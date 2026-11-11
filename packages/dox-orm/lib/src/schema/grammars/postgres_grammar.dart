@@ -114,4 +114,29 @@ class PostgresGrammar extends SchemaGrammar {
         'WHERE table_schema = current_schema() AND table_name = @table '
         'ORDER BY ordinal_position';
   }
+
+  /// an expression part of an index has no column, its `col` is null
+  @override
+  String compileIndexListing() {
+    return 'SELECT ic.relname::text AS name, a.attname::text AS col, '
+        'k.ord AS pos FROM pg_index i '
+        'JOIN pg_class tc ON tc.oid = i.indrelid '
+        'JOIN pg_namespace tn ON tn.oid = tc.relnamespace '
+        'JOIN pg_class ic ON ic.oid = i.indexrelid '
+        'CROSS JOIN LATERAL unnest(i.indkey) WITH ORDINALITY AS k(num, ord) '
+        'LEFT JOIN pg_attribute a '
+        'ON a.attrelid = i.indrelid AND a.attnum = k.num '
+        'WHERE tc.relname = @table AND tn.nspname = current_schema() '
+        'ORDER BY 1, 3';
+  }
+
+  /// like Laravel: only keys made `DEFERRABLE` wait, and only until the
+  /// end of the open transaction
+  @override
+  String compileDisableForeignKeyConstraints() =>
+      'SET CONSTRAINTS ALL DEFERRED';
+
+  @override
+  String compileEnableForeignKeyConstraints() =>
+      'SET CONSTRAINTS ALL IMMEDIATE';
 }

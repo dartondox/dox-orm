@@ -134,4 +134,21 @@ class SqliteGrammar extends SchemaGrammar {
   String compileColumnListing() {
     return 'SELECT name FROM pragma_table_info(@table)';
   }
+
+  /// the rowid primary key has no index, so it is listed as `primary`
+  @override
+  String compileIndexListing() {
+    return "SELECT 'primary' AS name, name AS col, pk AS pos "
+        'FROM pragma_table_info(@table) WHERE pk > 0 '
+        'UNION ALL '
+        'SELECT il.name, ii.name, ii.seqno FROM pragma_index_list(@table) il, '
+        'pragma_index_info(il.name) ii '
+        'ORDER BY 1, 3';
+  }
+
+  @override
+  String compileDisableForeignKeyConstraints() => 'PRAGMA foreign_keys = OFF';
+
+  @override
+  String compileEnableForeignKeyConstraints() => 'PRAGMA foreign_keys = ON';
 }
