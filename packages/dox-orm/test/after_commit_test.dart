@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dox_orm/dox_orm.dart';
 import 'package:test/test.dart';
 
@@ -134,6 +136,50 @@ void main() async {
       });
       expect(log, <String>['at once', 'second commit']);
       expect(await Blog().count(), 1);
+    });
+
+    test('a Timer that fires after the commit runs at once', () async {
+      Completer<String> done = Completer<String>();
+      await QueryBuilder.transaction(() async {
+        Timer(const Duration(milliseconds: 20), () {
+          QueryBuilder.afterCommit(() => done.complete('ran'));
+        });
+      });
+      expect(await done.future.timeout(const Duration(seconds: 5)), 'ran');
+    });
+
+    test('a future that ends after the body runs at once', () async {
+      List<String> log = <String>[];
+      Future<void>? late;
+      await QueryBuilder.transaction(() async {
+        late = Future<void>.delayed(
+          const Duration(milliseconds: 20),
+          () => QueryBuilder.afterCommit(() => log.add('late')),
+        );
+      });
+      expect(log, isEmpty);
+      await late;
+      expect(log, <String>['late']);
+    });
+
+    test('a late call after a rollback is dropped', () async {
+      List<String> log = <String>[];
+      Completer<void> called = Completer<void>();
+      await expectLater(
+        QueryBuilder.transaction(() async {
+          Timer(const Duration(milliseconds: 20), () async {
+            await QueryBuilder.afterCommit(() => log.add('late'));
+            called.complete();
+          });
+          throw StateError('stop');
+        }),
+        throwsStateError,
+      );
+      await called.future.timeout(const Duration(seconds: 5));
+
+      /// a later transaction must not pick it up
+      await QueryBuilder.transaction(() => add('next'));
+      expect(log, isEmpty);
     });
 
     test('a callback that throws outside a transaction throws', () async {

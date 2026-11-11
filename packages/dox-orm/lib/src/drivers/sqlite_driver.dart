@@ -291,7 +291,7 @@ class SqliteDriver extends DBDriver {
     _transactionDone[db] = done.future;
 
     Set<Object> open = <Object>{...?Zone.current[_txKey], db};
-    List<AfterCommitCallback> callbacks = <AfterCommitCallback>[];
+    AfterCommitCallbacks callbacks = AfterCommitCallbacks();
     R result;
     try {
       /// IMMEDIATE takes the write lock now, so two isolates do not both

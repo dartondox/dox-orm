@@ -139,7 +139,7 @@ class MysqlNativeDriver extends DBDriver {
       return savepoint(callback);
     }
     int tx = await pool.begin();
-    List<AfterCommitCallback> callbacks = <AfterCommitCallback>[];
+    AfterCommitCallbacks callbacks = AfterCommitCallbacks();
     R result;
     try {
       result = await runZoned(
