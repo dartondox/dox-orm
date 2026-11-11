@@ -1,5 +1,7 @@
+import 'main.dart';
 import 'query_builder.dart';
 import 'shared_mixin.dart';
+import 'types/orm_flags.dart';
 import 'where.dart';
 
 mixin GroupBy<T> implements SharedMixin<T> {
@@ -23,13 +25,16 @@ mixin GroupBy<T> implements SharedMixin<T> {
   ///   .groupBy('status')
   ///   .get();
   /// ```
+  /// a second call replaces the first. With [OrmFlags.groupByAdds] it
+  /// adds to it.
   QueryBuilder<T> groupBy(dynamic column) {
     if (column is String) {
-      _groupBy = ' GROUP BY ${helper.wrap(column)}';
+      _setGroupBy(helper.wrap(column));
     }
     if (column is List) {
-      _groupBy =
-          ' GROUP BY ${column.map((dynamic c) => helper.wrap(c.toString())).join(',')}';
+      _setGroupBy(
+        column.map((dynamic c) => helper.wrap(c.toString())).join(','),
+      );
     }
     return queryBuilder;
   }
@@ -39,9 +44,17 @@ mixin GroupBy<T> implements SharedMixin<T> {
   /// ```
   /// await QueryBuilder.table('blog').groupByRaw('date(created_at)').get();
   /// ```
+  /// like groupBy(), a second call replaces the first, or adds to it
+  /// with [OrmFlags.groupByAdds].
   QueryBuilder<T> groupByRaw(String query) {
-    _groupBy = ' GROUP BY $query';
+    _setGroupBy(query);
     return queryBuilder;
+  }
+
+  void _setGroupBy(String columns) {
+    _groupBy = _groupBy.isNotEmpty && SqlQueryBuilder().flags.groupByAdds
+        ? '$_groupBy,$columns'
+        : ' GROUP BY $columns';
   }
 
   /// having condition, it goes after GROUP BY. like where(), it takes

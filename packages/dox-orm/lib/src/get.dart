@@ -151,6 +151,8 @@ mixin Get<T> implements SharedMixin<T> {
   /// ```
   /// [perPage] must be 1 or more, else it throws an [ArgumentError].
   /// a [currentPage] below 1 is read as page 1.
+  /// with no rows, `lastPage` is 0, or 1 with
+  /// [OrmFlags.lastPageAtLeastOne].
   Future<Pagination<T>> paginate({
     required int currentPage,
     required int perPage,
@@ -192,7 +194,9 @@ mixin Get<T> implements SharedMixin<T> {
     return Pagination<T>(
       total: rowCount,
       perPage: perPage,
-      lastPage: (rowCount / perPage).ceil(),
+      lastPage: rowCount == 0 && SqlQueryBuilder().flags.lastPageAtLeastOne
+          ? 1
+          : (rowCount / perPage).ceil(),
       currentPage: currentPage,
       data: data,
     );

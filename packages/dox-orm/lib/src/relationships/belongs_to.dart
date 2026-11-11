@@ -8,13 +8,19 @@ import 'keys.dart';
 final Expando<(List<dynamic>, String)> _keys =
     Expando<(List<dynamic>, String)>();
 
-/// belongs to relationship query
+/// belongs to relationship query.
+///
+/// the default [foreignKey] comes from the owner class: `User` gives
+/// `user_id`. With [OrmFlags.belongsToKeyFromRelation] and a
+/// [relation] name, it comes from the relation name and the owner
+/// primary key, like Laravel: `author` gives `author_id`.
 M? belongsTo<T, M>(
   List<Model<T>> list,
   Model<M> Function() model, {
   String? foreignKey,
   String? localKey,
   dynamic onQuery,
+  String? relation,
 }) {
   if (list.isEmpty) return null;
   if (relationSubquery && aggregateSubquery) {
@@ -27,7 +33,12 @@ M? belongsTo<T, M>(
   Model<M> owner = model().debug(foreign.shouldDebug);
   owner.connection ??= foreign.connection;
   localKey = localKey ?? owner.primaryKey;
-  foreignKey = foreignKey ?? owner.foreignKeyName;
+  if (foreignKey == null &&
+      relation != null &&
+      SqlQueryBuilder().flags.belongsToKeyFromRelation) {
+    foreignKey = '${owner.helper.toSnakeCase(relation)}_${owner.primaryKey}';
+  }
+  foreignKey ??= owner.foreignKeyName;
 
   List<dynamic> childKeys = const <dynamic>[];
   if (relationSubquery) {

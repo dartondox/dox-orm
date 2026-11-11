@@ -1,8 +1,13 @@
+import 'main.dart';
 import 'query_builder.dart';
 import 'shared_mixin.dart';
+import 'types/orm_flags.dart';
 
 mixin Select<T> implements SharedMixin<T> {
   String _select = '*';
+
+  /// true after select() or selectRaw(), see [OrmFlags.selectRawAdds]
+  bool _selectSet = false;
 
   bool _distinct = false;
 
@@ -90,6 +95,7 @@ mixin Select<T> implements SharedMixin<T> {
     if (selection is String) {
       _select = selection.split(',').map(helper.wrap).join(',');
     }
+    _selectSet = true;
     return queryBuilder;
   }
 
@@ -98,8 +104,13 @@ mixin Select<T> implements SharedMixin<T> {
   /// ```
   /// await Blog().selectRaw('DISTINCT title').get();
   /// ```
+  /// it replaces the select list. With [OrmFlags.selectRawAdds] it adds
+  /// to it, so `select('a').selectRaw('count(*) c')` selects both.
   QueryBuilder<T> selectRaw(String query) {
-    _select = query;
+    _select = _selectSet && SqlQueryBuilder().flags.selectRawAdds
+        ? '$_select,$query'
+        : query;
+    _selectSet = true;
     return queryBuilder;
   }
 }

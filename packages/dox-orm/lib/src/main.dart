@@ -71,6 +71,10 @@ class SqlQueryBuilder {
 
   DatabaseConfig? databaseConfig;
 
+  /// the opt-in ORM behaviors of this isolate, see [OrmFlags]. `initialize`
+  /// and `initializeWithDatabaseConfig` set it.
+  OrmFlags flags = const OrmFlags();
+
   final List<QueryListener> _listeners = <QueryListener>[];
 
   /// run [listener] after each query of every connection, like Laravel
@@ -223,6 +227,7 @@ class SqlQueryBuilder {
   static void initializeWithDatabaseConfig(DatabaseConfig config) {
     SqlQueryBuilder sql = SqlQueryBuilder();
     sql.databaseConfig = config;
+    sql.flags = config.flags;
     ConnectionConfig connConfig = config.getConnectionConfig();
 
     sql.dbDriver = connConfig.createDriver();
@@ -278,13 +283,16 @@ class SqlQueryBuilder {
   ///   debug: true,
   /// );
   /// ```
+  /// [flags] turns on opt-in ORM behaviors, see [OrmFlags].
   static void initialize({
     required dynamic database,
     bool debug = false,
     QueryPrinter? printer,
     Driver driver = Driver.postgres,
+    OrmFlags flags = const OrmFlags(),
   }) {
     SqlQueryBuilder sql = SqlQueryBuilder();
+    sql.flags = flags;
 
     sql.dbDriver = getDatabaseDriver(driver, database);
     sql.debug = debug;

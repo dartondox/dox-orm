@@ -1,4 +1,6 @@
+import '../main.dart';
 import '../model.dart';
+import '../types/orm_flags.dart';
 import 'grammars/schema_grammar.dart';
 import 'table.column.dart';
 
@@ -54,10 +56,19 @@ class Table {
   /// true in `Schema.create`, false in `Schema.table`
   final bool creating;
 
+  /// the opt-in ORM behaviors, see [OrmFlags.laravelPostgresTypes]. It
+  /// is used only when [creating]. The default is
+  /// `SqlQueryBuilder().flags`.
+  final OrmFlags flags;
+
   final List<ColumnDefinition> columns = <ColumnDefinition>[];
   final List<TableCommand> commands = <TableCommand>[];
 
-  Table(this.name, {this.creating = false});
+  Table(this.name, {this.creating = false, OrmFlags? flags})
+    : flags = flags ?? SqlQueryBuilder().flags;
+
+  /// true when this new table uses the Laravel types on postgres
+  bool get _laravelTypes => creating && flags.laravelPostgresTypes;
 
   /// sql for this table, for the database of [grammar]
   List<String> toSql(SchemaGrammar grammar) => grammar.compile(this);
@@ -181,7 +192,11 @@ class Table {
     return _col(name, ColumnType.timestampTz);
   }
 
-  ColumnDefinition json(String name) => _col(name, ColumnType.json);
+  /// JSONB on postgres, or JSON with [OrmFlags.laravelPostgresTypes] in
+  /// a new table. JSON on mysql and sqlite.
+  ColumnDefinition json(String name) {
+    return _col(name, ColumnType.json)..plainJson = _laravelTypes;
+  }
 
   ColumnDefinition jsonb(String name) => _col(name, ColumnType.jsonb);
 
@@ -265,15 +280,23 @@ class Table {
   }
 
   /// nullable `created_at` and `updated_at`
-  /// (TIMESTAMPTZ on postgres, TIMESTAMP on others)
+  /// (TIMESTAMPTZ on postgres, TIMESTAMP on others). With
+  /// [OrmFlags.laravelPostgresTypes], a new table gets TIMESTAMP on
+  /// postgres too.
   void timestamps() {
-    timestampTz('created_at').nullable();
-    timestampTz('updated_at').nullable();
+    _time('created_at').nullable();
+    _time('updated_at').nullable();
   }
 
-  /// nullable `deleted_at`, used by `SoftDeletes`
+  /// nullable `deleted_at`, used by `SoftDeletes`. The same type as
+  /// [timestamps].
   ColumnDefinition softDeletes([String name = 'deleted_at']) {
-    return timestampTz(name).nullable();
+    return _time(name).nullable();
+  }
+
+  /// the column of [timestamps] and [softDeletes]
+  ColumnDefinition _time(String name) {
+    return _laravelTypes ? timestamp(name) : timestampTz(name);
   }
 
   /// nullable `remember_token` VARCHAR(100)
@@ -443,7 +466,7 @@ class Table {
 
   /// this table without the changes that need a sqlite rebuild
   Table withoutSqliteRebuild() {
-    Table table = Table(name);
+    Table table = Table(name, flags: flags);
     table.columns.addAll(columns.where((ColumnDefinition c) => !c.isChange));
     table.commands.addAll(
       commands.where((TableCommand c) => !_isForeignCommand(c)),

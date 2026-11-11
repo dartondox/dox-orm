@@ -21,10 +21,14 @@ class DatabaseConfig {
   /// An empty text means no url.
   String? url;
 
+  /// opt-in ORM behaviors, all off by default. See [OrmFlags].
+  OrmFlags flags;
+
   DatabaseConfig({
     required this.connection,
     required this.connections,
     String? url,
+    this.flags = const OrmFlags(),
   }) : url = url ?? Platform.environment['DATABASE_URL'];
 
   ConnectionConfig? _fromUrl;

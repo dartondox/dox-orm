@@ -49,11 +49,17 @@ class Migrator {
   /// folder of the `.sql` migrations, default `db/migration`
   final Directory? directory;
 
+  /// the opt-in ORM behaviors for the `Schema` of the migrations, like
+  /// `databaseConfig.flags`. See [OrmFlags.laravelPostgresTypes].
+  /// null: `SqlQueryBuilder().flags`.
+  final OrmFlags? flags;
+
   const Migrator({
     this.migrations = const <MigrationEntry>[],
     this.connection,
     this.config,
     this.directory,
+    this.flags,
   });
 
   /// run the migrations that did not run yet
@@ -320,7 +326,7 @@ class Migrator {
 
     Future<void> body() async {
       if (migration is Migration) {
-        Schema schema = Schema(d.driver);
+        Schema schema = Schema(d.driver, flags);
         up ? await migration.up(schema) : await migration.down(schema);
       } else {
         await SqlExtMigration(migration as File).run(d, type);

@@ -74,7 +74,8 @@ mixin Count<T> implements SharedMixin<T> {
   /// [hasRows].
   Future<bool> doesntExist() => hasNoRows();
 
-  /// the sum of [column] of the rows. it is null when no row matches.
+  /// the sum of [column] of the rows. it is null when no row matches,
+  /// or 0 with [OrmFlags.sumReturnsZero].
   /// like count(), it uses where, join and soft deletes, but not limit,
   /// offset or order by. after distinct() it adds up distinct values.
   ///
@@ -87,7 +88,9 @@ mixin Count<T> implements SharedMixin<T> {
   /// ```
   /// it throws a [StateError] with groupBy(), use selectRaw() then.
   Future<num?> sum(String column) async {
-    return _toNum(await _aggregate('SUM', column));
+    num? total = _toNum(await _aggregate('SUM', column));
+    if (total == null && SqlQueryBuilder().flags.sumReturnsZero) return 0;
+    return total;
   }
 
   /// the average of [column] of the rows, as a double. it is null when

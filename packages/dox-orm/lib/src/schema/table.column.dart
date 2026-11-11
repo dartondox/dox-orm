@@ -1,3 +1,4 @@
+import '../types/orm_flags.dart';
 import 'table.dart';
 
 /// column types of the schema builder.
@@ -64,6 +65,10 @@ class ColumnDefinition {
   String? rawDefault;
   String? commentText;
   String? afterColumn;
+
+  /// `JSON`, not `JSONB`, on postgres. `Table.json` sets it with
+  /// [OrmFlags.laravelPostgresTypes].
+  bool plainJson = false;
 
   ColumnDefinition(
     this.name,
