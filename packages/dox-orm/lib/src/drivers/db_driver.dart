@@ -7,6 +7,9 @@ import 'package:dox_postgres_native/dox_postgres_native.dart';
 
 enum Driver { postgres, mysql, sqlite }
 
+/// a callback for [DBDriver.afterCommit]
+typedef AfterCommitCallback = FutureOr<void> Function();
+
 /// interface for database driver
 abstract class DBDriver {
   Driver getName();
@@ -80,11 +83,19 @@ abstract class DBDriver {
     int depth = (Zone.current[_savepointKey] as int? ?? 0) + 1;
     String name = 'sp_$depth';
     await execute('SAVEPOINT $name');
+
+    /// [afterCommit] callbacks of this savepoint. they move to the outer
+    /// level when it is released, and are dropped when it rolls back.
+    List<AfterCommitCallback>? outer = _afterCommitList;
+    List<AfterCommitCallback> callbacks = <AfterCommitCallback>[];
     R result;
     try {
       result = await runZoned(
         callback,
-        zoneValues: <Symbol, dynamic>{_savepointKey: depth},
+        zoneValues: <Symbol, dynamic>{
+          _savepointKey: depth,
+          if (outer != null) ...afterCommitZone(callbacks),
+        },
       );
     } catch (_) {
       try {
@@ -98,7 +109,78 @@ abstract class DBDriver {
       rethrow;
     }
     await execute('RELEASE SAVEPOINT $name');
+    outer?.addAll(callbacks);
     return result;
+  }
+
+  /// zone key for the [afterCommit] callbacks of each open transaction
+  static const Symbol _afterCommitKey = #doxAfterCommit;
+
+  /// [afterCommit] callbacks of the transaction (or savepoint) of this
+  /// driver that is open in this zone. null when none is open.
+  List<AfterCommitCallback>? get _afterCommitList =>
+      (Zone.current[_afterCommitKey]
+          as Map<DBDriver, List<AfterCommitCallback>>?)?[this];
+
+  /// run [callback] after the outermost transaction of this driver
+  /// commits. outside a transaction it runs at once.
+  ///
+  /// - callbacks run one by one, in the order they were added, after the
+  ///   COMMIT is done. the transaction call waits for them (async too).
+  /// - a rollback drops them. a nested transaction that rolls back drops
+  ///   the callbacks it added, even when the outer one commits.
+  /// - a callback that throws does not undo the commit. the other
+  ///   callbacks still run, then the first error is thrown by the
+  ///   transaction call.
+  /// - it only waits for a transaction of this driver (connection).
+  ///
+  /// ```
+  /// await driver.afterCommit(() => sendMail(user));
+  /// ```
+  Future<void> afterCommit(AfterCommitCallback callback) async {
+    List<AfterCommitCallback>? list = _afterCommitList;
+    if (list == null) {
+      await callback();
+      return;
+    }
+    list.add(callback);
+  }
+
+  /// zone values that give a new transaction level of this driver its
+  /// own [callbacks] list. the drivers add them to the zone of an
+  /// outermost transaction, and call [runAfterCommit] after the commit.
+  ///
+  /// ponytail: a custom driver that does not use it runs [afterCommit]
+  /// callbacks at once, like outside a transaction.
+  Map<Symbol, dynamic> afterCommitZone(List<AfterCommitCallback> callbacks) {
+    return <Symbol, dynamic>{
+      _afterCommitKey: <DBDriver, List<AfterCommitCallback>>{
+        ...?Zone.current[_afterCommitKey]
+            as Map<DBDriver, List<AfterCommitCallback>>?,
+        this: callbacks,
+      },
+    };
+  }
+
+  /// run the [afterCommit] [callbacks] of a committed transaction in
+  /// order. when some throw, all still run and the first error is thrown.
+  Future<void> runAfterCommit(List<AfterCommitCallback> callbacks) async {
+    if (callbacks.isEmpty) return;
+    Object? error;
+    StackTrace? stack;
+    for (AfterCommitCallback callback in callbacks) {
+      try {
+        await callback();
+      } catch (e, s) {
+        if (error == null) {
+          error = e;
+          stack = s;
+        }
+      }
+    }
+    if (error != null) {
+      Error.throwWithStackTrace(error, stack!);
+    }
   }
 
   /// close the connections of this driver. it is safe to call it twice.

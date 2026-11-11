@@ -149,12 +149,14 @@ class PostgresNativeDriver extends DBDriver {
       return savepoint(callback);
     }
     int tx = await pool.begin();
+    List<AfterCommitCallback> callbacks = <AfterCommitCallback>[];
     R result;
     try {
       result = await runZoned(
         callback,
         zoneValues: <Symbol, dynamic>{
           _txKey: <PgNativePool, int>{...?open, pool: tx},
+          ...afterCommitZone(callbacks),
         },
       );
     } catch (_) {
@@ -166,6 +168,7 @@ class PostgresNativeDriver extends DBDriver {
       rethrow;
     }
     await pool.commit(tx);
+    await runAfterCommit(callbacks);
     return result;
   }
 }
