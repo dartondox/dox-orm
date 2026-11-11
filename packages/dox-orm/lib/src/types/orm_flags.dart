@@ -16,6 +16,9 @@
 class OrmFlags {
   /// `save()` on a model with no changes fires `saving` and `saved`,
   /// but not `updating` and `updated`. Off: it fires all four.
+  /// A model with a `Map` or `List` field always counts as changed: the
+  /// field can be changed in place, so the ORM can not see that it is
+  /// the same.
   final bool skipCleanUpdateEvents;
 
   /// the default foreign key of a `belongsTo` relation comes from the

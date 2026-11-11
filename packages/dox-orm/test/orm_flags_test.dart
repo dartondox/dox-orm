@@ -1,11 +1,59 @@
 import 'package:dox_orm/dox_orm.dart';
+import 'package:dox_orm/src/relationships/keys.dart';
 import 'package:dox_orm/src/utils/plural.dart';
 import 'package:test/test.dart';
 
 import 'connection.dart';
+import 'models/blog/blog.model.dart';
+import 'models/blog_info/blog_info.model.dart';
 import 'models/book/book.model.dart';
 import 'models/event_post/event_post.model.dart';
 import 'models/owner/owner.model.dart';
+
+/// a Book that can not set `author_code` by mass assignment
+class GuardedBook extends Book {
+  @override
+  String get tableName => 'books';
+
+  @override
+  List<String> get guarded => const <String>['author_code'];
+}
+
+/// a saving hook that changes the title
+class TitleObserver extends ModelObserver<EventPost> {
+  @override
+  void onSaving(EventPost model) => model.title = 'from hook';
+}
+
+/// writes each event of BlogInfo
+class InfoObserver extends ModelObserver<BlogInfo> {
+  List<String> log = <String>[];
+
+  @override
+  void onUpdating(BlogInfo model) => log.add('updating');
+}
+
+/// the sql of a belongsTo relation made as a subquery, so the foreign
+/// key is in the sql
+String belongsToSql<T, M>(
+  Model<T> child,
+  Model<M> Function() owner, {
+  String? relation,
+}) {
+  relationSubquery = true;
+  subqueryKeyPrefix = 'p_';
+  try {
+    Model<M> q = belongsTo<T, M>(
+      <Model<T>>[child],
+      owner,
+      relation: relation,
+    ) as Model<M>;
+    return q.toSql();
+  } finally {
+    relationSubquery = false;
+    subqueryKeyPrefix = '';
+  }
+}
 
 /// each test runs with the flags off (the default) and with [OrmFlags.all]
 void main() async {
@@ -77,14 +125,53 @@ void main() async {
       Map<String, String> words = <String, String>{
         'user': 'users',
         'blog_post': 'blog_posts',
+        'user_profile': 'user_profiles',
         'category': 'categories',
         'day': 'days',
-        'status': 'statuses',
         'box': 'boxes',
         'match': 'matches',
         'person': 'people',
-        'news': 'news',
+        'child': 'children',
         'blog_child': 'blog_children',
+        'data': 'data',
+        'sheep': 'sheep',
+        'media': 'media',
+        'quiz': 'quizzes',
+        'hero': 'heroes',
+        'potato': 'potatoes',
+        'tomato': 'tomatoes',
+        'echo': 'echoes',
+        'photo': 'photos',
+        'piano': 'pianos',
+        'video': 'videos',
+        'wolf': 'wolves',
+        'shelf': 'shelves',
+        'calf': 'calves',
+        'loaf': 'loaves',
+        'thief': 'thieves',
+        'leaf': 'leaves',
+        'knife': 'knives',
+        'index': 'indices',
+        'matrix': 'matrices',
+        'axis': 'axes',
+        // plural already: no change
+        'users': 'users',
+        'settings': 'settings',
+        'goods': 'goods',
+        'people': 'people',
+        'children': 'children',
+        'categories': 'categories',
+        'statuses': 'statuses',
+        // singular words that end in s
+        'status': 'statuses',
+        'bus': 'buses',
+        'address': 'addresses',
+        'virus': 'viruses',
+        'alias': 'aliases',
+        'cactus': 'cactuses',
+        'news': 'news',
+        'series': 'series',
+        'analysis': 'analyses',
       };
       for (MapEntry<String, String> e in words.entries) {
         expect(pluralName(e.key), e.value, reason: e.key);
@@ -120,6 +207,24 @@ void main() async {
       expect(q, matches(RegExp(r'group by .a.,b')));
     });
 
+    test('on: select() after selectRaw() replaces both', () {
+      flagsOn();
+      String q = sql(
+        QueryBuilder.table('t').selectRaw('count(*) as c').select('a'),
+      );
+      expect(q, matches(RegExp(r'select .a. from')));
+    });
+
+    test('on: selectRaw() twice adds both', () {
+      flagsOn();
+      String q = sql(
+        QueryBuilder.table('t')
+            .selectRaw('count(*) as c')
+            .selectRaw('max(a) m'),
+      );
+      expect(q, contains('select count(*) as c,max(a) m from'));
+    });
+
     test('on: selectRaw with no select() is the only column', () {
       flagsOn();
       String q = sql(QueryBuilder.table('t').selectRaw('count(*) as c'));
@@ -150,15 +255,29 @@ void main() async {
         table.string('name');
         table.integer('owner_id').nullable();
       });
+      await Schema().create('blog_info', (Table table) {
+        table.id();
+        table.json('info');
+        table.integer('blog_id');
+        table.timestamps();
+      });
       EventPost.log = <String>[];
       EventPost.cancelOn = null;
       EventPost.failOn = null;
     });
 
     tearDown(() async {
-      for (String t in <String>['book', 'event_posts', 'owners', 'pets']) {
+      for (String t in <String>[
+        'book',
+        'books',
+        'event_posts',
+        'owners',
+        'pets',
+        'blog_info',
+      ]) {
         await Schema().dropIfExists(t);
       }
+      Model.forgetObservers();
     });
 
     test('sum() off: null when no row matches', () async {
@@ -170,6 +289,29 @@ void main() async {
       expect(await QueryBuilder.table('book').sum('id'), 0);
       await QueryBuilder.table('book').insert(<String, dynamic>{'id': 4});
       expect(await QueryBuilder.table('book').sum('id'), 4);
+    });
+
+    test('sum() on: avg, min and max still give null', () async {
+      flagsOn();
+      expect(await QueryBuilder.table('book').avg('id'), isNull);
+      expect(await QueryBuilder.table('book').min('id'), isNull);
+      expect(await QueryBuilder.table('book').max('id'), isNull);
+    });
+
+    test('one flag on: the others stay off', () async {
+      SqlQueryBuilder().flags = const OrmFlags(pluralTableNames: true);
+      expect(Book().tableName, 'books');
+      expect(await QueryBuilder.table('book').sum('id'), isNull);
+      await Schema().create('books', (Table table) {
+        table.id();
+        table.string('title').nullable().withDefault('untitled');
+        table.string('author_code').nullable();
+        table.timestamps();
+      });
+
+      /// createWritesNull is off: the default is used
+      Book book = await Book().create(<String, dynamic>{'title': null});
+      expect(book.title, 'untitled');
     });
 
     test('paginate() off: lastPage 0 with no rows', () async {
@@ -233,6 +375,33 @@ void main() async {
       expect(EventPost.log, contains('created'));
     });
 
+    test('create() on: guarded null key, and a null created_at', () async {
+      flagsOn();
+      await Schema().create('books', (Table table) {
+        table.id();
+        table.string('title').nullable().withDefault('untitled');
+        table.string('author_code').nullable().withDefault('x');
+        table.timestamps();
+      });
+
+      /// author_code is guarded: it is dropped, so its default is used
+      Book book = await GuardedBook().create(<String, dynamic>{
+        'title': null,
+        'author_code': null,
+      });
+      expect(book.title, isNull);
+      expect(book.authorCode, 'x');
+
+      /// a null created_at is set to now, not written as NULL
+      Book other = await Book().create(<String, dynamic>{
+        'title': 'a',
+        'created_at': null,
+      });
+      Map<String, dynamic>? row = await QueryBuilder.table('books')
+          .find(other.id);
+      expect(row?['created_at'], isNotNull);
+    });
+
     test('save() off: no changes still fires updating and updated', () async {
       EventPost post = await EventPost().create(<String, dynamic>{
         'title': 'a',
@@ -257,6 +426,55 @@ void main() async {
       expect(await post.save(), isTrue);
       expect(EventPost.log, <String>['saving', 'updating', 'updated', 'saved']);
       expect((await EventPost().find(post.id))!.title, 'b');
+    });
+
+    test('save() on: a saving hook that changes a field updates', () async {
+      flagsOn();
+      EventPost post = await EventPost().create(<String, dynamic>{
+        'title': 'a',
+      });
+      Model.observe<EventPost>(TitleObserver());
+      EventPost.log = <String>[];
+      expect(await post.save(), isTrue);
+      expect(EventPost.log, <String>['saving', 'updating', 'updated', 'saved']);
+      expect((await EventPost().find(post.id))!.title, 'from hook');
+    });
+
+    test('save() on: a clean model with timestamps runs no query', () async {
+      flagsOn();
+      await EventPost().create(<String, dynamic>{'title': 'a'});
+      EventPost post = (await EventPost().find(1))!;
+      DateTime? updatedAt = post.updatedAt;
+      int queries = 0;
+      void count(QueryEvent e) => queries++;
+      SqlQueryBuilder().listen(count);
+      addTearDown(() => SqlQueryBuilder().removeListener(count));
+      expect(await post.save(), isTrue);
+      expect(queries, 0);
+      expect(post.updatedAt, updatedAt);
+    });
+
+    test('save() on: a Map or List field always counts as changed', () async {
+      /// the loaded Map is the same object as the saved value, so a
+      /// change in place can not be seen. The ORM sends it every time.
+      SqlQueryBuilder().flags = const OrmFlags(skipCleanUpdateEvents: true);
+      InfoObserver observer = InfoObserver();
+      Model.observe<BlogInfo>(observer);
+      await BlogInfo().create(<String, dynamic>{
+        'info': <String, dynamic>{'a': 1},
+        'blog_id': 1,
+      });
+      BlogInfo info = (await BlogInfo().find(1))!;
+      expect(await info.save(), isTrue);
+      expect(observer.log, <String>['updating']);
+
+      /// a change in place is saved
+      info.info!['b'] = 2;
+      await info.save();
+      expect((await BlogInfo().find(1))!.info, <String, dynamic>{
+        'a': 1,
+        'b': 2,
+      });
     });
 
     test('belongsTo off: the key comes from the class name', () async {
@@ -307,6 +525,32 @@ void main() async {
         <Pet>[pet],
       );
       expect(found.values.single.name, 'ann');
+    });
+
+    test('belongsTo on: no relation name uses the class name', () async {
+      flagsOn();
+      expect(belongsToSql<Pet, Owner>(Pet(), Owner.new), contains('owner_id'));
+    });
+
+    test('belongsTo on: a two word relation and a custom key', () async {
+      flagsOn();
+      expect(
+        belongsToSql<Pet, Owner>(Pet(), Owner.new, relation: 'authorProfile'),
+        contains('author_profile_id'),
+      );
+
+      /// Blog has the primary key `uid`
+      expect(
+        belongsToSql<BlogInfo, Blog>(BlogInfo(), Blog.new, relation: 'post'),
+        contains('post_uid'),
+      );
+
+      /// off: the relation name is not used
+      SqlQueryBuilder().flags = const OrmFlags();
+      expect(
+        belongsToSql<BlogInfo, Blog>(BlogInfo(), Blog.new, relation: 'post'),
+        contains('blog_id'),
+      );
     });
   });
 
