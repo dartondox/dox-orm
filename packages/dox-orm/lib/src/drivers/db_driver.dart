@@ -138,6 +138,12 @@ abstract class DBDriver {
       (Zone.current[_afterCommitKey]
           as Map<DBDriver, AfterCommitCallbacks>?)?[this];
 
+  /// true when this code runs inside a transaction of this driver
+  /// (connection). [inTransaction] is true for a transaction of any
+  /// driver. ponytail: a custom driver that does not use [afterCommitZone]
+  /// always gives false.
+  bool get hasOpenTransaction => _afterCommitLevel != null;
+
   /// run [callback] after the outermost transaction of this driver
   /// commits. outside a transaction it runs at once.
   ///

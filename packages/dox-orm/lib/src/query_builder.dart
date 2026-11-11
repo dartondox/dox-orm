@@ -267,11 +267,74 @@ class QueryBuilder<T>
   ///   await QueryBuilder.table('blog_info').insert({'blog_id': 1});
   /// });
   /// ```
+  ///
+  /// [attempts] > 1 runs the whole transaction again when it fails with
+  /// a deadlock or a lock / serialization failure (see
+  /// [DatabaseTransaction.isConcurrencyError]), up to [attempts] runs in
+  /// all. other errors are thrown at once. only the outermost transaction
+  /// runs again: a nested one throws the error to it. the `afterCommit()`
+  /// callbacks of a failed run are dropped. an error after the commit (eg.
+  /// of an `afterCommit()` callback) never runs it again.
+  /// there is no wait between the runs.
   static Future<R> transaction<R>(
     Future<R> Function() callback, {
     String? connection,
+    int attempts = 1,
   }) {
-    return SqlQueryBuilder().getDBDriver(connection).transaction(callback);
+    DBDriver driver = SqlQueryBuilder().getDBDriver(connection);
+    if (attempts <= 1 || driver.hasOpenTransaction) {
+      return driver.transaction(callback);
+    }
+    return _retryTransaction(driver, callback, attempts);
+  }
+
+  static Future<R> _retryTransaction<R>(
+    DBDriver driver,
+    Future<R> Function() callback,
+    int attempts,
+  ) async {
+    for (int attempt = 1; ; attempt++) {
+      bool committed = false;
+      try {
+        return await driver.transaction(() async {
+          // the first callback after the commit
+          await driver.afterCommit(() => committed = true);
+          return callback();
+        });
+      } catch (error) {
+        if (committed ||
+            attempt >= attempts ||
+            !DatabaseTransaction.isConcurrencyError(error)) {
+          rethrow;
+        }
+      }
+    }
+  }
+
+  /// begin a transaction that stays open until you call
+  /// [DatabaseTransaction.commit] or [DatabaseTransaction.rollBack]. only
+  /// code inside [DatabaseTransaction.run] uses it. it is rolled back
+  /// after [timeout] when it is still open, so a forgotten transaction
+  /// does not hold its connection. [QueryBuilder.transaction] is simpler:
+  /// use this one only when the work can not fit in one callback.
+  ///
+  /// ```
+  /// DatabaseTransaction tx = await QueryBuilder.beginTransaction();
+  /// try {
+  ///   await tx.run(() => Blog().create({'title': 'a', 'body': 'b'}));
+  ///   await tx.commit();
+  /// } finally {
+  ///   await tx.rollBack(); // does nothing after commit
+  /// }
+  /// ```
+  static Future<DatabaseTransaction> beginTransaction({
+    String? connection,
+    Duration timeout = const Duration(minutes: 1),
+  }) {
+    return DatabaseTransaction.begin(
+      SqlQueryBuilder().getDBDriver(connection),
+      timeout,
+    );
   }
 
   /// run [callback] after the outermost transaction of [connection]
