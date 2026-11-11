@@ -274,6 +274,23 @@ class QueryBuilder<T>
     return SqlQueryBuilder().getDBDriver(connection).transaction(callback);
   }
 
+  /// run [callback] after the outermost transaction of [connection]
+  /// commits, so the data is saved before it runs. outside a transaction
+  /// it runs at once. a rollback drops it. see [DBDriver.afterCommit].
+  ///
+  /// ```
+  /// await QueryBuilder.transaction(() async {
+  ///   User user = await User().create({'email': email});
+  ///   await QueryBuilder.afterCommit(() => sendWelcomeMail(user));
+  /// });
+  /// ```
+  static Future<void> afterCommit(
+    AfterCommitCallback callback, {
+    String? connection,
+  }) {
+    return SqlQueryBuilder().getDBDriver(connection).afterCommit(callback);
+  }
+
   /// run a raw query. [connection] is a connection name, the default
   /// connection is used when it is null.
   ///

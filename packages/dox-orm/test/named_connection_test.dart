@@ -127,4 +127,34 @@ void main() {
       throwsA(anything),
     );
   });
+
+  test(
+    'afterCommit waits only for the transaction of its connection',
+    () async {
+      List<String> log = <String>[];
+      await QueryBuilder.transaction(() async {
+        /// 'other' has no open transaction: it runs at once
+        await QueryBuilder.afterCommit(
+          () => log.add('other'),
+          connection: 'other',
+        );
+        await QueryBuilder.transaction(() async {
+          await QueryBuilder.afterCommit(
+            () => log.add('other commit'),
+            connection: 'other',
+          );
+          await QueryBuilder.afterCommit(() => log.add('main in other'));
+        }, connection: 'other');
+        log.add('main body');
+        await QueryBuilder.afterCommit(() => log.add('main commit'));
+      });
+      expect(log, <String>[
+        'other',
+        'other commit',
+        'main body',
+        'main in other',
+        'main commit',
+      ]);
+    },
+  );
 }

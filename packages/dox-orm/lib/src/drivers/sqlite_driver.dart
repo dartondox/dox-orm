@@ -291,16 +291,20 @@ class SqliteDriver extends DBDriver {
     _transactionDone[db] = done.future;
 
     Set<Object> open = <Object>{...?Zone.current[_txKey], db};
+    AfterCommitCallbacks callbacks = AfterCommitCallbacks();
+    R result;
     try {
       /// IMMEDIATE takes the write lock now, so two isolates do not both
       /// read and then fail to upgrade to a write
       await _now(db, _SqliteOp.execute, 'BEGIN IMMEDIATE');
-      R result = await runZoned(
+      result = await runZoned(
         callback,
-        zoneValues: <Symbol, dynamic>{_txKey: open},
+        zoneValues: <Symbol, dynamic>{
+          _txKey: open,
+          ...afterCommitZone(callbacks),
+        },
       );
       await _now(db, _SqliteOp.execute, 'COMMIT');
-      return result;
     } catch (error) {
       await _now(db, _SqliteOp.rollback, '');
       rethrow;
@@ -308,6 +312,10 @@ class SqliteDriver extends DBDriver {
       _transactionDone[db] = null;
       done.complete();
     }
+
+    /// after `finally`, so a callback can start a new transaction
+    await runAfterCommit(callbacks);
+    return result;
   }
 
   /// run [op] with no params on [db] right away. it does not wait for the
