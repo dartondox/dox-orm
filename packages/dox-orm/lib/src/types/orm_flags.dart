@@ -23,36 +23,44 @@ class OrmFlags {
   /// it. When the model did change, `beforeSave` runs again for the
   /// UPDATE, after the `updating` hook, so a change made by that hook is
   /// saved. A clean save runs it once.
+  // NEXT MAJOR: make this the default, then remove the flag.
   final bool skipCleanUpdateEvents;
 
   /// the default foreign key of a `belongsTo` relation comes from the
   /// relation name: `@BelongsTo(User) User? author` uses `author_id`.
   /// Off: it comes from the class name (`user_id`).
+  // NEXT MAJOR: make this the default, then remove the flag.
   final bool belongsToKeyFromRelation;
 
   /// the default table name is plural: `User` uses `users`,
   /// `BlogPost` uses `blog_posts`. Off: `user` and `blog_post`. The
   /// last word gets the English plural of Laravel `Str::plural`.
+  // NEXT MAJOR: make this the default, then remove the flag.
   final bool pluralTableNames;
 
   /// `create()` writes NULL for a key that is null in its data.
   /// Off: a null key is not sent, so the column default is used.
+  // NEXT MAJOR: make this the default, then remove the flag.
   final bool createWritesNull;
 
   /// `sum()` gives 0 when no row matches. Off: it gives null.
+  // NEXT MAJOR: make this the default, then remove the flag.
   final bool sumReturnsZero;
 
   /// `selectRaw()` adds to the select list, so
   /// `select('a').selectRaw('count(*) c')` selects both.
   /// Off: it replaces the list.
+  // NEXT MAJOR: make this the default, then remove the flag.
   final bool selectRawAdds;
 
   /// a second `groupBy()` or `groupByRaw()` adds to the first.
   /// Off: it replaces the first.
+  // NEXT MAJOR: make this the default, then remove the flag.
   final bool groupByAdds;
 
   /// `paginate()` gives `lastPage` 1 when there are no rows.
   /// Off: it gives 0.
+  // NEXT MAJOR: make this the default, then remove the flag.
   final bool lastPageAtLeastOne;
 
   /// on Postgres, a new table made with `Schema.create` gets
@@ -60,6 +68,7 @@ class OrmFlags {
   /// and `JSON` for `json()`. Off: `TIMESTAMPTZ` and `JSONB`. It never
   /// changes a table that is already there. MySQL and SQLite do not
   /// change.
+  // NEXT MAJOR: make this the default, then remove the flag.
   final bool laravelPostgresTypes;
 
   const OrmFlags({
