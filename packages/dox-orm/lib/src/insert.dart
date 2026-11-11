@@ -220,19 +220,19 @@ mixin Insert<T> implements SharedMixin<T> {
       /// ponytail: `VALUES(col)` is old in MySQL 8 but works there and in
       /// MariaDB. The new `AS alias` form does not work in MariaDB.
       /// `col = col` on a match changes nothing.
-      String first = helper.wrap(uniqueBy.first);
+      String first = helper.wrapWrite(uniqueBy.first);
       List<String> sets = update.isEmpty
           ? <String>['$first = $first']
           : <String>[
               for (String column in update)
-                '${helper.wrap(column)} = VALUES(${helper.wrap(column)})',
+                '${helper.wrapWrite(column)} = VALUES(${helper.wrapWrite(column)})',
             ];
       q += " ON DUPLICATE KEY UPDATE ${sets.join(',')}";
     } else {
-      String target = uniqueBy.map(helper.wrap).join(',');
+      String target = uniqueBy.map(helper.wrapWrite).join(',');
       q += update.isEmpty
           ? " ON CONFLICT ($target) DO NOTHING"
-          : " ON CONFLICT ($target) DO UPDATE SET ${<String>[for (String column in update) '${helper.wrap(column)} = excluded.${helper.wrap(column)}'].join(',')}";
+          : " ON CONFLICT ($target) DO UPDATE SET ${<String>[for (String column in update) '${helper.wrapWrite(column)} = excluded.${helper.wrapWrite(column)}'].join(',')}";
     }
     int count = await runAffectingQuery(queryBuilder, q);
     resetSubstitutionValues();
@@ -304,7 +304,7 @@ mixin Insert<T> implements SharedMixin<T> {
       }
       values.add("(${keys.join(',')})");
     }
-    return "(${columns.map(helper.wrap).join(',')}) VALUES ${values.join(',')}";
+    return "(${columns.map(helper.wrapWrite).join(',')}) VALUES ${values.join(',')}";
   }
 
   /// the first row that matches all [where] pairs, or a new row made from
@@ -385,6 +385,39 @@ mixin Insert<T> implements SharedMixin<T> {
     return fresh ?? _fromData(<String, dynamic>{...row, ...values});
   }
 
+  /// update the rows that match all [where] pairs with [values], or
+  /// insert one row made from [where] and [values] when no row matches.
+  /// Unlike [updateOrCreate], it reads no row back. It returns true when
+  /// a row was inserted, or when the update changed a row, like Laravel.
+  /// An empty [where] throws an [ArgumentError], so it can not update
+  /// every row by mistake. On a model it uses the insert() and update()
+  /// of the model, so `fillable` and the create events apply.
+  ///
+  /// ```
+  /// await QueryBuilder.table('settings')
+  ///     .updateOrInsert({'key': 'theme'}, {'value': 'dark'});
+  /// ```
+  ///
+  /// MySQL and MariaDB count only the rows that really changed, so an
+  /// update to the same values returns false there. Two calls at the same
+  /// time can both insert a row. Use a unique index and [upsert] when
+  /// that matters.
+  Future<bool> updateOrInsert(
+    Map<String, dynamic> where, [
+    Map<String, dynamic> values = const <String, dynamic>{},
+  ]) async {
+    if (where.isEmpty) {
+      throw ArgumentError.value(where, 'where', 'must not be empty');
+    }
+    if (!await _whereAll(where, 'updateOrInsert').hasRows()) {
+      resetSubstitutionValues();
+      await queryBuilder.insert(<String, dynamic>{...where, ...values});
+      return true;
+    }
+    if (values.isEmpty) return true;
+    return await queryBuilder.update(values) > 0;
+  }
+
   /// this query with `where(key, value)` for each pair of [where]
   /// it throws a [StateError] on a union() query: the where would go to
   /// the first part only.
@@ -448,7 +481,7 @@ mixin Insert<T> implements SharedMixin<T> {
         : '';
 
     String query =
-        "INSERT INTO ${helper.wrap(tableName)} (${columns.map(helper.wrap).join(',')}) VALUES ${values.join(',')} $returningQuery";
+        "INSERT INTO ${helper.wrap(tableName)} (${columns.map(helper.wrapWrite).join(',')}) VALUES ${values.join(',')} $returningQuery";
     return await helper.runQuery(query);
   }
 }

@@ -204,6 +204,75 @@ mixin Where<T> implements SharedMixin<T> {
     return _not('OR', arg1, arg2, arg3);
   }
 
+  /// where any of [columns] matches. it takes the args of [where] after
+  /// the columns, and puts the conditions in one bracket, joined by OR.
+  ///
+  /// ```
+  /// // WHERE ("title" like @title_p0 OR "body" like @body_p1)
+  /// List blogs = await Blog()
+  ///     .whereAny(['title', 'body'], 'like', '%dart%')
+  ///     .get();
+  /// ```
+  QueryBuilder<T> whereAny(
+    List<String> columns,
+    dynamic arg2, [
+    dynamic arg3 = _missing,
+  ]) {
+    return _columns('AND', 'OR', columns, arg2, arg3);
+  }
+
+  /// or where any of [columns] matches, see [whereAny]
+  QueryBuilder<T> orWhereAny(
+    List<String> columns,
+    dynamic arg2, [
+    dynamic arg3 = _missing,
+  ]) {
+    return _columns('OR', 'OR', columns, arg2, arg3);
+  }
+
+  /// where all of [columns] match, see [whereAny]. the conditions are
+  /// joined by AND.
+  ///
+  /// ```
+  /// // WHERE ("title" like @title_p0 AND "body" like @body_p1)
+  /// List blogs = await Blog()
+  ///     .whereAll(['title', 'body'], 'like', '%dart%')
+  ///     .get();
+  /// ```
+  QueryBuilder<T> whereAll(
+    List<String> columns,
+    dynamic arg2, [
+    dynamic arg3 = _missing,
+  ]) {
+    return _columns('AND', 'AND', columns, arg2, arg3);
+  }
+
+  /// or where all of [columns] match, see [whereAll]
+  QueryBuilder<T> orWhereAll(
+    List<String> columns,
+    dynamic arg2, [
+    dynamic arg3 = _missing,
+  ]) {
+    return _columns('OR', 'AND', columns, arg2, arg3);
+  }
+
+  /// one [where] condition for each of [columns], in one bracket, joined
+  /// by [join]. no columns adds nothing.
+  QueryBuilder<T> _columns(
+    String type,
+    String join,
+    List<String> columns,
+    dynamic arg2,
+    dynamic arg3,
+  ) {
+    int from = whereCount;
+    for (String column in columns) {
+      _query(join, column, arg2, arg3);
+    }
+    _wrapFrom(from, type, '');
+    return queryBuilder;
+  }
+
   /// NOT of a callback group, or of one [where] condition
   QueryBuilder<T> _not(String type, Object arg1, dynamic arg2, dynamic arg3) {
     if (arg1 is String) {
@@ -782,8 +851,26 @@ mixin Where<T> implements SharedMixin<T> {
       return _rawQuery(type, '${helper.wrap(column)} ${_nullCheck(condition)}');
     }
     String columnKey = helper.parseColumnKey(column);
+    String left = helper.wrap(column);
+    String right = columnKey;
+    if ((value is bool || value is num) && column.contains('->')) {
+      switch (dbDriver.getName()) {
+        /// `->>` gives text, so a number or a bool is compared as jsonb:
+        /// `10` > `9`, and `true` matches the json `true`
+        case Driver.postgres when !condition.toLowerCase().contains('like'):
+          left = left.replaceFirst('->>', '->');
+          right = 'CAST($columnKey AS jsonb)';
+          value = jsonEncode(value);
+
+        /// json_unquote() gives a json `true` as the text `true`
+        case Driver.mysql when value is bool:
+          value = value ? 'true' : 'false';
+        default:
+          break;
+      }
+    }
     addSubstitutionValues(columnKey, value);
-    return _rawQuery(type, "${helper.wrap(column)} $condition $columnKey");
+    return _rawQuery(type, "$left $condition $right");
   }
 
   /// `IS NULL` for `=` and `IS NOT NULL` for `!=` and `<>`

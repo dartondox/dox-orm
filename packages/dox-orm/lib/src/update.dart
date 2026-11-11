@@ -87,7 +87,7 @@ mixin Update<T> implements SharedMixin<T> {
     Map<String, dynamic> extra,
     String sign,
   ) {
-    String wrapped = helper.wrap(column);
+    String wrapped = helper.wrapWrite(column);
     String key = helper.parseColumnKey(column);
     addSubstitutionValues(key, amount);
     return _update(extra, <String>['$wrapped = $wrapped $sign $key']);
@@ -98,7 +98,7 @@ mixin Update<T> implements SharedMixin<T> {
     List<String> columnToUpdate = <String>[...sets];
     data.forEach((String column, dynamic value) {
       String columnKey = helper.parseColumnKey(column);
-      columnToUpdate.add("${helper.wrap(column)} = $columnKey");
+      columnToUpdate.add("${helper.wrapWrite(column)} = $columnKey");
       addSubstitutionValues(
         columnKey,
         queryBuilder.dbDriver.columnValue(value),

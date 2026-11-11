@@ -3,8 +3,28 @@ import 'query_builder.dart';
 import 'shared_mixin.dart';
 import 'types/orm_flags.dart';
 
+/// removes the selectRaw() values of [qb] from its values. count() and
+/// the other queries that do not use the select part call it, so
+/// Postgres does not get values that the sql does not use. it is a
+/// function, not a query method, so it can not clash with a model field.
+void dropSelectValues(QueryBuilder<dynamic> qb) {
+  Map<String, dynamic>? values = qb._selectValues;
+  if (values == null || !qb._selectValuesAdded) return;
+  for (String key in values.keys) {
+    qb.substitutionValues.remove(key);
+  }
+  qb._selectValuesAdded = false;
+}
+
 mixin Select<T> implements SharedMixin<T> {
   String _select = '*';
+
+  /// the values of selectRaw(). they are added when the select part is
+  /// used, see [dropSelectValues].
+  Map<String, dynamic>? _selectValues;
+
+  /// true while the [_selectValues] are in the values of the query
+  bool _selectValuesAdded = false;
 
   /// true after select() or selectRaw(), see [OrmFlags.selectRawAdds]
   bool _selectSet = false;
@@ -54,6 +74,25 @@ mixin Select<T> implements SharedMixin<T> {
 
   /// the select part, with `DISTINCT` in front after distinct()
   String getSelectQuery() {
+    Map<String, dynamic>? values = _selectValues;
+    if (values != null) {
+      Map<String, dynamic> all = substitutionValues;
+      for (MapEntry<String, dynamic> e in values.entries) {
+        /// a name that another part of the query uses too would get one
+        /// value in both places, and count() would drop it from both
+        if (all.containsKey(e.key) &&
+            !(_selectValuesAdded && all[e.key] == e.value)) {
+          throw ArgumentError.value(
+            e.key,
+            'selectRaw',
+            'is a value name that the query uses already. '
+                'Use unique names for the selectRaw() values',
+          );
+        }
+      }
+      all.addAll(values);
+      _selectValuesAdded = true;
+    }
     return _distinct ? 'DISTINCT $_select' : _select;
   }
 
@@ -95,21 +134,55 @@ mixin Select<T> implements SharedMixin<T> {
     if (selection is String) {
       _select = selection.split(',').map(helper.wrap).join(',');
     }
+    dropSelectValues(queryBuilder);
+    _selectValues = null;
     _selectSet = true;
     return queryBuilder;
   }
 
-  /// Select raw query, nothing is quoted
+  /// Select raw query, nothing is quoted. never put user input in
+  /// [query]. pass user values in [params] as `@name`, they are bound
+  /// safely, like whereRaw(). use unique names: a name that the query
+  /// uses in another place (eg. in whereRaw() or an other selectRaw())
+  /// throws an [ArgumentError]. a name may not start with `dox_`: the
+  /// ORM uses it for its own values.
   ///
   /// ```
   /// await Blog().selectRaw('DISTINCT title').get();
+  /// await Blog().selectRaw('views * @rate as score', {'rate': 2}).get();
   /// ```
-  /// it replaces the select list. With [OrmFlags.selectRawAdds] it adds
-  /// to it, so `select('a').selectRaw('count(*) c')` selects both.
-  QueryBuilder<T> selectRaw(String query) {
-    _select = _selectSet && SqlQueryBuilder().flags.selectRawAdds
-        ? '$_select,$query'
-        : query;
+  /// it replaces the select list (and its values). With
+  /// [OrmFlags.selectRawAdds] it adds to it, so
+  /// `select('a').selectRaw('count(*) c')` selects both.
+  QueryBuilder<T> selectRaw(String query, [dynamic params]) {
+    bool adds = _selectSet && SqlQueryBuilder().flags.selectRawAdds;
+    _select = adds ? '$_select,$query' : query;
+    if (!adds) {
+      dropSelectValues(queryBuilder);
+      _selectValues = null;
+    }
+    if (params is Map<String, dynamic> && params.isNotEmpty) {
+      Map<String, dynamic> values = _selectValues ??= <String, dynamic>{};
+      for (String key in params.keys) {
+        /// the ORM names its own values `dox_...`, eg. `dox_limit`
+        if (key.startsWith('dox_')) {
+          throw ArgumentError.value(
+            key,
+            'selectRaw',
+            'starts with dox_, which the ORM uses for its own values',
+          );
+        }
+        if (values.containsKey(key)) {
+          throw ArgumentError.value(
+            key,
+            'selectRaw',
+            'is a value name that the query uses already. '
+                'Use unique names for the selectRaw() values',
+          );
+        }
+      }
+      values.addAll(params);
+    }
     _selectSet = true;
     return queryBuilder;
   }

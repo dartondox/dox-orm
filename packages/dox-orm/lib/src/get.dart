@@ -550,6 +550,20 @@ mixin Get<T> implements SharedMixin<T> {
     return row;
   }
 
+  /// the only row of the query. it throws a [ModelNotFoundException] when
+  /// no row matches, and a [MultipleRecordsFoundException] when more than
+  /// one row matches. it reads 2 rows at most.
+  ///
+  /// ```
+  /// Blog blog = await Blog().where('slug', slug).sole();
+  /// ```
+  Future<T> sole() async {
+    List<T> rows = await queryBuilder.limit(2).get();
+    if (rows.isEmpty) throw ModelNotFoundException(tableName);
+    if (rows.length > 1) throw MultipleRecordsFoundException(tableName);
+    return rows.first;
+  }
+
   /// find a record, like find(), but it throws a
   /// [ModelNotFoundException] when there is no such row
   ///

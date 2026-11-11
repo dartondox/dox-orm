@@ -6,6 +6,7 @@ import '../drivers/db_driver.dart' show SqlParam, findSqlParams;
 import '../get.dart' show selectSql;
 import '../limit.dart';
 import '../relationships/keys.dart';
+import '../select.dart' show dropSelectValues;
 
 final RegExp _notWord = RegExp(r'[^\w]');
 
@@ -81,6 +82,19 @@ class QueryBuilderHelper<T> {
   /// quote a table or column name for the current driver
   String wrap(String value) => queryBuilder.dbDriver.wrap(value);
 
+  /// [wrap] for a column that is written (insert, update, upsert). a json
+  /// path (`meta->a`) can only be read, so it throws an [ArgumentError].
+  String wrapWrite(String value) {
+    if (value.contains('->')) {
+      throw ArgumentError.value(
+        value.trim(),
+        'name',
+        'is not a plain column name',
+      );
+    }
+    return wrap(value);
+  }
+
   /// [op] when it is a known compare operator, else it throws an
   /// [ArgumentError], so user input can not add sql to a where or join
   String operator(dynamic op) {
@@ -104,10 +118,12 @@ class QueryBuilderHelper<T> {
       query += queryBuilder.getOrderByQuery();
       query += queryBuilder.getLimitQuery();
     } else {
-      /// a count has no LIMIT, so it must not send its values
+      /// a count has no LIMIT and no select, so it must not send their
+      /// values
       queryBuilder.substitutionValues
         ..remove(Limit.limitKey)
         ..remove(Limit.offsetKey);
+      dropSelectValues(queryBuilder);
     }
     return query;
   }

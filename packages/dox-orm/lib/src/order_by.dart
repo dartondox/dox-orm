@@ -58,6 +58,32 @@ mixin OrderBy<T> implements SharedMixin<T> {
     return queryBuilder;
   }
 
+  /// order by [column] desc, the same as `orderBy(column, 'desc')`
+  ///
+  /// ```
+  /// List blogs = await Blog().orderByDesc('id').get()
+  /// ```
+  QueryBuilder<T> orderByDesc(String column) {
+    return orderBy(column, 'desc');
+  }
+
+  /// remove the order of this query (orderBy(), orderByRaw(), latest()
+  /// and the others). with a [column] it then orders by it, like
+  /// orderBy().
+  ///
+  /// ```
+  /// List blogs = await Blog().latest().reorder().get()
+  /// List blogs = await Blog().latest().reorder('title').get()
+  /// List blogs = await Blog().latest().reorder('title', 'desc').get()
+  /// ```
+  QueryBuilder<T> reorder([String? column, String? type]) {
+    _orderBy = null;
+    _orderColumns = null;
+    _rawOrder = false;
+    if (column != null) orderBy(column, type);
+    return queryBuilder;
+  }
+
   /// order by raw query, nothing is quoted. never put user input in it.
   ///
   /// ```
