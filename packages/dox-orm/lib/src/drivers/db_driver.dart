@@ -255,6 +255,9 @@ abstract class DBDriver {
 
   String _wrap(String value) {
     value = value.trim();
+    if (value.contains('->')) {
+      return _wrapJson(value);
+    }
     if (!_namePattern.hasMatch(value)) {
       throw ArgumentError.value(value, 'name', 'is not a plain column name');
     }
@@ -273,6 +276,67 @@ abstract class DBDriver {
   );
 
   static final RegExp _aliasPattern = RegExp(r'\s+as\s+', caseSensitive: false);
+
+  /// `column` or `table.column` in front of a json path
+  static final RegExp _jsonColumnPattern = RegExp(
+    r'^(?:[\p{L}\p{N}_$]+\.)*[\p{L}\p{N}_$]+$',
+    unicode: true,
+  );
+
+  /// a json key: letters, digits and `_` only, like whereJsonContains(),
+  /// so a key can never add sql
+  static final RegExp _jsonKeyPattern = RegExp(r'^\w+$');
+
+  /// an alias name
+  static final RegExp _aliasNamePattern = RegExp(
+    r'^[\p{L}\p{N}_$]+$',
+    unicode: true,
+  );
+
+  /// `meta->a->b` (and `meta->a as name`) as sql that reads the json
+  /// value at that path:
+  /// - SQLite: `json_extract("meta", '$."a"."b"')`
+  /// - MySQL and MariaDB: `json_unquote(json_extract(...))`
+  /// - Postgres: `CAST("meta" AS jsonb)->'a'->>'b'` (the value as text).
+  ///   The cast makes it work on `json`, `jsonb` and `text` columns.
+  String _wrapJson(String value) {
+    List<String> alias = value.split(_aliasPattern);
+    String path = alias.first;
+    List<String> parts = path.split('->');
+    List<String> keys = parts.sublist(1);
+    if (alias.length > 2 ||
+        (alias.length == 2 && !_aliasNamePattern.hasMatch(alias[1])) ||
+        !_jsonColumnPattern.hasMatch(parts.first) ||
+        !keys.every(_jsonKeyPattern.hasMatch)) {
+      throw ArgumentError.value(
+        value,
+        'name',
+        'is not a plain json path. Keys are letters, digits and _',
+      );
+    }
+    String column = parts.first.split('.').map(_wrapPart).join('.');
+    String sql;
+    switch (getName()) {
+      case Driver.sqlite:
+        sql = "json_extract($column, '\$${keys.map(_jsonPathKey).join()}')";
+      case Driver.mysql:
+        sql =
+            "json_unquote(json_extract($column, "
+            "'\$${keys.map(_jsonPathKey).join()}'))";
+      case Driver.postgres:
+        String arrows = keys
+            .sublist(0, keys.length - 1)
+            .map((String k) => "->'$k'")
+            .join();
+        sql = "CAST($column AS jsonb)$arrows->>'${keys.last}'";
+    }
+    if (alias.length == 2) {
+      return '$sql as ${_wrapPart(alias[1])}';
+    }
+    return sql;
+  }
+
+  static String _jsonPathKey(String key) => '."$key"';
 
   String _wrapPart(String part) {
     if (part == '*') {

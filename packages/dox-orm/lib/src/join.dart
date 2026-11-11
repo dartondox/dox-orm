@@ -1,5 +1,82 @@
 import 'query_builder.dart';
 import 'shared_mixin.dart';
+import 'where.dart' show missingArg, nullCheck;
+
+/// the conditions of a join with a callback, see `join()`. each call adds
+/// one condition, joined to the ones before with AND (or OR for orOn()
+/// and orWhere()).
+///
+/// ```
+/// List users = await User()
+///     .join('contact', (JoinClause j) {
+///       j
+///           .on('contact.user_id', 'user.id')
+///           .orOn('contact.owner_id', 'user.id')
+///           .where('contact.active', true);
+///     })
+///     .get();
+/// ```
+class JoinClause {
+  JoinClause._(this._query);
+
+  /// the query of the join: values go into it
+  final QueryBuilder<dynamic> _query;
+
+  final List<String> _conditions = <String>[];
+
+  /// `first = second`, or `first operator second` with 3 args. both are
+  /// column names, like join().
+  JoinClause on(String first, String arg2, [String? arg3]) {
+    return _on('AND', first, arg2, arg3);
+  }
+
+  /// or `first = second`, see [on]
+  JoinClause orOn(String first, String arg2, [String? arg3]) {
+    return _on('OR', first, arg2, arg3);
+  }
+
+  /// `column = value`, or `column operator value` with 3 args, like
+  /// where(). the value is bound. a null value is `IS NULL` with `=` and
+  /// `IS NOT NULL` with `!=` or `<>`.
+  JoinClause where(String column, dynamic arg2, [dynamic arg3 = missingArg]) {
+    return _where('AND', column, arg2, arg3);
+  }
+
+  /// or `column = value`, see [where]
+  JoinClause orWhere(String column, dynamic arg2, [dynamic arg3 = missingArg]) {
+    return _where('OR', column, arg2, arg3);
+  }
+
+  JoinClause _on(String type, String first, String arg2, String? arg3) {
+    String operator = arg3 == null ? '=' : _query.helper.operator(arg2);
+    String second = arg3 ?? arg2;
+    return _add(
+      type,
+      '${_query.helper.wrap(first)} $operator ${_query.helper.wrap(second)}',
+    );
+  }
+
+  JoinClause _where(String type, String column, dynamic arg2, dynamic arg3) {
+    String operator = '=';
+    dynamic value = arg2;
+    if (!identical(arg3, missingArg)) {
+      operator = _query.helper.operator(arg2);
+      value = arg3;
+    }
+    String name = _query.helper.wrap(column);
+    if (value == null) {
+      return _add(type, '$name ${nullCheck(operator)}');
+    }
+    String key = _query.helper.parseColumnKey(column);
+    _query.addSubstitutionValues(key, value);
+    return _add(type, '$name $operator $key');
+  }
+
+  JoinClause _add(String type, String condition) {
+    _conditions.add(_conditions.isEmpty ? condition : '$type $condition');
+    return this;
+  }
+}
 
 mixin Join<T> implements SharedMixin<T> {
   /// made on the first join, most rows never need it
@@ -20,8 +97,8 @@ mixin Join<T> implements SharedMixin<T> {
   /// ```
   QueryBuilder<T> leftJoin(
     String arg1,
-    String arg2,
-    String arg3, [
+    Object arg2, [
+    String? arg3,
     dynamic arg4,
   ]) {
     return _query('LEFT JOIN', arg1, arg2, arg3, arg4);
@@ -34,8 +111,8 @@ mixin Join<T> implements SharedMixin<T> {
   /// ```
   QueryBuilder<T> rightJoin(
     String arg1,
-    String arg2,
-    String arg3, [
+    Object arg2, [
+    String? arg3,
     dynamic arg4,
   ]) {
     return _query('RIGHT JOIN', arg1, arg2, arg3, arg4);
@@ -46,8 +123,33 @@ mixin Join<T> implements SharedMixin<T> {
   /// ```
   /// List admins = await Admin().join('admin_info', 'admin_info.admin_id', 'admin.id').get();
   /// ```
-  QueryBuilder<T> join(String arg1, String arg2, String arg3, [dynamic arg4]) {
+  ///
+  /// With a callback in place of the columns, the join can have many
+  /// conditions, see [JoinClause]. It works the same for leftJoin() and
+  /// rightJoin(). Give the callback arg its type: `(JoinClause j) {...}`.
+  ///
+  /// ```
+  /// // JOIN "contact" on "contact"."user_id" = "user"."id"
+  /// //   AND "contact"."active" = @contactactive_p0
+  /// List users = await User()
+  ///     .join('contact', (JoinClause j) {
+  ///       j.on('contact.user_id', 'user.id').where('contact.active', true);
+  ///     })
+  ///     .get();
+  /// ```
+  QueryBuilder<T> join(String arg1, Object arg2, [String? arg3, dynamic arg4]) {
     return _query('JOIN', arg1, arg2, arg3, arg4);
+  }
+
+  /// cross join: each row with each row of [table]
+  ///
+  /// ```
+  /// // SELECT * FROM "size" CROSS JOIN "color"
+  /// List rows = await QueryBuilder.table('size').crossJoin('color').get();
+  /// ```
+  QueryBuilder<T> crossJoin(String table) {
+    (_joins ??= <String>[]).add('CROSS JOIN ${helper.wrap(table)}');
+    return queryBuilder;
   }
 
   /// join the rows of a sub query, named [alias]. the values of [query]
@@ -121,10 +223,32 @@ mixin Join<T> implements SharedMixin<T> {
   QueryBuilder<T> _query(
     String type,
     String arg1,
-    String arg2,
-    String arg3, [
+    Object arg2,
+    String? arg3,
     dynamic arg4,
-  ]) {
+  ) {
+    if (arg2 is void Function(JoinClause join)) {
+      JoinClause clause = JoinClause._(queryBuilder);
+      arg2(clause);
+      if (clause._conditions.isEmpty) {
+        throw ArgumentError.value(
+          arg1,
+          'join',
+          'needs a condition: call on() or where() in the callback',
+        );
+      }
+      (_joins ??= <String>[]).add(
+        '$type ${helper.wrap(arg1)} on ${clause._conditions.join(' ')}',
+      );
+      return queryBuilder;
+    }
+    if (arg2 is! String || arg3 == null) {
+      throw ArgumentError.value(
+        arg2,
+        'join',
+        'needs two columns, or a void Function(JoinClause)',
+      );
+    }
     return _on(type, helper.wrap(arg1), arg2, arg3, arg4);
   }
 

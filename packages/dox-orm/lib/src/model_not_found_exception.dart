@@ -41,3 +41,24 @@ class ModelNotFoundException extends IHttpException implements Exception {
         'where $column = $id';
   }
 }
+
+/// thrown by sole() when more than one row matches
+///
+/// ```
+/// try {
+///   Blog blog = await Blog().where('status', 'active').sole();
+/// } on MultipleRecordsFoundException catch (e) {
+///   print(e.table); // blog
+/// }
+/// ```
+class MultipleRecordsFoundException implements Exception {
+  /// the table of the query
+  final String table;
+
+  const MultipleRecordsFoundException(this.table);
+
+  @override
+  String toString() =>
+      'MultipleRecordsFoundException: more than one row found in table '
+      '"$table"';
+}

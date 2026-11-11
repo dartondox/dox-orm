@@ -11,6 +11,7 @@ export 'src/drivers/mysql_native_driver.dart';
 export 'src/drivers/native_drivers.dart';
 export 'src/drivers/postgres_native_driver.dart';
 export 'src/drivers/statement_cache.dart';
+export 'src/join.dart' show JoinClause;
 export 'src/main.dart';
 export 'src/model.dart';
 export 'src/mass_assignment_exception.dart';

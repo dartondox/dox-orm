@@ -385,6 +385,39 @@ mixin Insert<T> implements SharedMixin<T> {
     return fresh ?? _fromData(<String, dynamic>{...row, ...values});
   }
 
+  /// update the rows that match all [where] pairs with [values], or
+  /// insert one row made from [where] and [values] when no row matches.
+  /// Unlike [updateOrCreate], it reads no row back. It returns true when
+  /// a row was inserted, or when the update changed a row, like Laravel.
+  /// An empty [where] throws an [ArgumentError], so it can not update
+  /// every row by mistake. On a model it uses the insert() and update()
+  /// of the model, so `fillable` and the create events apply.
+  ///
+  /// ```
+  /// await QueryBuilder.table('settings')
+  ///     .updateOrInsert({'key': 'theme'}, {'value': 'dark'});
+  /// ```
+  ///
+  /// MySQL and MariaDB count only the rows that really changed, so an
+  /// update to the same values returns false there. Two calls at the same
+  /// time can both insert a row. Use a unique index and [upsert] when
+  /// that matters.
+  Future<bool> updateOrInsert(
+    Map<String, dynamic> where, [
+    Map<String, dynamic> values = const <String, dynamic>{},
+  ]) async {
+    if (where.isEmpty) {
+      throw ArgumentError.value(where, 'where', 'must not be empty');
+    }
+    if (!await _whereAll(where, 'updateOrInsert').hasRows()) {
+      resetSubstitutionValues();
+      await queryBuilder.insert(<String, dynamic>{...where, ...values});
+      return true;
+    }
+    if (values.isEmpty) return true;
+    return await queryBuilder.update(values) > 0;
+  }
+
   /// this query with `where(key, value)` for each pair of [where]
   /// it throws a [StateError] on a union() query: the where would go to
   /// the first part only.

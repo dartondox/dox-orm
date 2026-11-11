@@ -6,6 +6,7 @@ import '../drivers/db_driver.dart' show SqlParam, findSqlParams;
 import '../get.dart' show selectSql;
 import '../limit.dart';
 import '../relationships/keys.dart';
+import '../select.dart' show dropSelectValues;
 
 final RegExp _notWord = RegExp(r'[^\w]');
 
@@ -104,10 +105,12 @@ class QueryBuilderHelper<T> {
       query += queryBuilder.getOrderByQuery();
       query += queryBuilder.getLimitQuery();
     } else {
-      /// a count has no LIMIT, so it must not send its values
+      /// a count has no LIMIT and no select, so it must not send their
+      /// values
       queryBuilder.substitutionValues
         ..remove(Limit.limitKey)
         ..remove(Limit.offsetKey);
+      dropSelectValues(queryBuilder);
     }
     return query;
   }

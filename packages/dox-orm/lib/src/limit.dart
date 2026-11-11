@@ -147,6 +147,28 @@ mixin Limit<T> implements SharedMixin<T> {
     _offset = value;
     return queryBuilder;
   }
+
+  /// skip [value] rows, the same as offset()
+  ///
+  /// ```
+  /// List blogs = await Blog().skip(10).take(10).get()
+  /// ```
+  QueryBuilder<T> skip(int value) {
+    return offset(value);
+  }
+
+  /// the rows of page [page] (from 1), with [perPage] rows on a page.
+  /// it sets limit() and offset(). a page below 1 is the first page.
+  ///
+  /// ```
+  /// // LIMIT 15 OFFSET 30
+  /// List blogs = await Blog().forPage(3).get()
+  /// List blogs = await Blog().forPage(2, 50).get()
+  /// ```
+  QueryBuilder<T> forPage(int page, [int perPage = 15]) {
+    int skipped = (page - 1) * perPage;
+    return offset(skipped < 0 ? 0 : skipped).limit(perPage);
+  }
 }
 
 /// the kinds of row lock
