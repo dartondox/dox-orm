@@ -143,8 +143,9 @@ mixin Select<T> implements SharedMixin<T> {
   /// Select raw query, nothing is quoted. never put user input in
   /// [query]. pass user values in [params] as `@name`, they are bound
   /// safely, like whereRaw(). use unique names: a name that the query
-  /// uses in another place (eg. in whereRaw()) throws an [ArgumentError]
-  /// when the query runs.
+  /// uses in another place (eg. in whereRaw() or an other selectRaw())
+  /// throws an [ArgumentError]. a name may not start with `dox_`: the
+  /// ORM uses it for its own values.
   ///
   /// ```
   /// await Blog().selectRaw('DISTINCT title').get();
@@ -161,7 +162,26 @@ mixin Select<T> implements SharedMixin<T> {
       _selectValues = null;
     }
     if (params is Map<String, dynamic> && params.isNotEmpty) {
-      (_selectValues ??= <String, dynamic>{}).addAll(params);
+      Map<String, dynamic> values = _selectValues ??= <String, dynamic>{};
+      for (String key in params.keys) {
+        /// the ORM names its own values `dox_...`, eg. `dox_limit`
+        if (key.startsWith('dox_')) {
+          throw ArgumentError.value(
+            key,
+            'selectRaw',
+            'starts with dox_, which the ORM uses for its own values',
+          );
+        }
+        if (values.containsKey(key)) {
+          throw ArgumentError.value(
+            key,
+            'selectRaw',
+            'is a value name that the query uses already. '
+                'Use unique names for the selectRaw() values',
+          );
+        }
+      }
+      values.addAll(params);
     }
     _selectSet = true;
     return queryBuilder;

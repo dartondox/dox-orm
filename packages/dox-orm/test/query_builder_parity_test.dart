@@ -553,6 +553,38 @@ void main() async {
       }
     });
 
+    test('two selectRaw calls with one value name', () async {
+      SqlQueryBuilder().flags = const OrmFlags(selectRawAdds: true);
+      for (int other in <int>[3, 2]) {
+        expect(
+          () => items()
+              .select('name')
+              .selectRaw('views * @r as a', <String, dynamic>{'r': 2})
+              .selectRaw('views * @r as b', <String, dynamic>{'r': other}),
+          throwsArgumentError,
+        );
+      }
+
+      /// with the flag off the second call replaces the first
+      SqlQueryBuilder().flags = const OrmFlags();
+      List<Map<String, dynamic>> rows = await items()
+          .selectRaw('views * @r as a', <String, dynamic>{'r': 2})
+          .selectRaw('views * @r as b', <String, dynamic>{'r': 3})
+          .where('name', 'A')
+          .get();
+      expect(rows.single, <String, dynamic>{'b': 300});
+    });
+
+    test('a selectRaw value name that starts with dox_ throws', () {
+      for (String name in <String>['dox_limit', 'dox_offset', 'dox_x']) {
+        expect(
+          () => items().selectRaw('@$name as a', <String, dynamic>{name: 1}),
+          throwsArgumentError,
+          reason: name,
+        );
+      }
+    });
+
     test('selectRaw without values replaces the old values', () async {
       List<Map<String, dynamic>> rows = await items()
           .selectRaw('views * @rate as score', <String, dynamic>{'rate': 2})
