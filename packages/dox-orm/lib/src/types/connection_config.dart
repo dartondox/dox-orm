@@ -75,6 +75,42 @@ class ConnectionConfig {
   /// ```
   DBDriver Function(ConnectionConfig config)? driverFactory;
 
+  /// read replicas. When it is set (and not empty), a plain `SELECT` goes
+  /// to one of these hosts, and everything else (writes, locks, schema
+  /// changes, transactions) to the write host. See [ReplicaDriver].
+  ///
+  /// Each map changes some settings of this config for that host: `host`,
+  /// `port`, `user`, `password`, `database`, and `extra` (added to
+  /// [extra]). The other settings are shared. The hosts take turns (round
+  /// robin). A database url (`DATABASE_URL`) replaces the whole default
+  /// connection, so its read hosts too.
+  ///
+  /// ```
+  /// ConnectionConfig(
+  ///   driver: Driver.postgres,
+  ///   host: 'primary.db',
+  ///   user: 'app',
+  ///   database: 'app',
+  ///   debug: false,
+  ///   read: <Map<String, dynamic>>[
+  ///     <String, dynamic>{'host': 'replica-1.db'},
+  ///     <String, dynamic>{'host': 'replica-2.db'},
+  ///   ],
+  ///   sticky: true,
+  /// )
+  /// ```
+  List<Map<String, dynamic>>? read;
+
+  /// settings of the write host, in the same form as one [read] map. With
+  /// no [write], the write host is this config as it is. Only used with
+  /// [read].
+  Map<String, dynamic>? write;
+
+  /// with [read]: after a write, the reads of the same unit of work go to
+  /// the write host, so they see the write. The unit is a
+  /// [ReplicaDriver.stickyScope], eg. one request. Off by default.
+  bool sticky;
+
   /// [user], [password] and [port] are not used by sqlite
   ConnectionConfig({
     required this.driver,
@@ -90,6 +126,9 @@ class ConnectionConfig {
     this.driverFactory,
     this.logRedact = const <String>[],
     this.slowQueryMs,
+    this.read,
+    this.write,
+    this.sticky = false,
   });
 
   /// Makes a config from a database url, like `DATABASE_URL`.
@@ -296,7 +335,68 @@ class ConnectionConfig {
   /// else the native driver for postgres and mysql, else the sqlite
   /// driver. postgres and mysql throw an [UnsupportedError] when their
   /// native library does not load (see [NativeDrivers.ensureAvailable]).
+  ///
+  /// With [read] hosts it makes a [ReplicaDriver]: one driver for the
+  /// write host and one for each read host.
   DBDriver createDriver() {
+    List<Map<String, dynamic>>? reads = read;
+    if (reads != null && reads.isNotEmpty) {
+      Map<String, dynamic>? writeHost = write;
+      return ReplicaDriver(
+        writer: (writeHost == null ? this : _forHost(writeHost))._create(),
+        readers: <DBDriver>[
+          for (Map<String, dynamic> r in reads) _forHost(r)._create(),
+        ],
+        sticky: sticky,
+      );
+    }
+    return _create();
+  }
+
+  /// the keys a [read] or [write] map can have
+  static const Set<String> _hostKeys = <String>{
+    'host',
+    'port',
+    'user',
+    'password',
+    'database',
+    'extra',
+  };
+
+  /// a copy of this config with the settings of one [read] or [write]
+  /// [host], and no read hosts
+  ConnectionConfig _forHost(Map<String, dynamic> host) {
+    for (String key in host.keys) {
+      if (!_hostKeys.contains(key)) {
+        throw ArgumentError.value(
+          key,
+          'read/write',
+          'is not a host setting. Use ${_hostKeys.join(', ')}',
+        );
+      }
+    }
+    return ConnectionConfig(
+      driver: driver,
+      host: host['host'] as String? ?? this.host,
+      port: host['port'] as int? ?? port,
+      user: host['user'] as String? ?? user,
+      password: host['password'] as String? ?? password,
+      database: host['database'] as String? ?? database,
+      useSSL: useSSL,
+      extra: <String, dynamic>{
+        ...extra,
+        ...?host['extra'] as Map<String, dynamic>?,
+      },
+      debug: debug,
+      printer: printer,
+      driverFactory: driverFactory,
+      logRedact: logRedact,
+      slowQueryMs: slowQueryMs,
+    );
+  }
+
+  /// the driver of one host
+  DBDriver _create() {
     if (driverFactory != null) {
       return driverFactory!(this);
     }

@@ -51,10 +51,26 @@ class QueryBuilder<T>
 
   @override
   DBDriver get dbDriver {
-    if (connection != null) {
-      return SqlQueryBuilder().getDBDriver(connection);
-    }
-    return SqlQueryBuilder().dbDriver;
+    DBDriver driver = connection != null
+        ? SqlQueryBuilder().getDBDriver(connection)
+        : SqlQueryBuilder().dbDriver;
+    if (_onWrite && driver is ReplicaDriver) return driver.writer;
+    return driver;
+  }
+
+  bool _onWrite = false;
+
+  /// run the queries of this query builder on the write database, also
+  /// its reads. It matters only for a connection with `read` hosts (see
+  /// [ConnectionConfig.read]): use it to read a row you just wrote, or for
+  /// a `SELECT` that changes data.
+  ///
+  /// ```
+  /// User? user = await User().onWriteConnection().find(id);
+  /// ```
+  QueryBuilder<T> onWriteConnection() {
+    _onWrite = true;
+    return this;
   }
 
   @override

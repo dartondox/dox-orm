@@ -12,6 +12,7 @@ export 'src/drivers/db_driver.dart' hide SqlParam, findSqlParams;
 export 'src/drivers/mysql_native_driver.dart';
 export 'src/drivers/native_drivers.dart';
 export 'src/drivers/postgres_native_driver.dart';
+export 'src/drivers/replica_driver.dart';
 export 'src/drivers/statement_cache.dart';
 export 'src/join.dart' show JoinClause;
 export 'src/main.dart';

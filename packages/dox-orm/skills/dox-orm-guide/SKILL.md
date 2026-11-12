@@ -415,6 +415,28 @@ token.cancel(); // throws PgQueryCancelledException or MysqlQueryCancelledExcept
 
 SQLite does not support it: the query runs to its end.
 
+### Read replicas
+
+```dart
+'postgres': ConnectionConfig(
+  driver: Driver.postgres,
+  host: env.dbHost, // the write (primary) host
+  // ...
+  read: <Map<String, dynamic>>[
+    <String, dynamic>{'host': 'replica-1.db'},
+    <String, dynamic>{'host': 'replica-2.db', 'user': 'reader'},
+  ],
+  sticky: true, // optional
+),
+```
+
+- Plain `SELECT`s go to the read hosts in turn. Writes, locks, schema changes and every query
+  in a transaction go to the write host.
+- `User().onWriteConnection().find(id)` reads from the write host.
+- `sticky: true` works only inside `ReplicaDriver.stickyScope(() => ...)`. Add a middleware
+  (`IDoxNextMiddleware`) whose `handle(req, next)` returns `ReplicaDriver.stickyScope(next)`:
+  then a request reads its own writes.
+
 ## Switch from SQLite to Postgres or MySQL
 
 A new app uses SQLite. The end of `pubspec.yaml` skips the download of the two other drivers:

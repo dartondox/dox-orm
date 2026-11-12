@@ -133,8 +133,10 @@ class SqlQueryBuilder {
   }) {
     var (bool known, String? connection) = _connectionOf(driver);
     Stopwatch? watch = known ? startQueryWatch(connection) : null;
+    // the schema builder and the migrator read the write database
+    DBDriver run = driver is ReplicaDriver ? driver.writer : driver;
     return timeQuery(
-      driver.query(query, substitutionValues: substitutionValues),
+      run.query(query, substitutionValues: substitutionValues),
       watch,
       query,
       substitutionValues,

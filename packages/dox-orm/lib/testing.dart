@@ -27,6 +27,7 @@ Future<void> refreshDatabase({
   String? connection,
 }) async {
   DBDriver driver = SqlQueryBuilder().getDBDriver(connection);
+  if (driver is ReplicaDriver) driver = driver.writer;
   switch (driver.getName()) {
     case Driver.sqlite:
       await _refreshSqlite(driver, keep);
