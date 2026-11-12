@@ -1,4 +1,6 @@
 import 'package:dox_orm/dox_orm.dart';
+import 'package:dox_orm/src/drivers/db_driver.dart'
+    show SqlParam, findSqlParams;
 
 /// prints each query on one line, with the values put into the SQL:
 /// ```
@@ -14,22 +16,31 @@ class PrettyQueryPrinter implements QueryPrinter {
   }
 
   /// [sql] with the values already in it. [slowMs] is set for a slow query.
-  void logSql(String sql, {required String connection, int? slowMs}) {
+  /// [mysql] reads `#` as a comment, like MySQL.
+  void logSql(
+    String sql, {
+    required String connection,
+    int? slowMs,
+    bool mysql = false,
+  }) {
     String name = slowMs == null
         ? 'db:$connection'
         : 'db:$connection SLOW ${slowMs}ms';
-    print('${_tag(name)} ${_end(sql)}');
+    print('${_tag(name)} ${_end(sql, mysql: mysql)}');
   }
 
   /// dim cyan
   String _tag(String name) => '\x1B[2;36m▌ [$name]\x1B[0m';
 
-  /// add `;` at the end, on a new line when the last line has a
-  /// `--` or `#` comment, so the `;` is not inside the comment
-  String _end(String sql) {
+  /// add `;` at the end. When the SQL ends inside a comment (`--`, or
+  /// `#` for [mysql]), the `;` goes on a new line.
+  String _end(String sql, {bool mysql = false}) {
     String s = sql.trimRight();
     if (s.endsWith(';')) return s;
-    String last = s.substring(s.lastIndexOf('\n') + 1);
-    return last.contains('--') || last.contains('#') ? '$s\n;' : '$s;';
+    // ponytail: a marker at the end is found only when it is not inside
+    // a comment or a string, so the quote and comment rules stay in one place
+    List<SqlParam> found = findSqlParams('$s@dox_end', mysql: mysql);
+    bool open = found.isEmpty || found.last.start != s.length;
+    return open ? '$s\n;' : '$s;';
   }
 }

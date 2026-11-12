@@ -263,6 +263,13 @@ void main() {
               logRedact: <String>['token'],
               slowQueryMs: 0,
             ),
+            // a fake driver: the log only needs its name, no server
+            'my': ConnectionConfig(
+              driver: Driver.mysql,
+              database: 'fake',
+              debug: false,
+              driverFactory: _MysqlNamed.new,
+            ),
           },
         ),
       );
@@ -393,6 +400,46 @@ void main() {
       expect(lines, <String>['${tag}SELECT 1 -- note\n;']);
     });
 
+    test('puts the ; on the same line when -- or # is not a comment', () {
+      for (String q in <String>[
+        "SELECT 'https://x.com/#top'",
+        "SELECT 'a--b'",
+        "SELECT data #>> '{a,b}' FROM t",
+      ]) {
+        expect(_prints(() => Logger().log(q)), <String>['$tag$q;']);
+      }
+    });
+
+    test('a named mysql connection uses the mysql rules', () {
+      List<String> lines = _prints(
+        () => Logger().log(
+          'SELECT `a` FROM `t` WHERE `b` = @b # note',
+          <String, dynamic>{'b': true},
+          'my',
+        ),
+      );
+      expect(lines, <String>[
+        '\x1B[2;36m▌ [db:my]\x1B[0m SELECT `a` FROM `t` WHERE `b` = 1 # note\n;',
+      ]);
+    });
+
+    test('NaN and Infinity are quoted', () {
+      expect(
+        Logger.fillSql(
+          'SELECT @a, @b, @c, @d',
+          <String, dynamic>{
+            'a': double.nan,
+            'b': double.infinity,
+            'c': double.negativeInfinity,
+            'd': 1.5,
+          },
+          Driver.postgres,
+          <String>[],
+        ),
+        "SELECT 'NaN', 'Infinity', '-Infinity', 1.5",
+      );
+    });
+
     test('mysql: literal rules and backslash in raw SQL', () {
       expect(
         Logger.fillSql(
@@ -447,6 +494,20 @@ Future<List<String>> _printsAsync(Future<void> Function() body) async {
     ),
   );
   return lines;
+}
+
+/// a driver that only has a name: enough for the log line
+class _MysqlNamed implements DBDriver {
+  _MysqlNamed(ConnectionConfig config);
+
+  @override
+  Driver getName() => Driver.mysql;
+
+  @override
+  Future<void> close() async {}
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 /// a subclass with its own log(), like user code may have

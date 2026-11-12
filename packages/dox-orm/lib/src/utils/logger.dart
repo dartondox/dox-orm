@@ -70,19 +70,21 @@ class Logger {
   ) {
     String filled;
     String name;
+    Driver driver;
     try {
       SqlQueryBuilder sql = SqlQueryBuilder();
-      filled = fillSql(
-        query,
-        values,
-        sql.getDBDriver(connection).getName(),
-        redact,
-      );
+      driver = sql.getDBDriver(connection).getName();
+      filled = fillSql(query, values, driver, redact);
       name = connection ?? sql.databaseConfig?.connection ?? 'default';
     } catch (_) {
       return false;
     }
-    printer.logSql(filled, connection: name, slowMs: slowMs);
+    printer.logSql(
+      filled,
+      connection: name,
+      slowMs: slowMs,
+      mysql: driver == Driver.mysql,
+    );
     return true;
   }
 
@@ -106,6 +108,8 @@ class Logger {
         out.write(query.substring(p.start, p.end));
       } else if (_hidden(p.name, redact)) {
         out.write("'***'");
+      } else if (value is double && !value.isFinite) {
+        out.write("'$value'"); // 'NaN', 'Infinity', '-Infinity'
       } else if (value is Uint8List) {
         out.write(_hex(value, driver));
       } else {
