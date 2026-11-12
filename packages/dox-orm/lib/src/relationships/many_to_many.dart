@@ -20,6 +20,7 @@ M? manyToMany<T, M>(
   bool withTimestamps = false,
 }) {
   if (list.isEmpty) return null;
+  PreloadQuery? preload = takePreloadQuery();
 
   Model<T> local = list.first;
   Model<M> related = model();
@@ -76,7 +77,7 @@ M? manyToMany<T, M>(
   if (onQuery != null) {
     q = onQuery(q);
   }
-  takePreloadQuery(q);
+  preload?.call(q);
   _localKeys[q] = localKey;
   manyToManyQuery[q] = _Pivot(
     owner: local,

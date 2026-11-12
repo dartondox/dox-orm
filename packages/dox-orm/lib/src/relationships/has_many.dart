@@ -11,6 +11,7 @@ M? hasMany<T, M>(
   dynamic onQuery,
 }) {
   if (list.isEmpty) return null;
+  PreloadQuery? preload = takePreloadQuery();
 
   Model<T> owner = list.first;
   localKey = localKey ?? owner.primaryKey;
@@ -31,7 +32,7 @@ M? hasMany<T, M>(
   if (onQuery != null) {
     m = onQuery(m);
   }
-  takePreloadQuery(m);
+  preload?.call(m);
   relationLocalKeys[m] = localKey;
   return m as M;
 }

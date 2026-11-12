@@ -29,6 +29,7 @@ M? belongsTo<T, M>(
     );
   }
 
+  PreloadQuery? preload = takePreloadQuery();
   Model<T> foreign = list.first;
   Model<M> owner = model().debug(foreign.shouldDebug);
   owner.useConnectionOf(foreign);
@@ -56,7 +57,7 @@ M? belongsTo<T, M>(
   if (onQuery != null) {
     owner = onQuery(owner);
   }
-  takePreloadQuery(owner);
+  preload?.call(owner);
   _keys[owner] = (childKeys, localKey);
   return owner as M;
 }

@@ -91,7 +91,7 @@ class _MorphTo {
 
   /// the where and nested relations of `preload()`, for the query of
   /// each type
-  final void Function(QueryBuilder<dynamic> query)? preload;
+  final PreloadQuery? preload;
 
   const _MorphTo(
     this.typeColumn,
@@ -150,9 +150,8 @@ M? morphTo<T, M>(
     idColumn ?? '${name}_id',
     ownerKey,
     onQuery,
-    preloadQuery,
+    takePreloadQuery(),
   );
-  preloadQuery = null;
   for (Model<T> owner in list) {
     String? type = m.typeOf(owner);
     if (type == null) continue;

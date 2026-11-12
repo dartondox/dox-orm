@@ -260,5 +260,18 @@ void main() async {
       w.hidden = <String>['articles'];
       expect(w.toJson().containsKey('articles'), isFalse);
     });
+    test('the where goes to the relation query, not to a whereHas in its '
+        'onQuery', () async {
+      List<Writer> list = await Writer()
+          .preload('remarkedArticles', (QueryBuilder<dynamic> q) {
+            q.where('published', true);
+          })
+          .preload('remarkedArticles.remarks')
+          .orderBy('id')
+          .get();
+      expect(list[0].remarkedArticles.single.title, 'a1');
+      expect(list[0].remarkedArticles.single.remarks, hasLength(2));
+      expect(list[1].remarkedArticles.single.remarks.single.body, 'z');
+    });
   });
 }
