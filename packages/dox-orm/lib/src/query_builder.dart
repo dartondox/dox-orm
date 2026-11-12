@@ -137,6 +137,23 @@ class QueryBuilder<T>
     return this;
   }
 
+  /// the token of [cancelWith], or null
+  QueryCancelToken? cancelToken;
+
+  /// stop the queries of this query builder when [token] is cancelled.
+  /// Postgres and MySQL only, SQLite runs a query to its end. See
+  /// [QueryCancelToken].
+  ///
+  /// ```
+  /// QueryCancelToken token = QueryCancelToken();
+  /// Future<List<Blog>> slow = Blog().where('status', 'draft').cancelWith(token).get();
+  /// token.cancel();
+  /// ```
+  QueryBuilder<T> cancelWith(QueryCancelToken token) {
+    cancelToken = token;
+    return this;
+  }
+
   /// set debug on or of
   ///
   /// ```

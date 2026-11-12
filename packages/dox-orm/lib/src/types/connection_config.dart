@@ -60,7 +60,8 @@ class ConnectionConfig {
   bool useSSL;
 
   /// extra configuration for the connection
-  /// eg. `maxConnectionCount` for postgres and mysql,
+  /// eg. `maxConnectionCount`, `requestTimeout`, `maxConnectionAge` and
+  /// `idleTimeout` for postgres and mysql, `serverKill` for mysql,
   /// `sslMode` for postgres, `busyTimeout` and `background` for sqlite
   /// (see [sqliteBackground]).
   Map<String, dynamic> extra;
@@ -274,6 +275,19 @@ class ConnectionConfig {
     true || 1 => true,
     String s => s.toLowerCase() == 'true' || s == '1',
     _ => false,
+  };
+
+  /// `extra[key]` as a [Duration]. An int is seconds, so a database url
+  /// (eg. `?requestTimeout=30`) works too. Null when it is not set.
+  Duration? extraDuration(String key) => switch (extra[key]) {
+    Duration d => d,
+    int seconds => Duration(seconds: seconds),
+    null => null,
+    Object v => throw ArgumentError.value(
+      v,
+      key,
+      'must be a Duration or an int of seconds',
+    ),
   };
 
   int get _busyTimeout => extra['busyTimeout'] as int? ?? 5000;

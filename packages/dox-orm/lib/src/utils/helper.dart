@@ -187,12 +187,23 @@ class QueryBuilderHelper<T> {
     }
     SqlQueryBuilder sql = SqlQueryBuilder();
     Stopwatch? watch = sql.startQueryWatch(connection);
+    QueryCancelToken? token = queryBuilder.cancelToken;
     return sql.timeQuery(
-      queryBuilder.dbDriver.query(
-        query,
-        substitutionValues: values,
-        primaryKey: queryBuilder.primaryKey,
-      ),
+      // no closure for the common case: a query with no token
+      token == null
+          ? queryBuilder.dbDriver.query(
+              query,
+              substitutionValues: values,
+              primaryKey: queryBuilder.primaryKey,
+            )
+          : DBDriver.withCancelToken(
+              token,
+              () => queryBuilder.dbDriver.query(
+                query,
+                substitutionValues: values,
+                primaryKey: queryBuilder.primaryKey,
+              ),
+            ),
       watch,
       query,
       values,

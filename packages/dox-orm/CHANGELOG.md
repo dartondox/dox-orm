@@ -1,5 +1,10 @@
 ## Unreleased
 
+- New: pool settings in `extra` of a Postgres or MySQL `ConnectionConfig`: `requestTimeout` (default 300 s), `maxConnectionAge` and `idleTimeout`, and `serverKill` (MySQL, default true). Each is a `Duration`, or an int of seconds, so a database url like `?requestTimeout=30` works. `ConnectionConfig.extraDuration(key)` reads one. The defaults do not change: Postgres keeps connections with no age or idle limit, MySQL closes them after 12 hours.
+- Fix: MySQL `maxConnectionAge` (default 12 hours) is now a real age: a connection older than this closes once it has no query. Before, it closed a connection only after 12 hours with no traffic. Connections with no traffic still close after 12 hours (`idleTimeout`).
+- Change: Postgres now takes `maxConnectionAge`. Before, it was ignored. An app that sets it now gets connections closed at that age.
+- New: `QueryCancelToken` and `query.cancelWith(token)` stop a running query on Postgres and MySQL. The query then throws `PgQueryCancelledException` or `MysqlQueryCancelledException` (both exported by `dox_orm`). A token that is cancelled already fails a new query at once. SQLite does not support it: the query runs to its end. It needs the next `dox_postgres_native` and `dox_mysql_native`.
+
 - New: `@HasManyThrough(Post, through: User)` and `@HasOneThrough(Post, through: User)`. They read the far rows through a model in the middle, like the posts of the users of a country. The keys are `foreignKey` (on the through table), `localKey`, `throughForeignKey` (on the far table) and `throughLocalKey`. Lazy loading, `preload` (one query for all parents), `withCount`, `whereHas` and `has` work. Soft deleted through rows and far rows are left out. Needs the next dox_builder.
 - Ships an AI agent skill (dox-orm-guide). Install it in your app with `dart run skills@ get`.
 - Requires Dart 3.14 or newer.

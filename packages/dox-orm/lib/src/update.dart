@@ -10,7 +10,10 @@ Future<int> runAffectingQuery(QueryBuilder<dynamic> qb, String query) {
   SqlQueryBuilder sql = SqlQueryBuilder();
   Stopwatch? watch = sql.startQueryWatch(connection);
   return sql.timeQuery(
-    qb.dbDriver.affectingStatement(query, substitutionValues: values),
+    DBDriver.withCancelToken(
+      qb.cancelToken,
+      () => qb.dbDriver.affectingStatement(query, substitutionValues: values),
+    ),
     watch,
     query,
     values,

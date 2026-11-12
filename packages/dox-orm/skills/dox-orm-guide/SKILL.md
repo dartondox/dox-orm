@@ -377,6 +377,30 @@ The connections are in `lib/config/database.dart`. `DB_CONNECTION` in `.env` pic
 `lib/providers/orm_provider.dart` starts the ORM in every isolate with
 `SqlQueryBuilder.initializeWithDatabaseConfig(databaseConfig)`.
 
+### Pool settings (Postgres and MySQL)
+
+Put them in `extra` of the `ConnectionConfig`. A `Duration`, or an int of seconds.
+
+```dart
+extra: <String, dynamic>{
+  'maxConnectionCount': 10,
+  'requestTimeout': const Duration(seconds: 30), // default 300 s
+  'maxConnectionAge': const Duration(minutes: 30), // Postgres: no limit, MySQL: 12 h
+  'idleTimeout': const Duration(minutes: 5), // Postgres: kept, MySQL: 12 h
+  'serverKill': false, // MySQL only: no KILL QUERY (eg. behind ProxySQL)
+},
+```
+
+### Stop a slow query
+
+```dart
+QueryCancelToken token = QueryCancelToken();
+Future<List<Post>> posts = Post().where('status', 'draft').cancelWith(token).get();
+token.cancel(); // throws PgQueryCancelledException or MysqlQueryCancelledException
+```
+
+SQLite does not support it: the query runs to its end.
+
 ## Switch from SQLite to Postgres or MySQL
 
 A new app uses SQLite. The end of `pubspec.yaml` skips the download of the two other drivers:

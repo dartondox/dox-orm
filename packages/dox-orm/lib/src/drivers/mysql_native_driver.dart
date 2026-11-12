@@ -14,9 +14,22 @@ class MysqlNativeDriver extends DBDriver {
   MysqlNativeDriver(this.pool);
 
   /// Makes the pool from a Dox [ConnectionConfig]. Reads
-  /// `maxConnectionCount` (default 10), `maxConnectionAge` (default 12
-  /// hours), `preparedStatementCacheSize` (default 100) and `threads`
-  /// (default 1) from `extra`. `useSSL` turns on TLS, and the server
+  /// `maxConnectionCount` (default 10), `preparedStatementCacheSize`
+  /// (default 100), `threads` (default 1), `serverKill` (default true) and
+  /// the pool times from `extra`.
+  ///
+  /// The pool times are a `Duration`, or an int of seconds (eg. from a
+  /// database url):
+  /// - `requestTimeout` (default 300 s): the longest wait for one request.
+  /// - `maxConnectionAge` (default 12 hours): close a connection older
+  ///   than this when it has no query.
+  /// - `idleTimeout` (default 12 hours): close a connection with no
+  ///   traffic for this long.
+  ///
+  /// `serverKill` false: a cancelled or timed out query is not stopped
+  /// on the server with `KILL QUERY`. Use it behind a proxy, where the
+  /// KILL may reach another server.
+  /// `useSSL` turns on TLS, and the server
   /// certificate is checked unless `extra['verifyCertificate']` is false.
   /// A host that starts with `/` is a Unix socket file.
   /// Throws an [UnsupportedError] when the native library does not load.
@@ -34,7 +47,13 @@ class MysqlNativeDriver extends DBDriver {
         verifyCertificate: config.verifyCertificate,
         maxConnections: extra['maxConnectionCount'] as int? ?? 10,
         maxConnectionAge:
-            extra['maxConnectionAge'] as Duration? ?? const Duration(hours: 12),
+            config.extraDuration('maxConnectionAge') ??
+            const Duration(hours: 12),
+        idleTimeout: config.extraDuration('idleTimeout'),
+        requestTimeout:
+            config.extraDuration('requestTimeout') ??
+            const Duration(seconds: 300),
+        serverKill: extra['serverKill'] as bool? ?? true,
         statementCacheSize: config.statementCacheSize,
         threads: extra['threads'] as int? ?? 1,
       ),
@@ -82,9 +101,20 @@ class MysqlNativeDriver extends DBDriver {
       _toMysqlValue,
       mysql: true,
     );
+    MysqlCancelToken? token = DBDriver.currentCancelToken?.mysqlToken;
     return rows
-        ? pool.query(query, parameters: params, transaction: _tx)
-        : pool.execute(query, parameters: params, transaction: _tx);
+        ? pool.query(
+            query,
+            parameters: params,
+            transaction: _tx,
+            cancelToken: token,
+          )
+        : pool.execute(
+            query,
+            parameters: params,
+            transaction: _tx,
+            cancelToken: token,
+          );
   }
 
   @override
