@@ -2,6 +2,11 @@ import 'package:dox_orm/dox_orm.dart';
 
 import 'shared_mixin.dart';
 
+/// the limit() and offset() of [qb], null when not set. a function, not
+/// a query method, so it can not clash with the name of a model field.
+(int?, int?) limitAndOffset(QueryBuilder<dynamic> qb) =>
+    (qb._limit, qb._offset);
+
 mixin Limit<T> implements SharedMixin<T> {
   int? _limit;
   int? _offset;

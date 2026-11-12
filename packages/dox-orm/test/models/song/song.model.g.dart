@@ -51,9 +51,7 @@ class SongGenerator extends Model<Song> {
   static Future<void> getArtists(List<Model<Song>> list) async {
     var result = await getManyToMany<Song, Artist>(queryArtists(list), list);
     for (dynamic i in list) {
-      if (result[i.tempIdValue.toString()] != null) {
-        i.artists = result[i.tempIdValue.toString()]!;
-      }
+      i.artists = result[i.tempIdValue.toString()] ?? <Artist>[];
     }
   }
 

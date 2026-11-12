@@ -51,10 +51,38 @@ class QueryBuilder<T>
 
   @override
   DBDriver get dbDriver {
-    if (connection != null) {
-      return SqlQueryBuilder().getDBDriver(connection);
-    }
-    return SqlQueryBuilder().dbDriver;
+    DBDriver driver = connection != null
+        ? SqlQueryBuilder().getDBDriver(connection)
+        : SqlQueryBuilder().dbDriver;
+    if (_onWrite && driver is ReplicaDriver) return driver.writer;
+    return driver;
+  }
+
+  bool _onWrite = false;
+
+  /// run the queries of this query builder on the write database, also
+  /// its reads. It matters only for a connection with `read` hosts (see
+  /// [ConnectionConfig.read]): use it to read a row you just wrote, or for
+  /// a `SELECT` that changes data.
+  ///
+  /// ```
+  /// User? user = await User().onWriteConnection().find(id);
+  /// ```
+  QueryBuilder<T> onWriteConnection() {
+    _onWrite = true;
+    return this;
+  }
+
+  /// true after [onWriteConnection]
+  bool get usesWriteConnection => _onWrite;
+
+  /// for a query made for [from], like the query of a relation: take its
+  /// connection (when this has none), [onWriteConnection] and
+  /// [cancelWith] token.
+  void useConnectionOf(QueryBuilder<dynamic> from) {
+    connection ??= from.connection;
+    if (from._onWrite) _onWrite = true;
+    cancelToken ??= from.cancelToken;
   }
 
   @override
@@ -137,6 +165,23 @@ class QueryBuilder<T>
     return this;
   }
 
+  /// the token of [cancelWith], or null
+  QueryCancelToken? cancelToken;
+
+  /// stop the queries of this query builder when [token] is cancelled.
+  /// Postgres and MySQL only, SQLite runs a query to its end. See
+  /// [QueryCancelToken].
+  ///
+  /// ```
+  /// QueryCancelToken token = QueryCancelToken();
+  /// Future<List<Blog>> slow = Blog().where('status', 'draft').cancelWith(token).get();
+  /// token.cancel();
+  /// ```
+  QueryBuilder<T> cancelWith(QueryCancelToken token) {
+    cancelToken = token;
+    return this;
+  }
+
   /// set debug on or of
   ///
   /// ```
@@ -144,8 +189,15 @@ class QueryBuilder<T>
   /// ```
   QueryBuilder<T> setPrimaryKey(String id) {
     primaryKey = id;
+    _keySet = true;
     return this;
   }
+
+  bool _keySet = false;
+
+  /// true when the table surely has the [primaryKey] column: a model, or
+  /// a query with [setPrimaryKey]. a QueryBuilder.table() query may not.
+  bool get hasKnownPrimaryKey => _keySet || self is Model;
 
   /// With trash (this function can be used with SoftDeletes only)
   ///

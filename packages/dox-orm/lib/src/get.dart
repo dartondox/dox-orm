@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:dox_orm/dox_orm.dart';
 
@@ -663,16 +664,51 @@ mixin Get<T> implements SharedMixin<T> {
     int size,
     FutureOr<bool?> Function(List<T> rows) callback,
   ) async {
+    await for (List<T> rows in _pagesByOffset(size)) {
+      if (await callback(rows) == false) return false;
+    }
+    return true;
+  }
+
+  /// the pages of [chunk]: [size] rows each, by LIMIT and OFFSET.
+  /// [keepLimit]: start at the offset() of the query and stop after its
+  /// limit(). chunk() sets its own, as before.
+  Stream<List<T>> _pagesByOffset(int size, {bool keepLimit = false}) async* {
     _checkChunkSize(size);
     QueryBuilder<T> qb = queryBuilder;
-    if (qb.getOrderByQuery().isEmpty) {
-      qb.orderBy(_qualified(primaryKey));
+    var (int? limit, int? offset) = keepLimit
+        ? limitAndOffset(qb)
+        : (null, null);
+    String key = _qualified(primaryKey);
+    String orderBy = qb.getOrderByQuery();
+    if (orderBy.isEmpty) {
+      qb.orderBy(key);
+    } else if (qb.hasKnownPrimaryKey &&
+        !qb.hasUnion &&
+        !qb.hasFromSub &&
+        !qb.isDistinct &&
+        qb.getGroupByQuery().isEmpty &&
+        !orderBy.contains(helper.wrap(key))) {
+      /// the primary key last: rows with the same value of the other
+      /// order columns keep one order, so no row is read twice or
+      /// skipped. only with a known primary key (a model, or
+      /// setPrimaryKey()): a QueryBuilder.table() query may have no `id`
+      /// column. ponytail: not with distinct or groupBy, where
+      /// the database may not allow it.
+      qb.orderBy(key);
     }
+    int read = 0;
     for (int page = 0; ; page++) {
-      List<T> rows = await qb.limit(size).offset(page * size).get();
-      if (rows.isEmpty) return true;
-      if (await callback(rows) == false) return false;
-      if (rows.length < size) return true;
+      int take = limit == null ? size : min(size, limit - read);
+      if (take <= 0) return;
+      List<T> rows = await qb
+          .limit(take)
+          .offset((offset ?? 0) + page * size)
+          .get();
+      if (rows.isEmpty) return;
+      read += rows.length;
+      yield rows;
+      if (rows.length < take) return;
     }
   }
 
@@ -695,28 +731,54 @@ mixin Get<T> implements SharedMixin<T> {
     FutureOr<bool?> Function(List<T> rows) callback, {
     String? column,
   }) async {
-    _checkNoSub('chunkById');
+    await for (List<T> rows in _pagesById(size, column, 'chunkById', false)) {
+      if (await callback(rows) == false) return false;
+    }
+    return true;
+  }
+
+  /// the pages of [chunkById]: [size] rows each, `WHERE column > last`.
+  /// [keepLimit]: start at the offset() of the query and stop after its
+  /// limit(). chunkById() sets its own, as before.
+  Stream<List<T>> _pagesById(
+    int size,
+    String? column,
+    String method,
+    bool keepLimit,
+  ) async* {
+    _checkNoSub(method);
     _checkChunkSize(size);
     QueryBuilder<T> qb = queryBuilder;
     if (qb.getOrderByQuery().isNotEmpty) {
       throw StateError(
-        'chunkById() orders by the id column itself. '
+        '$method() orders by the id column itself. '
         'Remove orderBy() from the query.',
       );
     }
     String name = column ?? primaryKey;
     String qualified = _qualified(name);
     String key = name.split('.').last;
-    qb.orderBy(qualified).limit(size).offset(0);
+    var (int? limit, int? offset) = keepLimit
+        ? limitAndOffset(qb)
+        : (null, null);
+    qb.orderBy(qualified).offset(offset ?? 0);
     bool hasLastWhere = false;
+    int read = 0;
     while (true) {
-      List<T> rows = await qb.get();
-      if (rows.isEmpty) return true;
-      if (await callback(rows) == false) return false;
-      if (rows.length < size) return true;
+      int take = limit == null ? size : min(size, limit - read);
+      if (take <= 0) return;
+      List<T> rows = await qb.limit(take).get();
+      if (rows.isEmpty) return;
+      read += rows.length;
+      yield rows;
+      if (rows.length < take) return;
+
+      /// the offset is for the first page only: the next pages start
+      /// after the last value
+      qb.offset(0);
       dynamic last = _valueOfRow(rows.last, key);
       if (last == null) {
-        throw StateError('chunkById() needs the "$key" column in each row');
+        throw StateError('$method() needs the "$key" column in each row');
       }
       if (hasLastWhere) {
         substitutionValues[_chunkKey] = last;
@@ -731,6 +793,144 @@ mixin Get<T> implements SharedMixin<T> {
         _chunkKey: last,
       });
       hasLastWhere = true;
+    }
+  }
+
+  /// the rows of this query one by one, read [chunkSize] rows at a time,
+  /// so a big table does not fill the memory. Relations of `preload()`
+  /// are loaded for each chunk.
+  ///
+  /// - with no orderBy() it reads by the primary key, like [lazyById]: each
+  ///   chunk is `WHERE id > last id`. it is safe when you change or delete
+  ///   rows while you read. the rows must have the primary key.
+  /// - with an orderBy() (or on a union() or fromSub() query) it pages
+  ///   with LIMIT and OFFSET, like [chunk], so the order is kept. The
+  ///   primary key is added as the last order column, so rows with the
+  ///   same order value are not read twice or skipped.
+  /// - limit() and offset() of the query are kept: it starts at the
+  ///   offset and stops after the limit (by LIMIT and OFFSET paging).
+  ///
+  /// Stop reading (eg. `break` in `await for`, or `take(3)`) to stop the
+  /// queries. Use [cursor] for one query with no paging.
+  ///
+  /// ```
+  /// await for (User user in User().where('active', true).lazy()) {
+  ///   await sendMail(user);
+  /// }
+  /// ```
+  Stream<T> lazy({int chunkSize = 1000}) async* {
+    QueryBuilder<T> qb = queryBuilder;
+    var (int? limit, int? offset) = limitAndOffset(qb);
+    Stream<List<T>> pages =
+        qb.getOrderByQuery().isEmpty &&
+            !qb.hasUnion &&
+            !qb.hasFromSub &&
+            limit == null &&
+            offset == null
+        ? _pagesById(chunkSize, null, 'lazy', true)
+        : _pagesByOffset(chunkSize, keepLimit: true);
+    await for (List<T> rows in pages) {
+      for (T row in rows) {
+        yield row;
+      }
+    }
+  }
+
+  /// like [lazy], but always by [column] (the primary key by default):
+  /// each chunk is `WHERE column > last value`, ordered by [column]. the
+  /// column must be unique, and the rows must have it. it throws a
+  /// [StateError] when the query has an orderBy(), and on a union() or
+  /// fromSub() query. limit() and offset() of the query are kept.
+  ///
+  /// ```
+  /// await for (User user in User().lazyById(chunkSize: 500)) {
+  ///   await user.delete();
+  /// }
+  /// ```
+  Stream<T> lazyById({int chunkSize = 1000, String? column}) async* {
+    await for (List<T> rows in _pagesById(
+      chunkSize,
+      column,
+      'lazyById',
+      true,
+    )) {
+      for (T row in rows) {
+        yield row;
+      }
+    }
+  }
+
+  /// the rows of this query one by one, from ONE query. the driver reads
+  /// the rows from the database [chunkSize] at a time, only when you are
+  /// ready for them, so a big result does not fill the memory:
+  /// - Postgres: a server-side portal. MySQL: the rows as they come.
+  /// - SQLite: a statement cursor, also with `background` on.
+  ///
+  /// Each row is a model with its casts, like get(). It works in a
+  /// transaction. Stop reading (eg. `break`, or `take(3)`) to stop the
+  /// query. `cancelWith()` works on Postgres and MySQL.
+  ///
+  /// Relations of `preload()` are loaded for each chunk. On Postgres and
+  /// MySQL inside a transaction this throws a [StateError] then: the
+  /// transaction has one connection, and it is busy with the cursor. Use
+  /// [lazy] there. For the same reason, do not run other queries of the
+  /// same transaction inside the loop on Postgres or MySQL: they wait
+  /// until the cursor ends.
+  ///
+  /// Query listeners and the slow query log see the query once, when the
+  /// first chunk comes (or the end, for no rows). Its time is the time to
+  /// the first chunk, not to the last row. A query that fails before its
+  /// first chunk is not sent to them, like any failed query: the error
+  /// goes to your code.
+  ///
+  /// A driver of your own that does not override [DBDriver.stream] reads
+  /// all rows at once.
+  ///
+  /// ```
+  /// await for (Order order in Order().where('year', 2025).cursor()) {
+  ///   total += order.amount;
+  /// }
+  /// ```
+  Stream<T> cursor({int chunkSize = 1000}) async* {
+    _checkChunkSize(chunkSize);
+    QueryBuilder<T> qb = queryBuilder;
+    DBDriver driver = dbDriver;
+    if (qb.getPreload().isNotEmpty &&
+        driver.getName() != Driver.sqlite &&
+        DBDriver.inTransaction) {
+      throw StateError(
+        'cursor() can not load relations inside a transaction on '
+        'Postgres or MySQL. Use lazy(), or leave out preload().',
+      );
+    }
+    String sql = _buildQuery();
+    Map<String, dynamic> values = substitutionValues;
+    if (shouldDebug) logger.log(sql, values, connection);
+    Stream<List<Map<String, dynamic>>> chunks = DBDriver.withCancelToken(
+      qb.cancelToken,
+      () =>
+          driver.stream(sql, substitutionValues: values, chunkSize: chunkSize),
+    );
+    SqlQueryBuilder orm = SqlQueryBuilder();
+    Stopwatch? watch = orm.startQueryWatch(connection);
+    await for (List<Map<String, dynamic>> rows in chunks) {
+      if (watch != null) {
+        await orm.timeQuery(
+          Future<void>.value(),
+          watch,
+          sql,
+          values,
+          connection,
+        );
+        watch = null;
+      }
+      for (T row in _typed(await helper.formatResult(rows))) {
+        yield row;
+      }
+    }
+    // an empty result: no chunk came
+    if (watch != null) {
+      await orm.timeQuery(Future<void>.value(), watch, sql, values, connection);
     }
   }
 

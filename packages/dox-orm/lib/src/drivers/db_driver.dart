@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:dox_mysql_native/dox_mysql_native.dart';
 import 'package:dox_orm/dox_orm.dart';
@@ -23,8 +24,63 @@ class AfterCommitCallbacks {
   bool _committed = false;
 }
 
+/// Stops the queries of a query builder, see [QueryBuilder.cancelWith].
+///
+/// ```
+/// QueryCancelToken token = QueryCancelToken();
+/// Future<List<Blog>> slow = Blog().cancelWith(token).get();
+/// token.cancel(); // slow fails with a QueryCancelledException
+/// ```
+///
+/// - Postgres and MySQL: the driver stops the query on the server. The
+///   query then fails with `PgQueryCancelledException` or
+///   `MysqlQueryCancelledException`. See their README for the details.
+/// - SQLite: not supported. A query runs to its end.
+/// - One token can stop many queries. After [cancel], new queries with it
+///   fail at once.
+class QueryCancelToken {
+  bool _cancelled = false;
+  PgCancelToken? _postgres;
+  MysqlCancelToken? _mysql;
+
+  /// true after [cancel]
+  bool get isCancelled => _cancelled;
+
+  /// stop the queries of this token. calling it again does nothing.
+  void cancel() {
+    if (_cancelled) return;
+    _cancelled = true;
+    _postgres?.cancel();
+    _mysql?.cancel();
+  }
+
+  /// the token for the Postgres driver, made on the first use
+  PgCancelToken get postgresToken =>
+      _postgres ??= _cancelled ? (PgCancelToken()..cancel()) : PgCancelToken();
+
+  /// the token for the MySQL driver, made on the first use
+  MysqlCancelToken get mysqlToken => _mysql ??= _cancelled
+      ? (MysqlCancelToken()..cancel())
+      : MysqlCancelToken();
+}
+
 /// interface for database driver
 abstract class DBDriver {
+  /// zone key for the [QueryCancelToken] of the running query
+  static const Symbol _cancelKey = #doxQueryCancelToken;
+
+  /// the [QueryCancelToken] of the query that runs now, or null. the
+  /// Postgres and MySQL drivers read it, see [withCancelToken].
+  static QueryCancelToken? get currentCancelToken =>
+      Zone.current[_cancelKey] as QueryCancelToken?;
+
+  /// run [body] with [token] as [currentCancelToken]. with no [token] it
+  /// just runs [body].
+  static R withCancelToken<R>(QueryCancelToken? token, R Function() body) {
+    if (token == null) return body();
+    return runZoned(body, zoneValues: <Symbol, Object>{_cancelKey: token});
+  }
+
   Driver getName();
 
   /// true when insert can use `RETURNING` to get the new id
@@ -40,6 +96,27 @@ abstract class DBDriver {
     String? primaryKey,
     Map<String, dynamic>? substitutionValues,
   });
+
+  /// run [query] and give its rows in chunks of up to [chunkSize] rows,
+  /// for `cursor()`. The query starts when the stream is listened to.
+  /// Cancel the subscription to stop it.
+  ///
+  /// The built-in drivers read the rows from the database as the listener
+  /// takes them, so a big result does not fill the memory. This default,
+  /// for a driver of your own, runs [query] and splits all its rows.
+  Stream<List<Map<String, dynamic>>> stream(
+    String query, {
+    Map<String, dynamic>? substitutionValues,
+    int chunkSize = 1000,
+  }) async* {
+    List<Map<String, dynamic>> rows = await this.query(
+      query,
+      substitutionValues: substitutionValues,
+    );
+    for (int i = 0; i < rows.length; i += chunkSize) {
+      yield rows.sublist(i, min(i + chunkSize, rows.length));
+    }
+  }
 
   /// run query, this function do not return any value
   Future<void> execute(

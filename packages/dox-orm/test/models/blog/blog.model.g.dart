@@ -54,9 +54,7 @@ class BlogGenerator extends Model<Blog> with SoftDeletes<Blog> {
   static Future<void> getBlogInfo(List<Model<Blog>> list) async {
     var result = await getHasOne<Blog, BlogInfo>(queryBlogInfo(list), list);
     for (dynamic i in list) {
-      if (result[i.tempIdValue.toString()] != null) {
-        i.blogInfo = result[i.tempIdValue.toString()]!;
-      }
+      i.blogInfo = result[i.tempIdValue.toString()];
     }
   }
 
@@ -71,9 +69,7 @@ class BlogGenerator extends Model<Blog> with SoftDeletes<Blog> {
   static Future<void> getBlogInfos(List<Model<Blog>> list) async {
     var result = await getHasMany<Blog, BlogInfo>(queryBlogInfos(list), list);
     for (dynamic i in list) {
-      if (result[i.tempIdValue.toString()] != null) {
-        i.blogInfos = result[i.tempIdValue.toString()]!;
-      }
+      i.blogInfos = result[i.tempIdValue.toString()] ?? <BlogInfo>[];
     }
   }
 

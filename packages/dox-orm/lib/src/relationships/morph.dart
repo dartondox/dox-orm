@@ -101,7 +101,7 @@ class _MorphTo {
   Model<dynamic> query(String type, List<Model<dynamic>> list) {
     Model<dynamic> owner = list.first;
     Model<dynamic> related = Model.morphModel(type);
-    related.connection ??= owner.connection;
+    related.useConnectionOf(owner);
     related.debug(owner.shouldDebug);
     related.whereIn(
       ownerKey ?? related.primaryKey,

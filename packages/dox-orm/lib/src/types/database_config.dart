@@ -14,8 +14,9 @@ class DatabaseConfig {
   ///
   /// The rule: when it is set, it wins. It replaces the config of
   /// [connection] (the default connection). That config still gives
-  /// `debug`, `printer`, `logRedact`, `slowQueryMs` and `extra`. Other
-  /// named connections do not change.
+  /// `debug`, `printer`, `logRedact`, `slowQueryMs`, `extra`, and the
+  /// read hosts with `sticky` (see [ConnectionConfig.read]): the url is
+  /// the write host then. Other named connections do not change.
   ///
   /// When not given, it is the `DATABASE_URL` environment variable.
   /// An empty text means no url.
@@ -39,14 +40,18 @@ class DatabaseConfig {
     String? databaseUrl = url?.trim();
     if (name == connection && databaseUrl != null && databaseUrl.isNotEmpty) {
       ConnectionConfig? base = connections[connection];
-      return _fromUrl ??= ConnectionConfig.fromUrl(
-        databaseUrl,
-        debug: base?.debug ?? false,
-        printer: base?.printer,
-        logRedact: base?.logRedact ?? const <String>[],
-        slowQueryMs: base?.slowQueryMs,
-        extra: base?.extra ?? const <String, dynamic>{},
-      );
+      return _fromUrl ??=
+          ConnectionConfig.fromUrl(
+              databaseUrl,
+              debug: base?.debug ?? false,
+              printer: base?.printer,
+              logRedact: base?.logRedact ?? const <String>[],
+              slowQueryMs: base?.slowQueryMs,
+              extra: base?.extra ?? const <String, dynamic>{},
+            )
+            // the url is the write host: the read hosts stay
+            ..read = base?.read
+            ..sticky = base?.sticky ?? false;
     }
     ConnectionConfig? conn = connections[name];
     if (conn == null) {

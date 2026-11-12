@@ -70,13 +70,15 @@ mixin Insert<T> implements SharedMixin<T> {
   }
 
   /// read the new row [id] on a new query, so the where, the global
-  /// scopes and the soft delete check of this query are not used
+  /// scopes and the soft delete check of this query are not used. it
+  /// reads the write database: a read replica may not have the row yet.
   Future<T?> _readBack(dynamic id) async {
     QueryBuilder<T> q = QueryBuilder<T>()
       ..tableName = tableName
       ..self = queryBuilder.self
       ..primaryKey = primaryKey
-      ..connection = connection;
+      ..connection = connection
+      ..onWriteConnection();
     T? row = await q.debug(shouldDebug).find(id);
 
     /// the new query has no relations to load, this query has them

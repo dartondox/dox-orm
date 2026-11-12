@@ -19,7 +19,7 @@ M? hasMany<T, M>(
   List<dynamic> ids = relationKeys(list, localKey);
 
   Model<M> m = model().debug(owner.shouldDebug);
-  m.connection ??= owner.connection;
+  m.useConnectionOf(owner);
 
   if (relationSubquery) {
     startSubquery(m, owner);

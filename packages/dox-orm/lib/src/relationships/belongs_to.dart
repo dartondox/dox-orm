@@ -31,7 +31,7 @@ M? belongsTo<T, M>(
 
   Model<T> foreign = list.first;
   Model<M> owner = model().debug(foreign.shouldDebug);
-  owner.connection ??= foreign.connection;
+  owner.useConnectionOf(foreign);
   localKey = localKey ?? owner.primaryKey;
   if (foreignKey == null &&
       relation != null &&

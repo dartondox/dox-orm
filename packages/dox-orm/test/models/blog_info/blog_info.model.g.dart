@@ -52,9 +52,7 @@ class BlogInfoGenerator extends Model<BlogInfo> {
   static Future<void> getBlog(List<Model<BlogInfo>> list) async {
     var result = await getBelongsTo<BlogInfo, Blog>(queryBlog(list), list);
     for (dynamic i in list) {
-      if (result[i.tempIdValue.toString()] != null) {
-        i.blog = result[i.tempIdValue.toString()]!;
-      }
+      i.blog = result[i.tempIdValue.toString()];
     }
   }
 
@@ -62,6 +60,7 @@ class BlogInfoGenerator extends Model<BlogInfo> {
     return belongsTo<BlogInfo, Blog>(
       list,
       () => Blog(),
+      relation: 'blog',
       onQuery: BlogInfo.onQuery,
     );
   }

@@ -1,9 +1,10 @@
 library;
 
 export 'package:dox_annotation/dox_annotation.dart';
-export 'package:dox_mysql_native/dox_mysql_native.dart' show MysqlException;
+export 'package:dox_mysql_native/dox_mysql_native.dart'
+    show MysqlException, MysqlQueryCancelledException;
 export 'package:dox_postgres_native/dox_postgres_native.dart'
-    show PgException, PgServerException;
+    show PgException, PgServerException, PgQueryCancelledException;
 
 export 'src/casts.dart';
 export 'src/database_transaction.dart';
@@ -11,6 +12,7 @@ export 'src/drivers/db_driver.dart' hide SqlParam, findSqlParams;
 export 'src/drivers/mysql_native_driver.dart';
 export 'src/drivers/native_drivers.dart';
 export 'src/drivers/postgres_native_driver.dart';
+export 'src/drivers/replica_driver.dart';
 export 'src/drivers/statement_cache.dart';
 export 'src/join.dart' show JoinClause;
 export 'src/main.dart';

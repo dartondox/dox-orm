@@ -51,9 +51,7 @@ class VideoGenerator extends Model<Video> {
   static Future<void> getComments(List<Model<Video>> list) async {
     var result = await getMorphMany<Video, Comment>(queryComments(list), list);
     for (dynamic i in list) {
-      if (result[i.tempIdValue.toString()] != null) {
-        i.comments = result[i.tempIdValue.toString()]!;
-      }
+      i.comments = result[i.tempIdValue.toString()] ?? <Comment>[];
     }
   }
 

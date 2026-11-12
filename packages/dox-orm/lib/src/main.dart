@@ -133,8 +133,10 @@ class SqlQueryBuilder {
   }) {
     var (bool known, String? connection) = _connectionOf(driver);
     Stopwatch? watch = known ? startQueryWatch(connection) : null;
+    // the schema builder and the migrator read the write database
+    DBDriver run = driver is ReplicaDriver ? driver.writer : driver;
     return timeQuery(
-      driver.query(query, substitutionValues: substitutionValues),
+      run.query(query, substitutionValues: substitutionValues),
       watch,
       query,
       substitutionValues,
@@ -233,6 +235,17 @@ class SqlQueryBuilder {
 
     sql.dbDriver = connConfig.createDriver();
     sql.debug = connConfig.debug;
+
+    /// sticky reads need a scope per request: a Dox app gets it from this
+    /// middleware, with no change in the app
+    bool sticky = <ConnectionConfig>[
+      connConfig,
+      ...config.connections.values,
+    ].any((ConnectionConfig c) => c.sticky && (c.read?.isNotEmpty ?? false));
+    if (sticky) {
+      ReplicaDriver.stickyInUse = true;
+      GlobalMiddleware.add(stickyReads);
+    }
     sql.logRedact = connConfig.logRedact;
     sql.slowQueryMs = connConfig.slowQueryMs;
     if (connConfig.printer != null) {

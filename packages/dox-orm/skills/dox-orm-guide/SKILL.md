@@ -171,7 +171,21 @@ await Post().chunkById(100, (List<Post> posts) {
   }
   return true; // false stops
 });
+
+// one row at a time, read 1000 rows per query (by id, or LIMIT/OFFSET with an orderBy)
+await for (Post post in Post().where('status', 'draft').lazy()) {
+  await post.delete();
+}
+
+// one row at a time from ONE query, the driver streams the rows
+await for (Post post in Post().orderBy('id').cursor(chunkSize: 500)) {
+  print(post.title);
+}
 ```
+
+`break` or `.take(n)` stops the query. `lazyById(column: 'n')` pages by another unique column.
+In a transaction on Postgres or MySQL, `cursor()` can not `preload()` relations and other queries
+of that transaction wait until it ends: use `lazy()` there.
 
 ## Relations
 
@@ -376,6 +390,53 @@ The connections are in `lib/config/database.dart`. `DB_CONNECTION` in `.env` pic
 `DB_USERNAME`, `DB_PASSWORD` and `DB_NAME` (for SQLite: the file path).
 `lib/providers/orm_provider.dart` starts the ORM in every isolate with
 `SqlQueryBuilder.initializeWithDatabaseConfig(databaseConfig)`.
+
+### Pool settings (Postgres and MySQL)
+
+Put them in `extra` of the `ConnectionConfig`. A `Duration`, or an int of seconds.
+
+```dart
+extra: <String, dynamic>{
+  'maxConnectionCount': 10,
+  'requestTimeout': const Duration(seconds: 30), // default 300 s
+  'maxConnectionAge': const Duration(minutes: 30), // Postgres: no limit, MySQL: 12 h
+  'idleTimeout': const Duration(minutes: 5), // Postgres: kept, MySQL: 12 h
+  'serverKill': false, // MySQL only: no KILL QUERY (eg. behind ProxySQL)
+},
+```
+
+### Stop a slow query
+
+```dart
+QueryCancelToken token = QueryCancelToken();
+Future<List<Post>> posts = Post().where('status', 'draft').cancelWith(token).get();
+token.cancel(); // throws PgQueryCancelledException or MysqlQueryCancelledException
+```
+
+SQLite does not support it: the query runs to its end.
+
+### Read replicas
+
+```dart
+'postgres': ConnectionConfig(
+  driver: Driver.postgres,
+  host: env.dbHost, // the write (primary) host
+  // ...
+  read: <Map<String, dynamic>>[
+    <String, dynamic>{'host': 'replica-1.db'},
+    <String, dynamic>{'host': 'replica-2.db', 'user': 'reader'},
+  ],
+  sticky: true, // optional
+),
+```
+
+- Plain `SELECT`s go to the read hosts in turn. Writes, locks, schema changes and every query
+  in a transaction go to the write host.
+- `User().onWriteConnection().find(id)` reads from the write host.
+- With `DATABASE_URL` set, the url is the write host. The `read` hosts and `sticky` stay.
+- `sticky: true`: after a write, the reads of the same request go to the write host. It works
+  by itself in a Dox app (the ORM adds the `stickyReads` middleware). Outside a request (a job,
+  a script), wrap the work in `ReplicaDriver.stickyScope(() => ...)`.
 
 ## Switch from SQLite to Postgres or MySQL
 

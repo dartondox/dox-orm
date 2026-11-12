@@ -1191,7 +1191,8 @@ class Model<T> extends QueryBuilder<T> {
   Future<T> _readBack(Model<T> model) async {
     dynamic id = model.tempIdValue;
     if (id == null) return model as T;
-    T? row = await _newQuery<T>(this).find(id);
+    // the write database: a read replica may not have the row yet
+    T? row = await _newQuery<T>(this).onWriteConnection().find(id);
     if (row == null) return model as T;
     if (getPreload().isNotEmpty) await initPreload(<Model<T>>[row as Model<T>]);
     return row;

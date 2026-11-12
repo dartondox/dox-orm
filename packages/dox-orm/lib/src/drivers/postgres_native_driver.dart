@@ -41,9 +41,18 @@ class PostgresNativeDriver extends DBDriver {
   /// `/` is a Unix socket folder. The TLS mode is
   /// [ConnectionConfig.postgresSslMode]. The CA file for `verify-full` is
   /// [ConnectionConfig.postgresSslRootCert]. Reads `maxConnectionCount`
-  /// (default 10), `timeZone` (default UTC), `applicationName` and
-  /// `threads` (default 1) from `extra`. Isolates with the same settings
-  /// share one pool, so `maxConnectionCount` is for the whole process.
+  /// (default 10), `timeZone` (default UTC), `applicationName`,
+  /// `threads` (default 1) and the pool times from `extra`. Isolates with
+  /// the same settings share one pool, so `maxConnectionCount` is for the
+  /// whole process.
+  ///
+  /// The pool times are a `Duration`, or an int of seconds (eg. from a
+  /// database url):
+  /// - `requestTimeout` (default 300 s): the longest wait for one request.
+  /// - `maxConnectionAge` (default: no limit): close a connection older
+  ///   than this when it is free.
+  /// - `idleTimeout` (default: kept): close a connection that is not used
+  ///   for this long.
   /// Throws an [UnsupportedError] when the native library does not load.
   factory PostgresNativeDriver.fromConfig(ConnectionConfig config) {
     NativeDrivers.ensureAvailable(Driver.postgres);
@@ -67,6 +76,11 @@ class PostgresNativeDriver extends DBDriver {
         timeZone: extra['timeZone'] as String? ?? 'UTC',
         applicationName: extra['applicationName'] as String?,
         threads: extra['threads'] as int? ?? 1,
+        requestTimeout:
+            config.extraDuration('requestTimeout') ??
+            const Duration(seconds: 300),
+        maxConnectionAge: config.extraDuration('maxConnectionAge'),
+        idleTimeout: config.extraDuration('idleTimeout'),
       ),
     );
   }
@@ -88,6 +102,10 @@ class PostgresNativeDriver extends DBDriver {
 
   int get _tx => (Zone.current[_txKey] as Map<PgNativePool, int>?)?[pool] ?? 0;
 
+  /// the token of [QueryBuilder.cancelWith], or null
+  static PgCancelToken? get _cancelToken =>
+      DBDriver.currentCancelToken?.postgresToken;
+
   bool _closed = false;
 
   /// let go of the pool. isolates with the same settings share one pool,
@@ -107,18 +125,46 @@ class PostgresNativeDriver extends DBDriver {
   }) {
     // no async/await here: one `then` is less work per query
     return pool
-        .query(query, parameters: substitutionValues, transaction: _tx)
+        .query(
+          query,
+          parameters: substitutionValues,
+          transaction: _tx,
+          cancelToken: _cancelToken,
+        )
         .then(_rows);
   }
 
   static List<Map<String, dynamic>> _rows(PgNativeResult result) => result.rows;
+
+  /// the rows from a server-side portal, see [PgNativePool.stream]
+  @override
+  Stream<List<Map<String, dynamic>>> stream(
+    String query, {
+    Map<String, dynamic>? substitutionValues,
+    int chunkSize = 1000,
+  }) {
+    return pool
+        .stream(
+          query,
+          parameters: substitutionValues,
+          transaction: _tx,
+          chunkSize: chunkSize,
+          cancelToken: _cancelToken,
+        )
+        .map(_rows);
+  }
 
   @override
   Future<void> execute(
     String query, {
     Map<String, dynamic>? substitutionValues,
   }) {
-    return pool.query(query, parameters: substitutionValues, transaction: _tx);
+    return pool.query(
+      query,
+      parameters: substitutionValues,
+      transaction: _tx,
+      cancelToken: _cancelToken,
+    );
   }
 
   /// ponytail: the native result has no row count, so the query runs in
@@ -134,6 +180,7 @@ class PostgresNativeDriver extends DBDriver {
       'SELECT count(*) AS count FROM dox_affected',
       parameters: substitutionValues,
       transaction: _tx,
+      cancelToken: _cancelToken,
     );
     dynamic count = result.rows.first['count'];
     return count is int ? count : int.parse('$count');
