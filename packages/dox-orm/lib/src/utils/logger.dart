@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:dox_orm/dox_orm.dart';
 import 'package:dox_orm/src/drivers/db_driver.dart';
 
@@ -21,8 +23,17 @@ class Logger {
         params as Map<String, dynamic>? ?? const <String, dynamic>{};
     List<String> redact = SqlQueryBuilder().logRedactOf(connection);
     QueryPrinter printer = SqlQueryBuilder().printer;
-    if (printer is PrettyQueryPrinter) {
-      _logPretty(printer, query, values, connection, redact, slowMs);
+    // ponytail: exact type only, so a subclass that overrides log() keeps
+    // getting the `?` query and the values, as before
+    if (printer.runtimeType == PrettyQueryPrinter &&
+        _logPretty(
+          printer as PrettyQueryPrinter,
+          query,
+          values,
+          connection,
+          redact,
+          slowMs,
+        )) {
       return;
     }
     List<String> list = <String>[];
@@ -46,9 +57,10 @@ class Logger {
     SqlQueryBuilder().printer.log('$prefix$out', list);
   }
 
-  /// [query] with each `@name` replaced by its value as a SQL literal,
-  /// like `toRawSql()`. A redacted value shows as `'***'`.
-  void _logPretty(
+  /// print [query] as one line with the values in it. False when this
+  /// fails, so the caller logs it the old way: a log must never fail a
+  /// query that worked.
+  bool _logPretty(
     PrettyQueryPrinter printer,
     String query,
     Map<String, dynamic> values,
@@ -56,29 +68,61 @@ class Logger {
     List<String> redact,
     int? slowMs,
   ) {
-    SqlQueryBuilder sql = SqlQueryBuilder();
-    SchemaGrammar grammar = SchemaGrammar.of(
-      sql.getDBDriver(connection).getName(),
-    );
+    String filled;
+    String name;
+    try {
+      SqlQueryBuilder sql = SqlQueryBuilder();
+      filled = fillSql(
+        query,
+        values,
+        sql.getDBDriver(connection).getName(),
+        redact,
+      );
+      name = connection ?? sql.databaseConfig?.connection ?? 'default';
+    } catch (_) {
+      return false;
+    }
+    printer.logSql(filled, connection: name, slowMs: slowMs);
+    return true;
+  }
+
+  /// [query] with each `@name` replaced by its value as a SQL literal of
+  /// [driver], like `toRawSql()`. A value named in [redact] shows as
+  /// `'***'`. Bytes show as a hex literal. A name with no value stays.
+  static String fillSql(
+    String query,
+    Map<String, dynamic> values,
+    Driver driver,
+    List<String> redact,
+  ) {
+    SchemaGrammar grammar = SchemaGrammar.of(driver);
     StringBuffer out = StringBuffer();
     int copied = 0;
-    for (SqlParam p in findSqlParams(query)) {
+    for (SqlParam p in findSqlParams(query, mysql: driver == Driver.mysql)) {
       out.write(query.substring(copied, p.start));
       copied = p.end;
+      dynamic value = values[p.name];
       if (!values.containsKey(p.name)) {
         out.write(query.substring(p.start, p.end));
       } else if (_hidden(p.name, redact)) {
         out.write("'***'");
+      } else if (value is Uint8List) {
+        out.write(_hex(value, driver));
       } else {
-        out.write(grammar.literal(values[p.name]));
+        out.write(grammar.literal(value));
       }
     }
     out.write(query.substring(copied));
-    printer.logSql(
-      out.toString(),
-      connection: connection ?? sql.databaseConfig?.connection ?? 'default',
-      slowMs: slowMs,
-    );
+    return out.toString();
+  }
+
+  /// `X'0102'`, or `'\x0102'` on postgres
+  static String _hex(Uint8List bytes, Driver driver) {
+    StringBuffer hex = StringBuffer();
+    for (int b in bytes) {
+      hex.write(b.toRadixString(16).padLeft(2, '0'));
+    }
+    return driver == Driver.postgres ? "'\\x$hex'" : "X'$hex'";
   }
 
   /// a copy of [values] where each value named in `logRedact` of the

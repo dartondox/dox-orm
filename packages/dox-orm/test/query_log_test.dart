@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:dox_orm/dox_orm.dart';
 import 'package:dox_orm/src/utils/logger.dart';
@@ -255,6 +256,13 @@ void main() {
               debug: false,
               logRedact: <String>['password'],
             ),
+            'other': ConnectionConfig(
+              driver: Driver.sqlite,
+              database: ':memory:',
+              debug: false,
+              logRedact: <String>['token'],
+              slowQueryMs: 0,
+            ),
           },
         ),
       );
@@ -326,6 +334,95 @@ void main() {
       );
     });
 
+    test('a named connection shows its name and uses its logRedact', () {
+      List<String> lines = _prints(
+        () => Logger().log(
+          'UPDATE t SET password = @password_p1, token = @token_p2, '
+              'name = @name_p3',
+          <String, dynamic>{
+            'password_p1': 'a',
+            'token_p2': 'b',
+            'name_p3': 'c',
+          },
+          'other',
+        ),
+      );
+      expect(lines, <String>[
+        "\x1B[2;36m▌ [db:other]\x1B[0m UPDATE t SET password = '***', "
+            "token = '***', name = 'c';",
+      ]);
+    });
+
+    test('a slow query of a named connection shows its name', () async {
+      List<String> lines = await _printsAsync(
+        () => QueryBuilder.query(
+          'SELECT @token_p1',
+          substitutionValues: <String, dynamic>{'token_p1': 'x'},
+          connection: 'other',
+        ),
+      );
+      expect(lines.length, 1);
+      expect(
+        lines.first,
+        matches(
+          RegExp(
+            r"^\x1B\[2;36m▌ \[db:other SLOW \d+ms\]\x1B\[0m SELECT '\*\*\*';$",
+          ),
+        ),
+      );
+    });
+
+    test('a subclass that overrides log() gets the ? query and values', () {
+      _MyPretty mine = _MyPretty();
+      SqlQueryBuilder().printer = mine;
+      Logger().log('x = @a', <String, dynamic>{'a': 1});
+      expect(mine.query, 'x = ?');
+      expect(mine.params, <String>['1']);
+    });
+
+    test('falls back to the ? line when the values can not be filled', () {
+      // an unknown connection makes the driver lookup throw
+      List<String> lines = _prints(
+        () => Logger().log('x = @a', <String, dynamic>{'a': 1}, 'nope'),
+      );
+      expect(lines, <String>['\x1B[2;36m▌ [db]\x1B[0m x = ?; -- [1]']);
+    });
+
+    test('puts the ; on a new line after a -- comment', () {
+      List<String> lines = _prints(() => Logger().log('SELECT 1 -- note'));
+      expect(lines, <String>['${tag}SELECT 1 -- note\n;']);
+    });
+
+    test('mysql: literal rules and backslash in raw SQL', () {
+      expect(
+        Logger.fillSql(
+          r"SELECT `a` FROM `t` WHERE `s` = 'x\'' AND `b` = @b AND `c` = @c",
+          <String, dynamic>{'b': true, 'c': r'a\b'},
+          Driver.mysql,
+          <String>[],
+        ),
+        r"SELECT `a` FROM `t` WHERE `s` = 'x\'' AND `b` = 1 AND `c` = 'a\\b'",
+      );
+    });
+
+    test('bytes show as a hex literal', () {
+      Map<String, dynamic> values = <String, dynamic>{
+        'b': Uint8List.fromList(<int>[1, 2, 255]),
+      };
+      expect(
+        Logger.fillSql('x = @b', values, Driver.sqlite, <String>[]),
+        "x = X'0102ff'",
+      );
+      expect(
+        Logger.fillSql('x = @b', values, Driver.mysql, <String>[]),
+        "x = X'0102ff'",
+      );
+      expect(
+        Logger.fillSql('x = @b', values, Driver.postgres, <String>[]),
+        r"x = '\x0102ff'",
+      );
+    });
+
     test('log() called directly prints one line with the params', () {
       expect(
         _prints(() => PrettyQueryPrinter().log('SELECT 1', <String>[])),
@@ -350,6 +447,18 @@ Future<List<String>> _printsAsync(Future<void> Function() body) async {
     ),
   );
   return lines;
+}
+
+/// a subclass with its own log(), like user code may have
+class _MyPretty extends PrettyQueryPrinter {
+  String query = '';
+  List<String> params = <String>[];
+
+  @override
+  void log(String query, List<String> params) {
+    this.query = query;
+    this.params = params;
+  }
 }
 
 List<String> _prints(void Function() body) {

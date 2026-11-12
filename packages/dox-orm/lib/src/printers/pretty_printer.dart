@@ -6,9 +6,6 @@ import 'package:dox_orm/dox_orm.dart';
 /// ```
 /// Only the `▌ [db:...]` tag has color, so a copy of the SQL is clean.
 class PrettyQueryPrinter implements QueryPrinter {
-  @Deprecated('not used any more')
-  int logLength = 80;
-
   /// a query with `?` and its values. The ORM calls [logSql] instead.
   @override
   void log(String query, List<String> params) {
@@ -27,8 +24,12 @@ class PrettyQueryPrinter implements QueryPrinter {
   /// dim cyan
   String _tag(String name) => '\x1B[2;36m▌ [$name]\x1B[0m';
 
+  /// add `;` at the end, on a new line when the last line has a
+  /// `--` or `#` comment, so the `;` is not inside the comment
   String _end(String sql) {
     String s = sql.trimRight();
-    return s.endsWith(';') ? s : '$s;';
+    if (s.endsWith(';')) return s;
+    String last = s.substring(s.lastIndexOf('\n') + 1);
+    return last.contains('--') || last.contains('#') ? '$s\n;' : '$s;';
   }
 }
