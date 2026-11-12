@@ -874,6 +874,10 @@ mixin Get<T> implements SharedMixin<T> {
   /// same transaction inside the loop on Postgres or MySQL: they wait
   /// until the cursor ends.
   ///
+  /// Query listeners and the slow query log see the query once, when the
+  /// first chunk comes (or the end, for no rows). Its time is the time to
+  /// the first chunk, not to the last row.
+  ///
   /// A driver of your own that does not override [DBDriver.stream] reads
   /// all rows at once.
   ///
@@ -902,10 +906,26 @@ mixin Get<T> implements SharedMixin<T> {
       () =>
           driver.stream(sql, substitutionValues: values, chunkSize: chunkSize),
     );
+    SqlQueryBuilder orm = SqlQueryBuilder();
+    Stopwatch? watch = orm.startQueryWatch(connection);
     await for (List<Map<String, dynamic>> rows in chunks) {
+      if (watch != null) {
+        await orm.timeQuery(
+          Future<void>.value(),
+          watch,
+          sql,
+          values,
+          connection,
+        );
+        watch = null;
+      }
       for (T row in _typed(await helper.formatResult(rows))) {
         yield row;
       }
+    }
+    // an empty result: no chunk came
+    if (watch != null) {
+      await orm.timeQuery(Future<void>.value(), watch, sql, values, connection);
     }
   }
 

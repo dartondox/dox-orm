@@ -58,6 +58,22 @@ void main() async {
       expect(sum, total * (total - 1) ~/ 2);
     });
 
+    test('query listeners see a cursor() once', () async {
+      List<QueryEvent> events = <QueryEvent>[];
+      SqlQueryBuilder().listen(events.add);
+      addTearDown(() => SqlQueryBuilder().removeListener(events.add));
+
+      int rows = await big().where('n', '<', 50).cursor(chunkSize: 10).length;
+      expect(rows, 50);
+      expect(events.length, 1);
+      expect(events.single.sql, contains('lazy_big'));
+      expect(events.single.bindings.values, contains(50));
+
+      // an empty result is seen too
+      expect(await big().where('n', -1).cursor().length, 0);
+      expect(events.length, 2);
+    });
+
     test('lazy() reads every row in chunks by id', () async {
       int queries = 0;
       void count(QueryEvent e) => queries++;
