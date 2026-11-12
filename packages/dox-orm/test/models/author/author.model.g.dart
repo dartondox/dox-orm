@@ -166,4 +166,15 @@ class AuthorGenerator extends Model<Author> {
     }
     return false;
   }
+
+  @override
+  bool $copyColumnsFrom(Model<Author> other) {
+    Author o = other as Author;
+    (this as Author)
+      ..id = o.id
+      ..code = o.code
+      ..createdAt = o.createdAt
+      ..updatedAt = o.updatedAt;
+    return true;
+  }
 }

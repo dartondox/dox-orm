@@ -166,6 +166,16 @@ class WriterGenerator extends Model<Writer> with SoftDeletes<Writer> {
     }
     return false;
   }
+
+  @override
+  bool $copyColumnsFrom(Model<Writer> other) {
+    Writer o = other as Writer;
+    (this as Writer)
+      ..id = o.id
+      ..name = o.name
+      ..deletedAt = o.deletedAt;
+    return true;
+  }
 }
 
 // ignore_for_file: always_specify_types
@@ -306,6 +316,18 @@ class ArticleGenerator extends Model<Article> with SoftDeletes<Article> {
     }
     return false;
   }
+
+  @override
+  bool $copyColumnsFrom(Model<Article> other) {
+    Article o = other as Article;
+    (this as Article)
+      ..id = o.id
+      ..title = o.title
+      ..published = o.published
+      ..writerId = o.writerId
+      ..deletedAt = o.deletedAt;
+    return true;
+  }
 }
 
 // ignore_for_file: always_specify_types
@@ -391,6 +413,16 @@ class TopicGenerator extends Model<Topic> with SoftDeletes<Topic> {
     }
     return false;
   }
+
+  @override
+  bool $copyColumnsFrom(Model<Topic> other) {
+    Topic o = other as Topic;
+    (this as Topic)
+      ..id = o.id
+      ..name = o.name
+      ..deletedAt = o.deletedAt;
+    return true;
+  }
 }
 
 // ignore_for_file: always_specify_types
@@ -473,6 +505,16 @@ class RemarkGenerator extends Model<Remark> {
         return true;
     }
     return false;
+  }
+
+  @override
+  bool $copyColumnsFrom(Model<Remark> other) {
+    Remark o = other as Remark;
+    (this as Remark)
+      ..id = o.id
+      ..body = o.body
+      ..articleId = o.articleId;
+    return true;
   }
 }
 
@@ -613,5 +655,16 @@ class SectionGenerator extends Model<Section> with SoftDeletes<Section> {
         return true;
     }
     return false;
+  }
+
+  @override
+  bool $copyColumnsFrom(Model<Section> other) {
+    Section o = other as Section;
+    (this as Section)
+      ..id = o.id
+      ..name = o.name
+      ..parentId = o.parentId
+      ..deletedAt = o.deletedAt;
+    return true;
   }
 }

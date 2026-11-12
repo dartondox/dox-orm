@@ -135,4 +135,17 @@ class CommentGenerator extends Model<Comment> {
     }
     return false;
   }
+
+  @override
+  bool $copyColumnsFrom(Model<Comment> other) {
+    Comment o = other as Comment;
+    (this as Comment)
+      ..id = o.id
+      ..body = o.body
+      ..commentableId = o.commentableId
+      ..commentableType = o.commentableType
+      ..createdAt = o.createdAt
+      ..updatedAt = o.updatedAt;
+    return true;
+  }
 }

@@ -163,4 +163,20 @@ class CitizenGenerator extends Model<Citizen> with SoftDeletes<Citizen> {
     }
     return false;
   }
+
+  @override
+  bool $copyColumnsFrom(Model<Citizen> other) {
+    Citizen o = other as Citizen;
+    (this as Citizen)
+      ..id = o.id
+      ..name = o.name
+      ..countryId = o.countryId
+      ..homeCode = o.homeCode
+      ..ref = o.ref
+      ..managerId = o.managerId
+      ..deletedAt = o.deletedAt
+      ..createdAt = o.createdAt
+      ..updatedAt = o.updatedAt;
+    return true;
+  }
 }

@@ -684,6 +684,14 @@ class Model<T> extends QueryBuilder<T> {
   /// use it.
   bool setColumnValue(String column, dynamic value) => false;
 
+  /// set every column field of this model to the field of [other], a
+  /// model of the same class. It returns false when it set nothing.
+  ///
+  /// The generator (dox_builder) overrides it. [refresh] uses it. The
+  /// default returns false, so a model made by an old generator works as
+  /// before.
+  bool $copyColumnsFrom(Model<T> other) => false;
+
   /// set the fields of [data] (column name => value) and ignore
   /// [fillable] and [guarded]. It does not
   /// save: call save() after it. It returns this model.
@@ -1149,9 +1157,9 @@ class Model<T> extends QueryBuilder<T> {
   ///
   /// It throws a [StateError] on a model that is not in the table (no
   /// primary key value), and a [ModelNotFoundException] when the row is
-  /// gone. It also throws a [StateError] when a column can not be set
-  /// from the row (a column with a cast or a beforeGet, see
-  /// [setColumnValue]), and then changes nothing. Use [fresh] then.
+  /// gone. A model made by an old dox_builder can not set a column with
+  /// a cast or a beforeGet from the row: then it throws a [StateError]
+  /// and changes nothing. Run build_runner again, or use [fresh].
   Future<T> refresh() async {
     if (tempIdValue == null || !exists) {
       throw StateError(
@@ -1168,6 +1176,20 @@ class Model<T> extends QueryBuilder<T> {
       );
     }
     Model<T> row = found as Model<T>;
+    Map<String, dynamic> raw = row.originalMap;
+    if (!$copyColumnsFrom(row)) _setFromRow(row);
+    originalMap = raw;
+    _savedValues = null;
+    _lastChanges = const <String, dynamic>{};
+    await reload();
+    return this as T;
+  }
+
+  /// set the fields from the columns of [row] with [setColumnValue], for
+  /// a model made by an old dox_builder (no [$copyColumnsFrom]). It
+  /// throws a [StateError] and changes nothing when a column can not be
+  /// set.
+  void _setFromRow(Model<T> row) {
     Map<String, dynamic> raw = row.originalMap;
     Map<String, dynamic> want = row.columnsToMap();
 
@@ -1192,8 +1214,9 @@ class Model<T> extends QueryBuilder<T> {
     if (failed.isNotEmpty) {
       throw StateError(
         'refresh() can not set the columns $failed of $runtimeType from the '
-        'row: they have a cast or a beforeGet, or the model was made by an '
-        'old dox_builder. Use fresh() to get a new model.',
+        'row: they have a cast or a beforeGet, and the model was made by an '
+        'old dox_builder. Run build_runner again, or use fresh() to get a '
+        'new model.',
       );
     }
     for (String column in columns) {
@@ -1202,11 +1225,6 @@ class Model<T> extends QueryBuilder<T> {
     tempIdValue = row.tempIdValue;
     createdAt = row.createdAt;
     updatedAt = row.updatedAt;
-    originalMap = raw;
-    _savedValues = null;
-    _lastChanges = const <String, dynamic>{};
-    await reload();
-    return this as T;
   }
 
   /// set the field of [column] to [value] from a row. A date text sets

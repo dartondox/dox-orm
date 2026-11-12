@@ -146,4 +146,15 @@ class PhotoGenerator extends Model<Photo> {
     }
     return false;
   }
+
+  @override
+  bool $copyColumnsFrom(Model<Photo> other) {
+    Photo o = other as Photo;
+    (this as Photo)
+      ..id = o.id
+      ..title = o.title
+      ..createdAt = o.createdAt
+      ..updatedAt = o.updatedAt;
+    return true;
+  }
 }

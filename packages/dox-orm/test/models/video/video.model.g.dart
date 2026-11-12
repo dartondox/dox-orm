@@ -124,4 +124,15 @@ class VideoGenerator extends Model<Video> {
     }
     return false;
   }
+
+  @override
+  bool $copyColumnsFrom(Model<Video> other) {
+    Video o = other as Video;
+    (this as Video)
+      ..id = o.id
+      ..title = o.title
+      ..createdAt = o.createdAt
+      ..updatedAt = o.updatedAt;
+    return true;
+  }
 }

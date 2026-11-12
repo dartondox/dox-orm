@@ -131,4 +131,19 @@ class CastItemGenerator extends Model<CastItem> {
     }
     return false;
   }
+
+  @override
+  bool $copyColumnsFrom(Model<CastItem> other) {
+    CastItem o = other as CastItem;
+    (this as CastItem)
+      ..id = o.id
+      ..meta = o.meta
+      ..tags = o.tags
+      ..active = o.active
+      ..done = o.done
+      ..status = o.status
+      ..level = o.level
+      ..price = o.price;
+    return true;
+  }
 }

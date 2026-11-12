@@ -119,4 +119,17 @@ class NoteGenerator extends Model<Note> {
     }
     return false;
   }
+
+  @override
+  bool $copyColumnsFrom(Model<Note> other) {
+    Note o = other as Note;
+    (this as Note)
+      ..id = o.id
+      ..slug = o.slug
+      ..title = o.title
+      ..pinned = o.pinned
+      ..createdAt = o.createdAt
+      ..updatedAt = o.updatedAt;
+    return true;
+  }
 }

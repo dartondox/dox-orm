@@ -106,4 +106,16 @@ class BookGenerator extends Model<Book> {
     }
     return false;
   }
+
+  @override
+  bool $copyColumnsFrom(Model<Book> other) {
+    Book o = other as Book;
+    (this as Book)
+      ..id = o.id
+      ..title = o.title
+      ..authorCode = o.authorCode
+      ..createdAt = o.createdAt
+      ..updatedAt = o.updatedAt;
+    return true;
+  }
 }

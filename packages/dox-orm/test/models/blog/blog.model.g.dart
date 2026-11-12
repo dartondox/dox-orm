@@ -166,6 +166,21 @@ class BlogGenerator extends Model<Blog> with SoftDeletes<Blog> {
   }
 
   @override
+  bool $copyColumnsFrom(Model<Blog> other) {
+    Blog o = other as Blog;
+    (this as Blog)
+      ..uid = o.uid
+      ..title = o.title
+      ..status = o.status
+      ..slug = o.slug
+      ..description = o.description
+      ..deletedAt = o.deletedAt
+      ..createdAt = o.createdAt
+      ..updatedAt = o.updatedAt;
+    return true;
+  }
+
+  @override
   void setComputedValues(Map<String, dynamic> map) {
     Blog instance = this as Blog;
     map['title_length'] = instance.titleLength;
