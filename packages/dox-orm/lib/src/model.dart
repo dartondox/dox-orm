@@ -1380,10 +1380,11 @@ class Model<T> extends QueryBuilder<T> {
               ? (e.value as DateTime).toIso8601String()
               : e.value,
       };
-
-      /// toMap() removed the hidden fields, only pivot is new
-      _removeHidden(data);
     }
+
+    /// again after pivot, and for a toMap() override that did not
+    /// remove the hidden fields
+    _removeHidden(data);
     return data;
   }
 

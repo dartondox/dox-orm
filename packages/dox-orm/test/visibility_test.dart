@@ -9,6 +9,18 @@ class ShortBlog extends Blog {
   List<String> get visibleFields => const <String>['uid', 'title', 'status'];
 }
 
+/// a blog with a toMap() override that does not remove hidden fields
+class MapBlog extends Blog {
+  @override
+  Map<String, dynamic> toMap({
+    bool original = false,
+    bool removeHiddenField = false,
+    bool removeRelations = false,
+  }) {
+    return super.toMap(original: original, removeRelations: removeRelations);
+  }
+}
+
 Blog _blog(Blog b) => b
   ..uid = 1
   ..title = 't'
@@ -19,6 +31,13 @@ void main() {
   group('Visibility |', () {
     test('toJson with none used keeps hidden as before', () {
       Map<String, dynamic> json = _blog(Blog()).toJson();
+      expect(json.containsKey('status'), false);
+      expect(json.containsKey('secret_note'), false);
+      expect(json['body'], 'd');
+    });
+
+    test('toJson removes hidden after a toMap() override', () {
+      Map<String, dynamic> json = _blog(MapBlog()).toJson();
       expect(json.containsKey('status'), false);
       expect(json.containsKey('secret_note'), false);
       expect(json['body'], 'd');
