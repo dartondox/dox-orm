@@ -128,6 +128,33 @@ void main() {
     );
   });
 
+  test('the default connection name gives the default driver', () async {
+    expect(
+      identical(
+        SqlQueryBuilder().getDBDriver('main'),
+        SqlQueryBuilder().dbDriver,
+      ),
+      isTrue,
+    );
+  });
+
+  test('a model query joins transaction(connection: <default name>)', () async {
+    List<String> log = <String>[];
+    await expectLater(
+      QueryBuilder.transaction(() async {
+        await Blog().create(<String, dynamic>{'title': 't', 'body': 'b'});
+        await QueryBuilder.afterCommit(() => log.add('after'));
+        log.add('body');
+        throw StateError('stop');
+      }, connection: 'main'),
+      throwsStateError,
+    );
+
+    /// the insert was rolled back, and afterCommit waited, then dropped
+    expect(await countOn('main'), 0);
+    expect(log, <String>['body']);
+  });
+
   test(
     'afterCommit waits only for the transaction of its connection',
     () async {

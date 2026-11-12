@@ -255,7 +255,9 @@ class SqlQueryBuilder {
 
   /// Get database driver with connection name
   DBDriver getDBDriver([String? connection]) {
-    if (connection == null || databaseConfig == null) {
+    if (connection == null ||
+        databaseConfig == null ||
+        connection == databaseConfig!.connection) {
       return dbDriver;
     }
     DBDriver? driver = _globalDrivers[connection];
