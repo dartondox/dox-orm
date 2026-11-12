@@ -260,6 +260,21 @@ void main() async {
       w.hidden = <String>['articles'];
       expect(w.toJson().containsKey('articles'), isFalse);
     });
+    test(
+      'preloadUnknownThrows on: an unknown name throws with no rows',
+      () async {
+        SqlQueryBuilder().flags = const OrmFlags.all();
+        await expectLater(
+          Writer().preload('typo').where('id', 99).get(),
+          throwsA(isA<ArgumentError>()),
+        );
+        expect(
+          await Writer().preload('articles').where('id', 99).get(),
+          isEmpty,
+        );
+      },
+    );
+
     test('the where goes to the relation query, not to a whereHas in its '
         'onQuery', () async {
       List<Writer> list = await Writer()

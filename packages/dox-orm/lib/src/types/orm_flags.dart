@@ -88,8 +88,9 @@ class OrmFlags {
   final bool incrementFiresEvents;
 
   /// `preload()` with a name that is not a relation of the model, like
-  /// `preload('typo')`, throws an `ArgumentError` when the rows load.
-  /// With a dot path, each level is checked. Off: an unknown name loads
+  /// `preload('typo')`, throws an `ArgumentError` when the query runs,
+  /// also with no rows. With a dot path, each level is checked when
+  /// that level has rows. Off: an unknown name loads
   /// nothing.
   // NEXT MAJOR: make this the default, then remove the flag.
   final bool preloadUnknownThrows;

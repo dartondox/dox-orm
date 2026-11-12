@@ -1562,6 +1562,7 @@ class Model<T> extends QueryBuilder<T> {
         }
       }
     }
+    if (list.isEmpty) return;
 
     /// in a transaction the queries run one by one on one connection.
     /// outside, they run together, so the native drivers can send them
