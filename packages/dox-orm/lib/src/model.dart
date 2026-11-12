@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import '../dox_orm.dart';
 import 'relationships/keys.dart';
@@ -176,6 +177,19 @@ class Model<T> extends QueryBuilder<T> {
   /// values we last saved, so save() can tell when a field was set to null
   Map<String, dynamic>? _savedValues;
 
+  /// columns the last write of this model changed, see [getChanges]
+  Map<String, dynamic> _lastChanges = const <String, dynamic>{};
+
+  /// true after save() or create() inserted this model as a new row.
+  /// A model read from the table gives false.
+  ///
+  /// ```
+  /// User user = await User().firstOrCreate({'email': 'ann@example.com'});
+  /// if (user.wasRecentlyCreated) await sendWelcomeMail(user);
+  /// ```
+  bool get wasRecentlyCreated => _wasRecentlyCreated;
+  bool _wasRecentlyCreated = false;
+
   /// true when the row is in the table: the model was read from it, or
   /// saved. save() inserts when it is false, so a model with a key you
   /// set yourself (like a UUID) is inserted, not updated.
@@ -284,6 +298,8 @@ class Model<T> extends QueryBuilder<T> {
       tempIdValue =
           (res.isNotEmpty ? res.first[primaryKey] : null) ?? values[primaryKey];
       _savedValues = <String, dynamic>{...values, primaryKey: tempIdValue};
+      _wasRecentlyCreated = true;
+      _lastChanges = const <String, dynamic>{};
     } else {
       var (Map<String, dynamic> values, dynamic id, bool keepUpdatedAt) =
           _changes();
@@ -291,14 +307,20 @@ class Model<T> extends QueryBuilder<T> {
       Map<String, dynamic> saved = _savedValues ?? originalMap;
 
       /// nothing changed: no query, and updated_at stays as it is
-      if (values.isEmpty) return;
+      if (values.isEmpty) {
+        _lastChanges = const <String, dynamic>{};
+        return;
+      }
       if (updatedAtColumn != null && !keepUpdatedAt) {
         values[updatedAtColumn] = currentTime;
         updatedAt = currentTime;
       }
-      _savedValues = <String, dynamic>{...saved, ...values};
 
       await _newQuery<T>(this).where(primaryKey, id).update(values);
+
+      /// after the query: when it fails, the model stays dirty
+      _savedValues = <String, dynamic>{...saved, ...values};
+      _lastChanges = values;
     }
   }
 
@@ -625,6 +647,7 @@ class Model<T> extends QueryBuilder<T> {
       ...(_savedValues ?? originalMap),
       for (String key in done) key: map[key],
     };
+    _lastChanges = <String, dynamic>{for (String key in done) key: values[key]};
   }
 
   /// set the Dart field of [column] (the column name, like `view_count`)
@@ -963,6 +986,118 @@ class Model<T> extends QueryBuilder<T> {
     await initPreload(<Model<T>>[this]);
   }
 
+  /// start ********** dirty tracking
+
+  /// the values of the row as it was last read or saved, by column name.
+  /// Empty for a new model.
+  Map<String, dynamic> get _original => _savedValues ?? originalMap;
+
+  /// the columns that changed since the model was read or saved, with
+  /// their new values. Keys are column names, like `body`, not the Dart
+  /// field names. A new model gives every column that has a value.
+  ///
+  /// ```
+  /// Blog? blog = await Blog().find(1);
+  /// blog!.title = 'New title';
+  /// print(blog.getDirty()); // {title: New title}
+  /// ```
+  Map<String, dynamic> getDirty() {
+    Map<String, dynamic> original = _original;
+    return <String, dynamic>{
+      for (MapEntry<String, dynamic> e in columnsToMap().entries)
+        if (!_sameValue(e.value, original[e.key])) e.key: e.value,
+    };
+  }
+
+  /// true when a column changed since the model was read or saved.
+  /// [columns] is one column name or a list of them. With no
+  /// [columns], any column counts.
+  ///
+  /// ```
+  /// blog.title = 'New title';
+  /// blog.isDirty(); // true
+  /// blog.isDirty('title'); // true
+  /// blog.isDirty(<String>['body', 'slug']); // false
+  /// ```
+  bool isDirty([Object? columns]) => _anyOf(getDirty(), columns);
+
+  /// the opposite of [isDirty]
+  ///
+  /// ```
+  /// blog.isClean('title'); // false after blog.title = 'New title'
+  /// ```
+  bool isClean([Object? columns]) => !isDirty(columns);
+
+  /// the value of [column] as it was last read or saved, or all of
+  /// them when no [column] is given. A new model gives null (or `{}`).
+  ///
+  /// ```
+  /// blog.title = 'New title';
+  /// print(blog.getOriginal('title')); // the old title
+  /// ```
+  dynamic getOriginal([String? column]) {
+    Map<String, dynamic> original = _original;
+    return column == null ? <String, dynamic>{...original} : original[column];
+  }
+
+  /// the columns that the last save() changed, with their new values.
+  /// update(), increment(), decrement(), touch(), restore() and a soft
+  /// delete on this model count as a save too. Empty after an insert,
+  /// or a save with no changes.
+  ///
+  /// ```
+  /// blog.title = 'New title';
+  /// await blog.save();
+  /// print(blog.getChanges()); // {title: New title, updated_at: ...}
+  /// ```
+  Map<String, dynamic> getChanges() => <String, dynamic>{..._lastChanges};
+
+  /// true when the last save() changed a column. [columns] is one
+  /// column name or a list of them, like [isDirty].
+  ///
+  /// ```
+  /// await blog.save();
+  /// if (blog.wasChanged('status')) notify(blog);
+  /// ```
+  bool wasChanged([Object? columns]) => _anyOf(_lastChanges, columns);
+
+  /// true when [map] has [columns] (a name or a list of names), or any
+  /// key when [columns] is null
+  static bool _anyOf(Map<String, dynamic> map, Object? columns) {
+    if (columns == null) return map.isNotEmpty;
+    if (columns is String) return map.containsKey(columns);
+    if (columns is Iterable<Object?>) return columns.any(map.containsKey);
+    throw ArgumentError.value(
+      columns,
+      'columns',
+      'must be a column name or a list of column names',
+    );
+  }
+
+  /// true when the model value [a] is the same as the saved value [b].
+  /// Unlike [_same], a map or a list is compared by its JSON, and a
+  /// time by its moment.
+  static bool _sameValue(dynamic a, dynamic b) {
+    if (a is DateTime || b is DateTime) return _sameTime(a, b);
+    if (a is Map || a is List || b is Map || b is List) {
+      return _json(a) == _json(b);
+    }
+    return _same(a, b);
+  }
+
+  /// [value] as JSON text. A text stays as it is (a JSON column can be
+  /// read as text).
+  static String _json(dynamic value) {
+    if (value is String) return value;
+    try {
+      return jsonEncode(value);
+    } catch (_) {
+      return '$value';
+    }
+  }
+
+  /// end ********** dirty tracking
+
   /// support jsonEncode()
   ///
   /// ```
@@ -1208,10 +1343,14 @@ class Model<T> extends QueryBuilder<T> {
       };
     }
     if (!_eventsOn) {
-      return await super.insert(model._newRowValues(model._createNullKeys));
+      T row = await super.insert(model._newRowValues(model._createNullKeys));
+      if (row is Model) row._wasRecentlyCreated = true;
+      return row;
     }
     if (!await model.save()) return model as T;
-    return await _readBack(model);
+    T row = await _readBack(model);
+    (row as Model<T>)._wasRecentlyCreated = true;
+    return row;
   }
 
   /// a new model, not saved yet, made from [data]
