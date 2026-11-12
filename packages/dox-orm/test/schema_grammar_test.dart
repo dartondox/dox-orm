@@ -150,6 +150,32 @@ void main() {
       );
     });
 
+    test('collation is for text columns only', () {
+      Table t = Table('t');
+      for (ColumnDefinition c in <ColumnDefinition>[
+        t.integer('a'),
+        t.json('b'),
+        t.binary('c'),
+        t.foreignId('d'),
+        t.foreignUuid('e'),
+      ]) {
+        expect(() => c.collation('utf8mb4_bin'), throwsArgumentError);
+      }
+      for (ColumnDefinition c in <ColumnDefinition>[
+        t.char('f'),
+        t.text('g'),
+        t.longText('h'),
+        t.enumeration('i', <String>['x']),
+      ]) {
+        expect(c.collation('utf8mb4_bin').collationName, 'utf8mb4_bin');
+      }
+    });
+
+    test('collation name edges', () {
+      expect(Table('t').string('k').collation('_').collationName, '_');
+      expect(Table('t').string('k').collation('123').collationName, '123');
+    });
+
     test('collation name is checked', () {
       for (String bad in <String>['', 'a b', "x'; DROP", 'utf8-bin']) {
         expect(
