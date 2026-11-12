@@ -196,6 +196,116 @@ void main() async {
       expect(await PlainTrash().find(p.id), isNotNull);
     });
   });
+
+  group('update flags with timestamps |', () {
+    DateTime old = DateTime.utc(2020, 1, 2);
+
+    setUp(() async {
+      await Schema().create('stamped', (Table table) {
+        table.id();
+        table.string('title').nullable();
+        table.integer('views').withDefault(0);
+        table.timestampTz('deleted_at').nullable();
+        table.timestampTz('created_at').nullable();
+        table.timestampTz('modified_at').nullable();
+      });
+      await Schema().create('plain_trash', (Table table) {
+        table.id();
+        table.string('title').nullable();
+        table.integer('views').withDefault(0);
+        table.timestampTz('deleted_at').nullable();
+      });
+    });
+
+    tearDown(() async {
+      SqlQueryBuilder().flags = const OrmFlags();
+      await Schema().dropIfExists('stamped');
+      await Schema().dropIfExists('plain_trash');
+    });
+
+    Future<Stamped> oldRow() async {
+      Stamped s = await Stamped().create(<String, dynamic>{'title': 'a'});
+      await QueryBuilder.table('stamped')
+          .where('id', s.id)
+          .update(<String, dynamic>{'modified_at': old});
+      return (await Stamped().withTrash().find(s.id))!;
+    }
+
+    Future<DateTime?> modifiedAt(int? id) async {
+      Map<String, dynamic>? row = await QueryBuilder.table('stamped')
+          .where('id', id)
+          .getFirst();
+      return _date(row!['modified_at']);
+    }
+
+    test('increment on: custom updated_at column, field and save()', () async {
+      SqlQueryBuilder().flags = const OrmFlags.all();
+      Stamped s = await oldRow();
+      expect(await s.increment('views'), 1);
+      expect((await modifiedAt(s.id))!.isAfter(old), isTrue);
+      expect(s.updatedAt!.isAfter(old), isTrue);
+
+      /// the saved time is the new one, so save() with no change sends
+      /// nothing and keeps it
+      DateTime stamp = s.updatedAt!;
+      await s.save();
+      expect(s.updatedAt, stamp);
+    });
+
+    test('increment off: updated_at stays old', () async {
+      Stamped s = await oldRow();
+      expect(await s.increment('views'), 1);
+      expect((await modifiedAt(s.id))!.year, 2020);
+      expect(s.updatedAt!.year, 2020);
+    });
+
+    test('increment on: a given updated_at in extra is kept', () async {
+      SqlQueryBuilder().flags = const OrmFlags.all();
+      Stamped s = await oldRow();
+      DateTime given = DateTime.utc(2021, 5, 6);
+      expect(
+        await s.increment('views', 1, <String, dynamic>{'modified_at': given}),
+        1,
+      );
+      expect((await modifiedAt(s.id))!.year, 2021);
+      expect(s.updatedAt!.year, 2021);
+    });
+
+    test('both flags on: a model without timestamps', () async {
+      SqlQueryBuilder().flags = const OrmFlags.all();
+      PlainTrash p = await PlainTrash().create(<String, dynamic>{'title': 'a'});
+      expect(await p.increment('views'), 1);
+      expect(await p.update(<String, dynamic>{'title': 'b'}), 1);
+      expect(
+        await (PlainTrash().where('id', p.id) as PlainTrash).update(
+          <String, dynamic>{'title': 'c'},
+        ),
+        1,
+      );
+      expect(p.updatedAt, isNull);
+    });
+
+    test(
+      'updateSetsUpdatedAt on: forceUpdate and a soft deleted row',
+      () async {
+        SqlQueryBuilder().flags = const OrmFlags.all();
+        Stamped s = await oldRow();
+        await (Stamped().where('id', s.id) as Stamped).forceUpdate(
+          <String, dynamic>{'title': 'b'},
+        );
+        expect((await modifiedAt(s.id))!.isAfter(old), isTrue);
+
+        await s.delete();
+        await QueryBuilder.table('stamped')
+            .where('id', s.id)
+            .update(<String, dynamic>{'modified_at': old});
+        int count = await (Stamped().withTrash().where('id', s.id) as Stamped)
+            .update(<String, dynamic>{'title': 'c'});
+        expect(count, 1);
+        expect((await modifiedAt(s.id))!.isAfter(old), isTrue);
+      },
+    );
+  });
 }
 
 DateTime? _date(dynamic v) => v is DateTime ? v : DateTime.tryParse('$v');

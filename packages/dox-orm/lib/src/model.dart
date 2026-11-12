@@ -589,6 +589,18 @@ class Model<T> extends QueryBuilder<T> {
       /// int + int stays an int, so an int field takes it
       values[column] = up ? old + amount : old - amount;
     }
+
+    /// like update(): also for a custom column that setColumnValue does
+    /// not know
+    String? updatedAtColumn = timestampsColumn['updated_at'];
+    if (SqlQueryBuilder().flags.incrementFiresEvents &&
+        updatedAtColumn != null) {
+      dynamic given = values[updatedAtColumn];
+      DateTime? stamp = given is DateTime
+          ? given
+          : DateTime.tryParse('${given ?? ''}');
+      if (stamp != null) updatedAt = stamp;
+    }
     _setSavedColumns(values);
     return count;
   }
