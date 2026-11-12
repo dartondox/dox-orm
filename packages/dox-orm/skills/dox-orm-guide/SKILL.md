@@ -247,6 +247,10 @@ User? user;
 ```dart
 User? user = await User().preload('posts').find(1);      // one query for the posts
 List<Post> posts = await Post().preload('user').get();
+await User().preload('posts.comments').get();            // nested: one query per level
+await User().preload('posts', (QueryBuilder<dynamic> q) {
+  q.where('published', true);                            // only these posts
+}).get();
 await user?.$getRelation('posts');                       // load on a model you have
 List<Post> recent = await user
         ?.related<Post>('posts')
@@ -285,6 +289,9 @@ List<Post> authored = <Post>[];
   write the table in front of a column (`'post.title'`): the query joins
   the two tables.
 - A relation loaded with `preload` is in `toJson()`, under the field name in snake_case.
+  With `OrmFlags.toJsonLoadedRelations`, one loaded with `$getRelation()` is in it too.
+- With a dot path, the where of `preload()` is for the last relation of the path.
+- With `OrmFlags.preloadUnknownThrows`, `preload('typo')` throws an `ArgumentError`.
 
 ## Soft deletes
 
