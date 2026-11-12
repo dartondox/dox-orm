@@ -491,7 +491,8 @@ class Model<T> extends QueryBuilder<T> {
   /// value, with [setColumnValue]. A later save() does not send the old
   /// value back. Keys of [extra] that [fillable] and [guarded] do not
   /// allow are dropped. It fires no model events and does not set
-  /// updated_at.
+  /// updated_at. With [OrmFlags.incrementFiresEvents] it fires saving,
+  /// updating, updated and saved like save(), and sets updated_at.
   ///
   /// ponytail: a model made by an old dox_builder has no
   /// [setColumnValue], so its field keeps the old value. Run build_runner
@@ -541,6 +542,36 @@ class Model<T> extends QueryBuilder<T> {
   /// increment or decrement this row, then set the fields to the new
   /// values when the row changed
   Future<int> _stepThisRecord(
+    String column,
+    num amount,
+    Map<String, dynamic> extra,
+    bool up,
+  ) async {
+    bool flag = SqlQueryBuilder().flags.incrementFiresEvents;
+    bool events = flag && _eventsOn;
+    if (events) {
+      try {
+        await _fire(ModelEvent.saving);
+        await _fire(ModelEvent.updating);
+      } on CancelModelEvent {
+        return 0;
+      }
+    }
+    String? updatedAtColumn = timestampsColumn['updated_at'];
+    if (flag &&
+        updatedAtColumn != null &&
+        !extra.containsKey(updatedAtColumn)) {
+      extra = <String, dynamic>{...extra, updatedAtColumn: now()};
+    }
+    int count = await _stepRow(column, amount, extra, up);
+    if (events && count > 0) {
+      await _fire(ModelEvent.updated);
+      await _fire(ModelEvent.saved);
+    }
+    return count;
+  }
+
+  Future<int> _stepRow(
     String column,
     num amount,
     Map<String, dynamic> extra,

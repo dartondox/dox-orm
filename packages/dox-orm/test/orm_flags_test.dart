@@ -84,6 +84,7 @@ void main() async {
         f.lastPageAtLeastOne,
         f.laravelPostgresTypes,
         f.updateSetsUpdatedAt,
+        f.incrementFiresEvents,
       ];
       expect(values(off), everyElement(isFalse));
       expect(values(on), everyElement(isTrue));
@@ -561,6 +562,33 @@ void main() async {
         'updated_at': DateTime.utc(2001, 6),
       });
       expect((await storedUpdatedAt()).year, 2001);
+    });
+
+    test('incrementFiresEvents off: no events, updated_at kept', () async {
+      EventPost post = await oldPost();
+      expect(await post.increment('views', 2), 1);
+      expect(EventPost.log, isEmpty);
+      expect((await storedUpdatedAt()).year, 2000);
+    });
+
+    test('incrementFiresEvents on: events and updated_at', () async {
+      flagsOn();
+      EventPost post = await oldPost();
+      expect(await post.increment('views', 2), 1);
+      expect(EventPost.log, <String>['saving', 'updating', 'updated', 'saved']);
+      expect((await storedUpdatedAt()).year, greaterThan(2000));
+      expect(post.updatedAt!.year, greaterThan(2000));
+
+      /// decrement too, and a hook can stop it
+      EventPost.log = <String>[];
+      EventPost.cancelOn = 'updating';
+      expect(await post.decrement('views'), 0);
+      Map<String, dynamic>? row = await QueryBuilder.table('event_posts')
+          .where('id', 1)
+          .getFirst();
+      expect(row!['views'], 2);
+      EventPost.cancelOn = null;
+      expect(await post.decrement('views'), 1);
     });
 
     test('save(): how many times beforeSave runs', () async {

@@ -79,6 +79,14 @@ class OrmFlags {
   // NEXT MAJOR: make this the default, then remove the flag.
   final bool updateSetsUpdatedAt;
 
+  /// `increment()` and `decrement()` on a model read from the table fire
+  /// `saving`, `updating`, `updated` and `saved`, like `save()`, and set
+  /// `updated_at`. A hook can stop it with `CancelModelEvent`: then it
+  /// changes nothing and returns 0. Off: no events, and `updated_at`
+  /// stays as it is. The query form (with `where()`) does not change.
+  // NEXT MAJOR: make this the default, then remove the flag.
+  final bool incrementFiresEvents;
+
   const OrmFlags({
     this.skipCleanUpdateEvents = false,
     this.belongsToKeyFromRelation = false,
@@ -90,6 +98,7 @@ class OrmFlags {
     this.lastPageAtLeastOne = false,
     this.laravelPostgresTypes = false,
     this.updateSetsUpdatedAt = false,
+    this.incrementFiresEvents = false,
   });
 
   /// every flag on
@@ -103,5 +112,6 @@ class OrmFlags {
       groupByAdds = true,
       lastPageAtLeastOne = true,
       laravelPostgresTypes = true,
-      updateSetsUpdatedAt = true;
+      updateSetsUpdatedAt = true,
+      incrementFiresEvents = true;
 }
