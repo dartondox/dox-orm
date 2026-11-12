@@ -40,6 +40,9 @@ M? belongsTo<T, M>(
     foreignKey = '${owner.helper.toSnakeCase(relation)}_${owner.primaryKey}';
   }
   foreignKey ??= owner.foreignKeyName;
+  if (findRelationKeys) {
+    foundRelationKeys('belongsTo', foreignKey, localKey, model);
+  }
 
   List<dynamic> childKeys = const <dynamic>[];
   if (relationSubquery) {

@@ -31,6 +31,7 @@ export 'src/relationships/has_one.dart';
 export 'src/relationships/has_through.dart';
 export 'src/relationships/many_to_many.dart';
 export 'src/relationships/morph.dart';
+export 'src/relationships/relation_writes.dart';
 export 'src/schema.dart';
 export 'src/schema/table.dart';
 export 'src/soft_deletes.dart';
