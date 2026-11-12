@@ -52,7 +52,8 @@ class ReplicaDriver extends DBDriver {
 
   /// run [body] as one unit of work (eg. one request) for `sticky`: after
   /// a write inside it, its reads go to the write database. Outside a
-  /// scope, `sticky` does nothing (it prints a warning once). A nested
+  /// scope, `sticky` does nothing. It prints a warning once when a read
+  /// from a replica follows a write that was outside any scope. A nested
   /// scope starts fresh.
   ///
   /// In a Dox app each request gets a scope by itself: see [stickyReads].
@@ -97,33 +98,47 @@ class ReplicaDriver extends DBDriver {
         (sticky && _scope()?.contains(this) == true)) {
       return writer;
     }
+    if (sticky) _warnIfUnscopedAfterWrite();
     DBDriver reader = readers[_next];
     _next = (_next + 1) % readers.length;
     return reader;
   }
 
   /// the drivers that wrote in this [stickyScope], or null outside one
-  static Set<DBDriver>? _scope() {
-    Set<DBDriver>? scope = Zone.current[_stickyKey] as Set<DBDriver>?;
-    if (scope == null && !_noScopeWarned) {
-      _noScopeWarned = true;
-      stderr.writeln(
-        'Dox ORM warning: a connection has sticky: true, but this query '
-        'runs outside ReplicaDriver.stickyScope(), so sticky does nothing '
-        'here. In a Dox app each request gets a scope by itself. Outside a '
-        'request (eg. a job or a script), wrap the work in '
-        'ReplicaDriver.stickyScope().',
-      );
-    }
-    return scope;
-  }
+  static Set<DBDriver>? _scope() => Zone.current[_stickyKey] as Set<DBDriver>?;
+
+  /// true after a write outside any scope on this connection
+  bool _wroteOutsideScope = false;
 
   static bool _noScopeWarned = false;
+
+  /// forget that the warning was printed (for tests)
+  static void resetStickyWarning() => _noScopeWarned = false;
+
+  /// a read goes to a replica outside any scope, after an unscoped write:
+  /// here `sticky` could have changed the result. Migrations and other
+  /// writer-only work never reach this.
+  void _warnIfUnscopedAfterWrite() {
+    if (_scope() != null || !_wroteOutsideScope || _noScopeWarned) return;
+    _noScopeWarned = true;
+    stderr.writeln(
+      'Dox ORM warning: a connection has sticky: true, but this read '
+      'goes to a replica outside ReplicaDriver.stickyScope(), after a '
+      'write. So sticky does nothing here. In a Dox app each request gets '
+      'a scope by itself. Outside a request (eg. a job or a script), wrap '
+      'the work in ReplicaDriver.stickyScope().',
+    );
+  }
 
   /// remember a write for [sticky]
   void _wrote() {
     if (!sticky) return;
-    _scope()?.add(this);
+    Set<DBDriver>? scope = _scope();
+    if (scope == null) {
+      _wroteOutsideScope = true;
+    } else {
+      scope.add(this);
+    }
   }
 
   @override

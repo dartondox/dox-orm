@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:dox_orm/dox_orm.dart';
 import 'package:test/test.dart';
 
@@ -387,6 +390,59 @@ void main() async {
     });
   });
 
+  group('sticky warning |', () {
+    /// run [body] and return what it printed to stderr
+    Future<String> captureErr(Future<void> Function() body) async {
+      StringBuffer out = StringBuffer();
+      ReplicaDriver.resetStickyWarning();
+      await IOOverrides.runZoned(body, stderr: () => _FakeStderr(out));
+      return out.toString();
+    }
+
+    test('writes and writer reads outside a scope print nothing', () async {
+      useReplica(sticky: true);
+      String err = await captureErr(() async {
+        await item().insert(<String, dynamic>{'name': 'b'});
+        await item().onWriteConnection().get();
+        await item().onWriteConnection().count();
+      });
+      expect(err, isEmpty);
+    });
+
+    test('a replica read after a write outside a scope warns once', () async {
+      useReplica(sticky: true);
+      String err = await captureErr(() async {
+        await item().get();
+        await item().insert(<String, dynamic>{'name': 'b'});
+        await item().get();
+        await item().get();
+        await item().insert(<String, dynamic>{'name': 'c'});
+        await item().get();
+      });
+      expect('sticky: true'.allMatches(err).length, 1);
+    });
+
+    test('inside a scope it prints nothing', () async {
+      useReplica(sticky: true);
+      String err = await captureErr(() async {
+        await ReplicaDriver.stickyScope(() async {
+          await item().insert(<String, dynamic>{'name': 'b'});
+          await item().get();
+        });
+      });
+      expect(err, isEmpty);
+    });
+
+    test('without sticky it prints nothing', () async {
+      useReplica();
+      String err = await captureErr(() async {
+        await item().insert(<String, dynamic>{'name': 'b'});
+        await item().get();
+      });
+      expect(err, isEmpty);
+    });
+  });
+
   group('stickyReads middleware |', () {
     late DatabaseConfig? savedConfig;
 
@@ -610,4 +666,17 @@ void main() async {
     });
     expect(await item().where('name', 'real').count(), 0);
   }, skip: real.getName() == Driver.sqlite ? 'Postgres and MySQL only' : false);
+}
+
+/// a stderr that keeps what is written to it
+class _FakeStderr implements Stdout {
+  _FakeStderr(this.out);
+
+  final StringBuffer out;
+
+  @override
+  void writeln([Object? object = '']) => out.writeln(object);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
 }
