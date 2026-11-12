@@ -102,4 +102,15 @@ class UserGenerator extends Model<User> with SoftDeletes<User> {
     }
     return false;
   }
+
+  @override
+  bool $copyColumnsFrom(Model<User> other) {
+    User o = other as User;
+    (this as User)
+      ..id = o.id
+      ..name = o.name
+      ..createdAt = o.createdAt
+      ..updatedAt = o.updatedAt;
+    return true;
+  }
 }

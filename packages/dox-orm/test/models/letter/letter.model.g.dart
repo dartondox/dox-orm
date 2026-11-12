@@ -122,4 +122,18 @@ class LetterGenerator extends Model<Letter> with SoftDeletes<Letter> {
     }
     return false;
   }
+
+  @override
+  bool $copyColumnsFrom(Model<Letter> other) {
+    Letter o = other as Letter;
+    (this as Letter)
+      ..id = o.id
+      ..title = o.title
+      ..citizenId = o.citizenId
+      ..writerRef = o.writerRef
+      ..deletedAt = o.deletedAt
+      ..createdAt = o.createdAt
+      ..updatedAt = o.updatedAt;
+    return true;
+  }
 }

@@ -109,6 +109,18 @@ class ScopedPostGenerator extends Model<ScopedPost> {
     }
     return false;
   }
+
+  @override
+  bool $copyColumnsFrom(Model<ScopedPost> other) {
+    ScopedPost o = other as ScopedPost;
+    (this as ScopedPost)
+      ..id = o.id
+      ..title = o.title
+      ..published = o.published
+      ..archived = o.archived
+      ..views = o.views;
+    return true;
+  }
 }
 
 extension ScopedPostScopes on QueryBuilder<ScopedPost> {

@@ -99,4 +99,15 @@ class DeviceGenerator extends Model<Device> {
     }
     return false;
   }
+
+  @override
+  bool $copyColumnsFrom(Model<Device> other) {
+    Device o = other as Device;
+    (this as Device)
+      ..uuid = o.uuid
+      ..name = o.name
+      ..createdAt = o.createdAt
+      ..updatedAt = o.updatedAt;
+    return true;
+  }
 }

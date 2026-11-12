@@ -78,4 +78,13 @@ class SettingGenerator extends Model<Setting> {
     }
     return false;
   }
+
+  @override
+  bool $copyColumnsFrom(Model<Setting> other) {
+    Setting o = other as Setting;
+    (this as Setting)
+      ..id = o.id
+      ..name = o.name;
+    return true;
+  }
 }

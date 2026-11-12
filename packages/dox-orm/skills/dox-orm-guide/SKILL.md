@@ -128,7 +128,7 @@ await found?.save();
 found?.wasChanged('title'); // true: the last save changed it
 
 // read the row again
-await found?.refresh(); // in place; throws on a column with a cast
+await found?.refresh(); // in place; the row and its relations again
 Post? again = await found?.fresh(); // a new model, or null when gone
 ```
 

@@ -183,4 +183,16 @@ class CountryGenerator extends Model<Country> {
     }
     return false;
   }
+
+  @override
+  bool $copyColumnsFrom(Model<Country> other) {
+    Country o = other as Country;
+    (this as Country)
+      ..id = o.id
+      ..name = o.name
+      ..code = o.code
+      ..createdAt = o.createdAt
+      ..updatedAt = o.updatedAt;
+    return true;
+  }
 }

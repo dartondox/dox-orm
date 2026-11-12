@@ -99,4 +99,15 @@ class TagGenerator extends Model<Tag> {
     }
     return false;
   }
+
+  @override
+  bool $copyColumnsFrom(Model<Tag> other) {
+    Tag o = other as Tag;
+    (this as Tag)
+      ..id = o.id
+      ..title = o.title
+      ..createdAt = o.createdAt
+      ..updatedAt = o.updatedAt;
+    return true;
+  }
 }

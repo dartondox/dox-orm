@@ -132,6 +132,15 @@ class OwnerGenerator extends Model<Owner> {
     }
     return false;
   }
+
+  @override
+  bool $copyColumnsFrom(Model<Owner> other) {
+    Owner o = other as Owner;
+    (this as Owner)
+      ..id = o.id
+      ..name = o.name;
+    return true;
+  }
 }
 
 // ignore_for_file: always_specify_types
@@ -234,6 +243,16 @@ class PetGenerator extends Model<Pet> {
     }
     return false;
   }
+
+  @override
+  bool $copyColumnsFrom(Model<Pet> other) {
+    Pet o = other as Pet;
+    (this as Pet)
+      ..id = o.id
+      ..name = o.name
+      ..ownerId = o.ownerId;
+    return true;
+  }
 }
 
 // ignore_for_file: always_specify_types
@@ -310,5 +329,14 @@ class ClubGenerator extends Model<Club> {
         return true;
     }
     return false;
+  }
+
+  @override
+  bool $copyColumnsFrom(Model<Club> other) {
+    Club o = other as Club;
+    (this as Club)
+      ..id = o.id
+      ..name = o.name;
+    return true;
   }
 }

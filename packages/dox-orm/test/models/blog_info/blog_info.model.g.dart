@@ -132,6 +132,18 @@ class BlogInfoGenerator extends Model<BlogInfo> {
   }
 
   @override
+  bool $copyColumnsFrom(Model<BlogInfo> other) {
+    BlogInfo o = other as BlogInfo;
+    (this as BlogInfo)
+      ..id = o.id
+      ..info = o.info
+      ..blogId = o.blogId
+      ..createdAt = o.createdAt
+      ..updatedAt = o.updatedAt;
+    return true;
+  }
+
+  @override
   void setComputedValues(Map<String, dynamic> map) {
     BlogInfo instance = this as BlogInfo;
     map['has_info'] = instance.hasInfo;

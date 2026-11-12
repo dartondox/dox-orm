@@ -106,4 +106,16 @@ class ArtistSongGenerator extends Model<ArtistSong> {
     }
     return false;
   }
+
+  @override
+  bool $copyColumnsFrom(Model<ArtistSong> other) {
+    ArtistSong o = other as ArtistSong;
+    (this as ArtistSong)
+      ..id = o.id
+      ..songId = o.songId
+      ..artistId = o.artistId
+      ..createdAt = o.createdAt
+      ..updatedAt = o.updatedAt;
+    return true;
+  }
 }

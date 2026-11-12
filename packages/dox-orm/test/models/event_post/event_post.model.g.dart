@@ -113,5 +113,17 @@ class EventPostGenerator extends Model<EventPost> with SoftDeletes<EventPost> {
   }
 
   @override
+  bool $copyColumnsFrom(Model<EventPost> other) {
+    EventPost o = other as EventPost;
+    (this as EventPost)
+      ..id = o.id
+      ..title = o.title
+      ..deletedAt = o.deletedAt
+      ..createdAt = o.createdAt
+      ..updatedAt = o.updatedAt;
+    return true;
+  }
+
+  @override
   bool get hasModelHooks => true;
 }

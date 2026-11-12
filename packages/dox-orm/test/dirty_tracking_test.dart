@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -54,6 +55,11 @@ void main() async {
       table.binary('data').nullable();
       table.json('info').nullable();
     });
+    await Schema().create('old_cast_rows', (Table table) {
+      table.id();
+      table.string('title').nullable();
+      table.string('status').nullable();
+    });
     await Schema().create('stamped_rows', (Table table) {
       table.id();
       table.string('title').nullable();
@@ -69,6 +75,7 @@ void main() async {
       'event_posts',
       'cast_item',
       'stamped_rows',
+      'old_cast_rows',
       'blob_rows',
     ]) {
       await Schema().dropIfExists(table);
@@ -465,6 +472,7 @@ void main() async {
       blog.slug = 'local';
       expect(blog.blogInfos, isEmpty);
 
+      /// title has a beforeGet
       Blog same = await blog.refresh();
       expect(identical(same, blog), isTrue);
       expect(blog.title, 'other');
@@ -508,14 +516,52 @@ void main() async {
       expect(blog.refresh(), throwsA(isA<ModelNotFoundException>()));
     });
 
-    test('throws on cast columns and changes nothing', () async {
-      CastItem item = CastItem()..status = Status.live;
+    test('sets cast columns from the row', () async {
+      CastItem item = CastItem()
+        ..status = Status.live
+        ..meta = <String, dynamic>{'a': 1}
+        ..tags = <String>['x']
+        ..level = Level.low
+        ..price = const Money(100);
       await item.save();
       await QueryBuilder.table('cast_item')
           .where('id', item.id)
-          .update(<String, dynamic>{'status': 'draft'});
-      await expectLater(item.refresh(), throwsStateError);
-      expect(item.status, Status.live);
+          .update(<String, dynamic>{
+            'status': 'draft',
+            'meta': jsonEncode(<String, dynamic>{'b': 2}),
+            'tags': jsonEncode(<String>['y', 'z']),
+            'level': 2,
+            'price': 500,
+          });
+      item.done = true;
+
+      await item.refresh();
+      expect(item.status, Status.draft);
+      expect(item.meta, <String, dynamic>{'b': 2});
+      expect(item.tags, <String>['y', 'z']);
+      expect(item.level, Level.high);
+      expect(item.price!.cents, 500);
+      expect(item.done, isFalse);
+      expect(item.isDirty(), isFalse);
+      expect(item.getOriginal('status'), 'draft');
+
+      /// a save after it sends only the changed column
+      item.status = Status.live;
+      await item.save();
+      expect(item.getChanges().keys, <String>['status']);
+    });
+
+    test('old builder: throws on a cast column and changes nothing', () async {
+      OldCastRow row = OldCastRow()
+        ..title = 'a'
+        ..status = Status.live;
+      await row.save();
+      await QueryBuilder.table('old_cast_rows')
+          .where('id', row.id)
+          .update(<String, dynamic>{'title': 'b', 'status': 'draft'});
+      await expectLater(row.refresh(), throwsStateError);
+      expect(row.title, 'a');
+      expect(row.status, Status.live);
     });
 
     test('custom timestamp columns', () async {
@@ -720,4 +766,66 @@ class BlobRow extends Model<BlobRow> {
 
   @override
   Map<String, dynamic> convertToMap(dynamic i) => (i as BlobRow).columnsToMap();
+}
+
+/// a hand-written model like one from an old dox_builder: it has no
+/// [Model.$copyColumnsFrom], and an enum column
+class OldCastRow extends Model<OldCastRow> {
+  @override
+  List<String> get guarded => const <String>[];
+  int? get id => tempIdValue as int?;
+  set id(int? value) => tempIdValue = value;
+
+  String? title;
+  Status? status;
+
+  @override
+  String get tableName => 'old_cast_rows';
+
+  @override
+  Map<String, dynamic> get timestampsColumn => const <String, dynamic>{
+    'created_at': null,
+    'updated_at': null,
+  };
+
+  @override
+  List<String> get tableColumns => const <String>['id', 'title', 'status'];
+
+  @override
+  OldCastRow fromMap(Map<String, dynamic> m) => OldCastRow()
+    ..id = m['id'] as int?
+    ..title = m['title'] as String?
+    ..status = m['status'] == null
+        ? null
+        : Status.values.byName(m['status'] as String);
+
+  @override
+  Map<String, dynamic> columnsToMap() => <String, dynamic>{
+    'id': id,
+    'title': title,
+    'status': status?.name,
+  };
+
+  @override
+  Map<String, dynamic> convertToMap(dynamic i) =>
+      (i as OldCastRow).columnsToMap();
+
+  @override
+  bool setColumnValue(String column, dynamic value) {
+    switch (column) {
+      case 'id':
+        if (value is! int?) return false;
+        id = value;
+        return true;
+      case 'title':
+        if (value is! String?) return false;
+        title = value;
+        return true;
+      case 'status':
+        if (value is! Status?) return false;
+        status = value;
+        return true;
+    }
+    return false;
+  }
 }
