@@ -140,6 +140,79 @@ class ManyToMany {
   });
 }
 
+/// many far rows found through a model in the middle, like a country
+/// with the posts of its users. `users.country_id` points to the
+/// country and `posts.user_id` points to the user.
+///
+/// ```
+/// @HasManyThrough(Post, through: User)
+/// List<Post> posts = <Post>[];
+/// ```
+class HasManyThrough {
+  final Type model;
+
+  /// the model in the middle, like `User`
+  final Type through;
+
+  /// the column on the through table that points to this model,
+  /// default `country_id`
+  final String? foreignKey;
+
+  /// the column of this model, default its primary key
+  final String? localKey;
+
+  /// the column on the far table that points to the through model,
+  /// default `user_id`
+  final String? throughForeignKey;
+
+  /// the column of the through model, default its primary key
+  final String? throughLocalKey;
+  final Function? onQuery;
+  final bool? eager;
+
+  const HasManyThrough(
+    this.model, {
+    required this.through,
+    this.foreignKey,
+    this.localKey,
+    this.throughForeignKey,
+    this.throughLocalKey,
+    this.onQuery,
+    this.eager,
+  });
+}
+
+/// one far row found through a model in the middle, see
+/// [HasManyThrough]. When there are many far rows, eager loading keeps
+/// the last row the query returns. Add an `orderBy` in [onQuery] to pick
+/// the row.
+///
+/// ```
+/// @HasOneThrough(Post, through: User)
+/// Post? post;
+/// ```
+class HasOneThrough {
+  final Type model;
+  final Type through;
+  final String? foreignKey;
+  final String? localKey;
+  final String? throughForeignKey;
+  final String? throughLocalKey;
+  final Function? onQuery;
+  final bool? eager;
+
+  const HasOneThrough(
+    this.model, {
+    required this.through,
+    this.foreignKey,
+    this.localKey,
+    this.throughForeignKey,
+    this.throughLocalKey,
+    this.onQuery,
+    this.eager,
+  });
+}
+
 /// polymorphic one to many relation, like a post with many comments.
 /// [name] is the morph name: the related table has `<name>_id` and
 /// `<name>_type` columns (see `table.morphs(name)`).

@@ -22,6 +22,10 @@ List<dynamic> uniqueKeys(List<dynamic> keys) {
 
 bool _notNull(dynamic value) => value != null;
 
+/// the local key of each hasOne, hasMany or through query, so the
+/// result can be matched to the owners
+final Expando<String> relationLocalKeys = Expando<String>();
+
 /// true while withCount() or whereHas() makes a relation query. the
 /// relation query then matches the parent row with a column compare (not
 /// with the ids of loaded models), so it can run as a subquery.
