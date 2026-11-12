@@ -121,7 +121,6 @@ class _MorphTo {
       ]),
     );
     if (onQuery != null) related = onQuery(related);
-    preload?.call(related);
     return related;
   }
 }
@@ -176,6 +175,20 @@ Future<Map<String, M>> getMorphTo<T, M>(dynamic q, List<Model<T>> list) async {
     String? type = m.typeOf(owner);
     if (type == null || queries.containsKey(type)) continue;
     queries[type] = m.query(type, list);
+  }
+
+  /// the where and nested relations of preload(), now that all types
+  /// are known
+  PreloadQuery? preload = m.preload;
+  if (preload != null) {
+    morphTypeQueries = queries.values.toList();
+    try {
+      for (Model<dynamic> typeQuery in queries.values) {
+        preload(typeQuery);
+      }
+    } finally {
+      morphTypeQueries = null;
+    }
   }
 
   /// `type|key` => model. one query at a time, so it works in a

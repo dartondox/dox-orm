@@ -58,6 +58,11 @@ PreloadQuery? takePreloadQuery() {
   return f;
 }
 
+/// the query of each type of a `morphTo` while [PreloadQuery] runs on
+/// them, so a nested path can skip a type that does not have the
+/// relation. null at other times.
+List<Model<dynamic>>? morphTypeQueries;
+
 /// starts the subquery of [child]. it sets the param key prefix, and
 /// an alias when [child] and [parent] use the same table (like a parent
 /// category), so the subquery rows and the parent rows have their own

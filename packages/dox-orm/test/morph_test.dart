@@ -131,6 +131,24 @@ void main() async {
       expect((some[2].commentable as Video).comments, hasLength(1));
       expect(some[3].commentable, isNull);
 
+      /// only Photo has latestComment: the Video query skips it, also
+      /// with preloadUnknownThrows on. A name no type has still throws.
+      SqlQueryBuilder().flags = const OrmFlags(preloadUnknownThrows: true);
+      try {
+        List<Comment> mixed = await Comment()
+            .preload('commentable.latestComment')
+            .orderBy('id')
+            .get();
+        expect((mixed[0].commentable as Photo).latestComment?.body, 'b');
+        expect((mixed[2].commentable as Video).title, 'video 1');
+        await expectLater(
+          Comment().preload('commentable.typo').get(),
+          throwsA(isA<ArgumentError>()),
+        );
+      } finally {
+        SqlQueryBuilder().flags = const OrmFlags();
+      }
+
       /// a lazy load
       Comment c = (await Comment().find(3))!;
       await c.$getRelation<dynamic>('commentable');

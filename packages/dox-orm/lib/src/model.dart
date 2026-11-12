@@ -1517,9 +1517,27 @@ class Model<T> extends QueryBuilder<T> {
       if (path == name) {
         p.$2?.call(q);
       } else if (path.startsWith(prefix)) {
-        (q as Model<dynamic>).preload(path.substring(prefix.length), p.$2);
+        String rest = path.substring(prefix.length);
+        if (_otherMorphTypeHas(q as Model<dynamic>, rest)) continue;
+        q.preload(rest, p.$2);
       }
     }
+  }
+
+  /// true when [q] is the query of one type of a morphTo, it does not
+  /// have the first relation of [path], and another type does. Then
+  /// [q] skips the path. When no type has it, it is a typo: [q] keeps
+  /// it, so [OrmFlags.preloadUnknownThrows] can throw.
+  bool _otherMorphTypeHas(Model<dynamic> q, String path) {
+    List<Model<dynamic>>? types = morphTypeQueries;
+    if (types == null) return false;
+    int dot = path.indexOf('.');
+    String name = dot < 0 ? path : path.substring(0, dot);
+    if (q.relationsResultMatcher[name] != null) return false;
+    for (Model<dynamic> t in types) {
+      if (t.relationsResultMatcher[name] != null) return true;
+    }
+    return false;
   }
 
   @override
