@@ -142,5 +142,66 @@ void main() async {
       await w.reload();
       expect(w.articles[0].remarks, hasLength(2));
     });
+    test('a where on the relation query', () async {
+      List<Writer> list = await Writer()
+          .preload('articles', (QueryBuilder<dynamic> q) {
+            q.where('published', true);
+          })
+          .orderBy('id')
+          .get();
+      expect(list[0].articles.map((Article a) => a.title), <String>['a1']);
+      expect(list[1].articles.map((Article a) => a.title), <String>['b1']);
+      expect(list[0].toJson()['articles'], hasLength(1));
+    });
+
+    test('a where on a dot path is for the last relation', () async {
+      Writer? w = await Writer()
+          .preload('articles.remarks', (QueryBuilder<dynamic> q) {
+            q.where('body', 'y');
+          })
+          .find(1);
+      expect(w!.articles, hasLength(2));
+      expect(w.articles[0].remarks.single.body, 'y');
+    });
+
+    test('a where and a dot path on the same relation', () async {
+      queries.clear();
+      Writer? w = await Writer()
+          .preload('articles', (QueryBuilder<dynamic> q) {
+            q.where('published', true);
+          })
+          .preload('articles.remarks')
+          .find(1);
+      expect(queries.length, 3);
+      expect(w!.articles.single.remarks, hasLength(2));
+    });
+
+    test('a where on a manyToMany and a belongsTo', () async {
+      List<Writer> list = await Writer()
+          .preload('topics', (QueryBuilder<dynamic> q) {
+            q.where('name', 'sql');
+          })
+          .orderBy('id')
+          .get();
+      expect(list[0].topics, isEmpty);
+      expect(list[1].topics.single.name, 'sql');
+
+      Article? a = await Article()
+          .preload('writer', (QueryBuilder<dynamic> q) {
+            q.where('name', 'nobody');
+          })
+          .find(1);
+      expect(a!.writer, isNull);
+    });
+
+    test('reload() of a row keeps the where', () async {
+      Writer? w = await Writer()
+          .preload('articles', (QueryBuilder<dynamic> q) {
+            q.where('published', true);
+          })
+          .find(1);
+      await w!.reload();
+      expect(w.articles.single.title, 'a1');
+    });
   });
 }

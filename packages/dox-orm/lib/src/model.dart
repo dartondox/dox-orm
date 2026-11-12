@@ -7,6 +7,9 @@ import 'relationships/keys.dart';
 import 'utils/plural.dart';
 import 'union.dart';
 
+/// the where of [Model.preload]
+typedef _PreloadWhere = void Function(QueryBuilder<dynamic> query);
+
 class Model<T> extends QueryBuilder<T> {
   static final Map<String, Model<dynamic> Function()> _morphModels =
       <String, Model<dynamic> Function()>{};
@@ -1382,9 +1385,10 @@ class Model<T> extends QueryBuilder<T> {
   /// made on the first preload(), most models never call it
   List<String>? _preloads;
 
-  /// the dot paths of preload(), like `posts.comments`. null when there
-  /// is none, so a plain preload() does no more work.
-  List<String>? _preloadPaths;
+  /// the dot paths of preload(), like `posts.comments`, and the names
+  /// with a where, each with its where. null when there is none, so a
+  /// plain preload() does no more work.
+  List<(String, _PreloadWhere?)>? _preloadPaths;
 
   /// copies the preload() names and paths of [query] to this row, so
   /// toJson() and reload() of the row know them. get() calls it for each
@@ -1392,8 +1396,10 @@ class Model<T> extends QueryBuilder<T> {
   void $copyPreloads(Model<dynamic> query) {
     List<String>? names = query._preloads;
     if (names != null) _preloads = List<String>.of(names);
-    List<String>? paths = query._preloadPaths;
-    if (paths != null) _preloadPaths = List<String>.of(paths);
+    List<(String, _PreloadWhere?)>? paths = query._preloadPaths;
+    if (paths != null) {
+      _preloadPaths = List<(String, _PreloadWhere?)>.of(paths);
+    }
   }
 
   /// the generator overrides these with the relations of the model
@@ -1418,16 +1424,33 @@ class Model<T> extends QueryBuilder<T> {
   /// A dot path loads relations of the loaded rows too, one query for
   /// each level: `preload('posts.comments')` loads the posts, then the
   /// comments of all those posts. toJson() has both.
-  Model<T> preload(String key) {
+  ///
+  /// [where] adds conditions to the query of the relation. With a dot
+  /// path it is for the last relation of the path:
+  ///
+  /// ```
+  /// await User().preload('posts', (QueryBuilder<dynamic> q) {
+  ///   q.where('published', true).orderBy('id');
+  /// }).get();
+  ///
+  /// // all posts, only the approved comments of each post
+  /// await User().preload('posts.comments', (QueryBuilder<dynamic> q) {
+  ///   q.where('approved', true);
+  /// }).get();
+  /// ```
+  Model<T> preload(
+    String key, [
+    void Function(QueryBuilder<dynamic> query)? where,
+  ]) {
     List<String> names = _preloads ??= <String>[];
     int dot = key.indexOf('.');
-    if (dot < 0) {
+    if (dot < 0 && where == null) {
       names.add(key);
       return this;
     }
-    String name = key.substring(0, dot);
+    String name = dot < 0 ? key : key.substring(0, dot);
     if (!names.contains(name)) names.add(name);
-    (_preloadPaths ??= <String>[]).add(key);
+    (_preloadPaths ??= <(String, _PreloadWhere?)>[]).add((key, where));
     return this;
   }
 
@@ -1476,12 +1499,16 @@ class Model<T> extends QueryBuilder<T> {
     return await load;
   }
 
-  /// adds the nested paths of relation [name] to its query [q]
+  /// adds the wheres and the nested paths of relation [name] to its
+  /// query [q]
   void _onRelationQuery(String name, QueryBuilder<dynamic> q) {
     String prefix = '$name.';
-    for (String path in _preloadPaths!) {
-      if (path.startsWith(prefix)) {
-        (q as Model<dynamic>).preload(path.substring(prefix.length));
+    for ((String, _PreloadWhere?) p in _preloadPaths!) {
+      String path = p.$1;
+      if (path == name) {
+        p.$2?.call(q);
+      } else if (path.startsWith(prefix)) {
+        (q as Model<dynamic>).preload(path.substring(prefix.length), p.$2);
       }
     }
   }

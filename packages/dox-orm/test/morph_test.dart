@@ -117,6 +117,20 @@ void main() async {
           ?.getFirst();
       expect(parent?.title, 'photo 2');
 
+      /// a where of preload() is used for the query of each type,
+      /// and a dot path loads the comments of each parent
+      List<Comment> some = await Comment()
+          .preload('commentable', (QueryBuilder<dynamic> q) {
+            q.where('title', 'like', '% 1');
+          })
+          .preload('commentable.comments')
+          .orderBy('id')
+          .get();
+      expect((some[0].commentable as Photo).comments, hasLength(2));
+      expect(some[2].commentable, isA<Video>());
+      expect((some[2].commentable as Video).comments, hasLength(1));
+      expect(some[3].commentable, isNull);
+
       /// a lazy load
       Comment c = (await Comment().find(3))!;
       await c.$getRelation<dynamic>('commentable');
