@@ -1,6 +1,7 @@
 import 'dart:async';
 
 /// The events a model fires on save(), delete(), restore() and forceDelete().
+/// A soft delete fires `trashed` after `deleted`.
 enum ModelEvent {
   saving,
   saved,
@@ -14,6 +15,9 @@ enum ModelEvent {
   restored,
   forceDeleting,
   forceDeleted,
+
+  /// after a soft delete, after `deleted`
+  trashed,
 }
 
 /// Throw this in a "before" hook (saving, creating, updating, deleting,
@@ -61,6 +65,7 @@ abstract class ModelObserver<T> {
   FutureOr<void> onRestored(T model) {}
   FutureOr<void> onForceDeleting(T model) {}
   FutureOr<void> onForceDeleted(T model) {}
+  FutureOr<void> onTrashed(T model) {}
 
   /// calls the method for [event]
   FutureOr<void> handle(ModelEvent event, T model) {
@@ -89,6 +94,8 @@ abstract class ModelObserver<T> {
         return onForceDeleting(model);
       case ModelEvent.forceDeleted:
         return onForceDeleted(model);
+      case ModelEvent.trashed:
+        return onTrashed(model);
     }
   }
 }

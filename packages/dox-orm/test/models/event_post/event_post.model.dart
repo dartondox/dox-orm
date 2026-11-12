@@ -58,4 +58,6 @@ class EventPost extends EventPostGenerator {
   Future<void> onForceDeleting() async => _log('forceDeleting');
   @override
   Future<void> onForceDeleted() async => _log('forceDeleted');
+  @override
+  Future<void> onTrashed() async => _log('trashed');
 }

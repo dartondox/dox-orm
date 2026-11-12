@@ -37,6 +37,15 @@ class UserObserver extends ModelObserver<User> {
   void onDeleted(User model) => log.add('deleted');
 }
 
+class TrashObserver extends ModelObserver<EventPost> {
+  final List<String> log;
+
+  TrashObserver(this.log);
+
+  @override
+  void onTrashed(EventPost model) => log.add('trashed');
+}
+
 Future<int> _count() async {
   return await EventPost().withTrash().count();
 }
@@ -185,14 +194,19 @@ void main() async {
       await post.save();
       EventPost.log.clear();
 
+      expect(post.trashed(), false);
       await post.delete();
-      expect(EventPost.log, <String>['deleting', 'deleted']);
+      expect(EventPost.log, <String>['deleting', 'deleted', 'trashed']);
       expect(await EventPost().count(), 0);
+      expect(post.trashed(), true);
+      EventPost? read = await EventPost().withTrash().find(post.id);
+      expect(read!.trashed(), true);
 
       EventPost.log.clear();
       expect(await post.restore(), true);
       expect(EventPost.log, <String>['restoring', 'restored']);
       expect(await EventPost().count(), 1);
+      expect(post.trashed(), false);
 
       EventPost.log.clear();
       await post.forceDelete();
@@ -203,6 +217,33 @@ void main() async {
         'forceDeleted',
       ]);
       expect(await _count(), 0);
+    });
+
+    test('trashed fires on an observer, and not when no row changed', () async {
+      List<String> log = <String>[];
+      Model.observe<EventPost>(TrashObserver(log));
+      EventPost post = EventPost()..title = 'x';
+      await post.save();
+
+      await post.delete();
+      expect(log, <String>['trashed']);
+
+      /// the row is soft deleted already, so the second delete changes
+      /// no row
+      log.clear();
+      await EventPost().where('id', post.id).forceDelete();
+      await post.delete();
+      expect(log, <String>[]);
+    });
+
+    test('a cancelled delete fires no trashed', () async {
+      EventPost post = EventPost()..title = 'x';
+      await post.save();
+      EventPost.log.clear();
+      EventPost.cancelOn = 'deleting';
+      expect(await post.delete(), 0);
+      expect(EventPost.log, <String>['deleting']);
+      expect(post.trashed(), false);
     });
   });
 }

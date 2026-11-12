@@ -417,7 +417,8 @@ class Model<T> extends QueryBuilder<T> {
   /// int count = await blog!.delete();
   /// ```
   ///
-  /// It fires deleting and deleted. A query delete like
+  /// It fires deleting and deleted. A soft delete that changed the row
+  /// fires trashed after deleted. A query delete like
   /// `Blog().where('id', 1).delete()` fires no events, and returns how
   /// many rows it deleted.
   ///
@@ -454,7 +455,10 @@ class Model<T> extends QueryBuilder<T> {
     } else {
       count = await _thisRecord().forceDelete();
     }
-    if (events) await _fire(ModelEvent.deleted);
+    if (events) {
+      await _fire(ModelEvent.deleted);
+      if (isSoftDeletes && count > 0) await _fire(ModelEvent.trashed);
+    }
     return count;
   }
 
@@ -991,6 +995,8 @@ class Model<T> extends QueryBuilder<T> {
         return onForceDeleting();
       case ModelEvent.forceDeleted:
         return onForceDeleted();
+      case ModelEvent.trashed:
+        return onTrashed();
     }
   }
 
@@ -1008,6 +1014,9 @@ class Model<T> extends QueryBuilder<T> {
   FutureOr<void> onRestored() {}
   FutureOr<void> onForceDeleting() {}
   FutureOr<void> onForceDeleted() {}
+
+  /// after a soft delete of this model, after onDeleted()
+  FutureOr<void> onTrashed() {}
 
   /// end ********** events
 
