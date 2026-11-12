@@ -1,6 +1,7 @@
 ## Unreleased
 
 - Ships an AI agent skill (dox-migration-guide). Install it in your app with `dart run skills@ get`.
+- Requires Dart 3.14 or newer.
 - New: `Migrator(flags: ...)` gives the `OrmFlags` of the app to the `Schema` of each Dart migration, eg. `flags: databaseConfig.flags`. With no `flags`, it uses `SqlQueryBuilder().flags`. `OrmFlags.laravelPostgresTypes` changes the column types of new Postgres tables. `OrmFlags` is now exported by `dox_migration`.
 - New: `Migrator().rollback(batch: 3)` rolls back only the migrations of batch 3, newest first. `bin/migrate.dart rollback --batch=3` (or `--batch 3`) does the same. Give `--step` or `--batch`, not both. As before, the first word after `rollback` must be `--step` or `--batch`, and other words after it are not used. They now print a warning.
 - New: when the Migrator runs on a connection of the ORM (eg. `connection: SqlQueryBuilder().dbDriver`), its queries now go to the query listeners and the slow query log of dox_orm.

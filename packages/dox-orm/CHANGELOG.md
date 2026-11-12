@@ -1,6 +1,7 @@
 ## Unreleased
 
 - Ships an AI agent skill (dox-orm-guide). Install it in your app with `dart run skills@ get`.
+- Requires Dart 3.14 or newer.
 - Change: `PrettyQueryPrinter` (the default query printer) now prints each query on one line, with the values put into the SQL, eg. `▌ [db:default] SELECT * FROM "users" WHERE "id" = 7;`. Before, it printed an 80 column box. The box broke on narrow terminals. Now the terminal wraps the line. Only the `▌ [db:<connection>]` tag has color, so you can copy the SQL and run it in psql, mysql or the sqlite CLI. Values are quoted like `toRawSql()`. A value named in `logRedact` shows as `'***'`. A slow query shows `[db:<connection> SLOW <N>ms]`. `ConsoleQueryPrinter`, `FileQueryPrinter` and your own printers get the same `?` query and values as before. `PrettyQueryPrinter.logLength` and `fillSpaceIfRequired()` are removed, because the box is gone. A class that extends `PrettyQueryPrinter` and overrides `log()` gets the `?` query and values as before.
 - New: `Schema.hasColumns(table, columns)` is true when the table has every one of the columns, like Laravel `Schema::hasColumns`. It is case sensitive, like `hasColumn`.
 - New: `Schema.hasIndex(table, index)` is true when the table has the index, like Laravel `Schema::hasIndex`. `index` is an index name (a `String`), or a list of its columns in the order of the index. The primary key is named `primary` on MySQL, MariaDB and SQLite. The name is compared like the database does: case-insensitive on MySQL, MariaDB and SQLite, exact on Postgres.
