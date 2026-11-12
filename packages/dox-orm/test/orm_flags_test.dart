@@ -85,6 +85,7 @@ void main() async {
         f.laravelPostgresTypes,
         f.updateSetsUpdatedAt,
         f.incrementFiresEvents,
+        f.preloadUnknownThrows,
       ];
       expect(values(off), everyElement(isFalse));
       expect(values(on), everyElement(isTrue));

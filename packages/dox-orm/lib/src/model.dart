@@ -1524,6 +1524,17 @@ class Model<T> extends QueryBuilder<T> {
   @override
   Future<void> initPreload(List<Model<T>> list) async {
     List<String> pList = getPreload();
+    if (pList.isNotEmpty && SqlQueryBuilder().flags.preloadUnknownThrows) {
+      for (String key in pList) {
+        if (relationsResultMatcher[key] == null) {
+          throw ArgumentError.value(
+            key,
+            'relation',
+            'is not a relation of $runtimeType',
+          );
+        }
+      }
+    }
 
     /// in a transaction the queries run one by one on one connection.
     /// outside, they run together, so the native drivers can send them

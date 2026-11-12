@@ -203,5 +203,33 @@ void main() async {
       await w!.reload();
       expect(w.articles.single.title, 'a1');
     });
+    test('preloadUnknownThrows off: an unknown name loads nothing', () async {
+      Writer? w = await Writer().preload('typo').find(1);
+      expect(w!.name, 'ada');
+      w = await Writer().preload('articles.typo').find(1);
+      expect(w!.articles, hasLength(2));
+    });
+
+    test('preloadUnknownThrows on: an unknown name throws', () async {
+      SqlQueryBuilder().flags = const OrmFlags.all();
+      Matcher unknown(String name) => throwsA(
+        isA<ArgumentError>().having(
+          (ArgumentError e) => e.invalidValue,
+          'name',
+          name,
+        ),
+      );
+      await expectLater(Writer().preload('typo').find(1), unknown('typo'));
+      await expectLater(
+        Writer().preload('articles.typo').find(1),
+        unknown('typo'),
+      );
+      await expectLater(
+        Writer().preload('articles.remarks.typo').get(),
+        unknown('typo'),
+      );
+      Writer? w = await Writer().preload('articles.remarks').find(1);
+      expect(w!.articles[0].remarks, hasLength(2));
+    });
   });
 }
