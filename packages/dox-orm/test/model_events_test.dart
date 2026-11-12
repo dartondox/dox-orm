@@ -37,7 +37,8 @@ class UserObserver extends ModelObserver<User> {
   void onDeleted(User model) => log.add('deleted');
 }
 
-class TrashObserver extends ModelObserver<EventPost> {
+class TrashObserver extends ModelObserver<EventPost>
+    with TrashedObserver<EventPost> {
   final List<String> log;
 
   TrashObserver(this.log);

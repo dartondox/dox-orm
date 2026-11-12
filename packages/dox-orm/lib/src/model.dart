@@ -521,7 +521,7 @@ class Model<T> extends QueryBuilder<T> {
     }
     if (events) {
       await _fire(ModelEvent.deleted);
-      if (isSoftDeletes && count > 0) await _fire(ModelEvent.trashed);
+      if (isSoftDeletes && count > 0) await _fireTrashed();
     }
     return count;
   }
@@ -1033,6 +1033,20 @@ class Model<T> extends QueryBuilder<T> {
     }
   }
 
+  /// the trashed event: not a [ModelEvent] value, so a switch on
+  /// [ModelEvent] in an app keeps working. Observers get it only with
+  /// [TrashedObserver].
+  Future<void> _fireTrashed() async {
+    if (hasModelHooks) await onTrashed();
+    List<ModelObserver<dynamic>>? list = _observers?[runtimeType];
+    if (list == null) return;
+    for (ModelObserver<dynamic> observer in list) {
+      if (observer is TrashedObserver) {
+        await (observer as TrashedObserver<dynamic>).onTrashed(this);
+      }
+    }
+  }
+
   FutureOr<void> _hook(ModelEvent event) {
     switch (event) {
       case ModelEvent.saving:
@@ -1059,8 +1073,6 @@ class Model<T> extends QueryBuilder<T> {
         return onForceDeleting();
       case ModelEvent.forceDeleted:
         return onForceDeleted();
-      case ModelEvent.trashed:
-        return onTrashed();
     }
   }
 
