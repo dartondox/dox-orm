@@ -133,6 +133,32 @@ void main() {
       ]);
     });
 
+    test('collation is for mysql only', () {
+      types(
+        (Table t) => t.string('k').primary().collation('utf8mb4_bin'),
+        <String>[
+          '"k" VARCHAR(255) NOT NULL PRIMARY KEY',
+          '`k` VARCHAR(255) COLLATE utf8mb4_bin NOT NULL PRIMARY KEY',
+          '"k" VARCHAR(255) NOT NULL PRIMARY KEY',
+        ],
+      );
+      expect(
+        alter(my, (Table t) => t.string('k').collation('utf8mb4_bin').change()),
+        <String>[
+          'ALTER TABLE `t` MODIFY COLUMN `k` VARCHAR(255) COLLATE utf8mb4_bin NOT NULL',
+        ],
+      );
+    });
+
+    test('collation name is checked', () {
+      for (String bad in <String>['', 'a b', "x'; DROP", 'utf8-bin']) {
+        expect(
+          () => Table('t').string('k').collation(bad),
+          throwsArgumentError,
+        );
+      }
+    });
+
     test('unsigned integers', () {
       types((Table t) => t.unsignedInteger('n'), <String>[
         '"n" INTEGER NOT NULL',

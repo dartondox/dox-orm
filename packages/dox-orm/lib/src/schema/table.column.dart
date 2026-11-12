@@ -65,6 +65,7 @@ class ColumnDefinition {
   String? rawDefault;
   String? commentText;
   String? afterColumn;
+  String? collationName;
 
   /// `JSON`, not `JSONB`, on postgres. `Table.json` sets it with
   /// [OrmFlags.laravelPostgresTypes].
@@ -133,6 +134,23 @@ class ColumnDefinition {
   /// mysql only: UNSIGNED. postgres and sqlite ignore it.
   ColumnDefinition unsigned() {
     isUnsigned = true;
+    return this;
+  }
+
+  /// mysql and mariadb only: `COLLATE <name>`, eg. `utf8mb4_bin` makes
+  /// `A` and `a` two different keys. postgres and sqlite ignore it: their
+  /// collation names are different, and their text compare is already case
+  /// sensitive. [name] may have only letters, digits and `_`, or it throws
+  /// an `ArgumentError`.
+  ColumnDefinition collation(String name) {
+    if (!RegExp(r'^[A-Za-z0-9_]+$').hasMatch(name)) {
+      throw ArgumentError.value(
+        name,
+        'name',
+        'A collation name has only letters, digits and _',
+      );
+    }
+    collationName = name;
     return this;
   }
 
@@ -236,6 +254,12 @@ class ForeignIdColumnDefinition extends ColumnDefinition {
   @override
   ForeignIdColumnDefinition unsigned() {
     super.unsigned();
+    return this;
+  }
+
+  @override
+  ForeignIdColumnDefinition collation(String name) {
+    super.collation(name);
     return this;
   }
 
