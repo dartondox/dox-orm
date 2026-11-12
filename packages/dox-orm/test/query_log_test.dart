@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:dox_orm/dox_orm.dart';
 import 'package:dox_orm/src/utils/logger.dart';
@@ -240,18 +241,285 @@ void main() {
     },
   );
 
-  test('PrettyQueryPrinter prints the query and the params', () {
-    String out = _prints(
-      () => PrettyQueryPrinter().log('SELECT ' * 20, <String>['p1']),
-    ).join('\n');
-    expect(out, contains('QUERY'));
-    expect(out, contains('PARAMS'));
-    expect(out, contains('p1'));
-    expect(
-      _prints(() => PrettyQueryPrinter().log('q', <String>[])).join(),
-      isNot(contains('PARAMS')),
-    );
+  group('PrettyQueryPrinter', () {
+    const String tag = '\x1B[2;36m▌ [db:main]\x1B[0m ';
+
+    setUp(() {
+      SqlQueryBuilder.initializeWithDatabaseConfig(
+        DatabaseConfig(
+          connection: 'main',
+          url: '',
+          connections: <String, ConnectionConfig>{
+            'main': ConnectionConfig(
+              driver: Driver.sqlite,
+              database: ':memory:',
+              debug: false,
+              logRedact: <String>['password'],
+            ),
+            'other': ConnectionConfig(
+              driver: Driver.sqlite,
+              database: ':memory:',
+              debug: false,
+              logRedact: <String>['token'],
+              slowQueryMs: 0,
+            ),
+            // a fake driver: the log only needs its name, no server
+            'my': ConnectionConfig(
+              driver: Driver.mysql,
+              database: 'fake',
+              debug: false,
+              driverFactory: _MysqlNamed.new,
+            ),
+          },
+        ),
+      );
+      SqlQueryBuilder().printer = PrettyQueryPrinter();
+    });
+
+    tearDown(() async {
+      SqlQueryBuilder().slowQueryMs = null;
+      await SqlQueryBuilder.close();
+    });
+
+    test('puts each value into the SQL as a literal', () {
+      List<String> lines = _prints(
+        () => Logger().log(
+          'SELECT * FROM "t" WHERE a = @a AND b = @b AND c = @c '
+          'AND d = @d AND e = @e AND f = @f AND g = @g AND h = @missing',
+          <String, dynamic>{
+            'a': "it's",
+            'b': null,
+            'c': true,
+            'd': 42,
+            'e': DateTime.utc(2026, 1, 2),
+            'f': <String, dynamic>{'k': 1},
+            'g': <int>[1, 2],
+          },
+        ),
+      );
+      expect(lines, <String>[
+        '${tag}SELECT * FROM "t" WHERE a = \'it\'\'s\' AND b = NULL '
+            "AND c = TRUE AND d = 42 AND e = '2026-01-02T00:00:00.000Z' "
+            "AND f = '{\"k\":1}' AND g = '[1,2]' AND h = @missing;",
+      ]);
+    });
+
+    test('a redacted value shows as quoted ***', () {
+      List<String> lines = _prints(
+        () => Logger().log(
+          'UPDATE "users" SET "password" = @password_p1 WHERE "id" = @id_p2',
+          <String, dynamic>{'password_p1': 'secret', 'id_p2': 7},
+        ),
+      );
+      expect(lines, <String>[
+        '${tag}UPDATE "users" SET "password" = \'***\' WHERE "id" = 7;',
+      ]);
+    });
+
+    test('does not add a second ;', () {
+      List<String> lines = _prints(() => Logger().log('SELECT 1;'));
+      expect(lines, <String>['${tag}SELECT 1;']);
+    });
+
+    test('a slow query shows SLOW and the time in the tag', () async {
+      SqlQueryBuilder().slowQueryMs = 0;
+      List<String> lines = await _printsAsync(
+        () => QueryBuilder.query(
+          'SELECT 1 WHERE @id_p1 = @id_p1',
+          substitutionValues: <String, dynamic>{'id_p1': 5},
+        ),
+      );
+      expect(lines.length, 1);
+      expect(
+        lines.first,
+        matches(
+          RegExp(
+            r'^\x1B\[2;36m▌ \[db:main SLOW \d+ms\]\x1B\[0m '
+            r'SELECT 1 WHERE 5 = 5;$',
+          ),
+        ),
+      );
+    });
+
+    test('a named connection shows its name and uses its logRedact', () {
+      List<String> lines = _prints(
+        () => Logger().log(
+          'UPDATE t SET password = @password_p1, token = @token_p2, '
+              'name = @name_p3',
+          <String, dynamic>{
+            'password_p1': 'a',
+            'token_p2': 'b',
+            'name_p3': 'c',
+          },
+          'other',
+        ),
+      );
+      expect(lines, <String>[
+        "\x1B[2;36m▌ [db:other]\x1B[0m UPDATE t SET password = '***', "
+            "token = '***', name = 'c';",
+      ]);
+    });
+
+    test('a slow query of a named connection shows its name', () async {
+      List<String> lines = await _printsAsync(
+        () => QueryBuilder.query(
+          'SELECT @token_p1',
+          substitutionValues: <String, dynamic>{'token_p1': 'x'},
+          connection: 'other',
+        ),
+      );
+      expect(lines.length, 1);
+      expect(
+        lines.first,
+        matches(
+          RegExp(
+            r"^\x1B\[2;36m▌ \[db:other SLOW \d+ms\]\x1B\[0m SELECT '\*\*\*';$",
+          ),
+        ),
+      );
+    });
+
+    test('a subclass that overrides log() gets the ? query and values', () {
+      _MyPretty mine = _MyPretty();
+      SqlQueryBuilder().printer = mine;
+      Logger().log('x = @a', <String, dynamic>{'a': 1});
+      expect(mine.query, 'x = ?');
+      expect(mine.params, <String>['1']);
+    });
+
+    test('falls back to the ? line when the values can not be filled', () {
+      // an unknown connection makes the driver lookup throw
+      List<String> lines = _prints(
+        () => Logger().log('x = @a', <String, dynamic>{'a': 1}, 'nope'),
+      );
+      expect(lines, <String>['\x1B[2;36m▌ [db]\x1B[0m x = ?; -- [1]']);
+    });
+
+    test('puts the ; on a new line after a -- comment', () {
+      List<String> lines = _prints(() => Logger().log('SELECT 1 -- note'));
+      expect(lines, <String>['${tag}SELECT 1 -- note\n;']);
+    });
+
+    test('puts the ; on the same line when -- or # is not a comment', () {
+      for (String q in <String>[
+        "SELECT 'https://x.com/#top'",
+        "SELECT 'a--b'",
+        "SELECT data #>> '{a,b}' FROM t",
+      ]) {
+        expect(_prints(() => Logger().log(q)), <String>['$tag$q;']);
+      }
+    });
+
+    test('a named mysql connection uses the mysql rules', () {
+      List<String> lines = _prints(
+        () => Logger().log(
+          'SELECT `a` FROM `t` WHERE `b` = @b # note',
+          <String, dynamic>{'b': true},
+          'my',
+        ),
+      );
+      expect(lines, <String>[
+        '\x1B[2;36m▌ [db:my]\x1B[0m SELECT `a` FROM `t` WHERE `b` = 1 # note\n;',
+      ]);
+    });
+
+    test('NaN and Infinity are quoted', () {
+      expect(
+        Logger.fillSql(
+          'SELECT @a, @b, @c, @d',
+          <String, dynamic>{
+            'a': double.nan,
+            'b': double.infinity,
+            'c': double.negativeInfinity,
+            'd': 1.5,
+          },
+          Driver.postgres,
+          <String>[],
+        ),
+        "SELECT 'NaN', 'Infinity', '-Infinity', 1.5",
+      );
+    });
+
+    test('mysql: literal rules and backslash in raw SQL', () {
+      expect(
+        Logger.fillSql(
+          r"SELECT `a` FROM `t` WHERE `s` = 'x\'' AND `b` = @b AND `c` = @c",
+          <String, dynamic>{'b': true, 'c': r'a\b'},
+          Driver.mysql,
+          <String>[],
+        ),
+        r"SELECT `a` FROM `t` WHERE `s` = 'x\'' AND `b` = 1 AND `c` = 'a\\b'",
+      );
+    });
+
+    test('bytes show as a hex literal', () {
+      Map<String, dynamic> values = <String, dynamic>{
+        'b': Uint8List.fromList(<int>[1, 2, 255]),
+      };
+      expect(
+        Logger.fillSql('x = @b', values, Driver.sqlite, <String>[]),
+        "x = X'0102ff'",
+      );
+      expect(
+        Logger.fillSql('x = @b', values, Driver.mysql, <String>[]),
+        "x = X'0102ff'",
+      );
+      expect(
+        Logger.fillSql('x = @b', values, Driver.postgres, <String>[]),
+        r"x = '\x0102ff'",
+      );
+    });
+
+    test('log() called directly prints one line with the params', () {
+      expect(
+        _prints(() => PrettyQueryPrinter().log('SELECT 1', <String>[])),
+        <String>['\x1B[2;36m▌ [db]\x1B[0m SELECT 1;'],
+      );
+      expect(
+        _prints(() => PrettyQueryPrinter().log('x = ?', <String>['p1'])),
+        <String>['\x1B[2;36m▌ [db]\x1B[0m x = ?; -- [p1]'],
+      );
+    });
   });
+}
+
+Future<List<String>> _printsAsync(Future<void> Function() body) async {
+  List<String> lines = <String>[];
+  await runZoned(
+    body,
+    zoneSpecification: ZoneSpecification(
+      print: (Zone self, ZoneDelegate parent, Zone zone, String line) {
+        lines.add(line);
+      },
+    ),
+  );
+  return lines;
+}
+
+/// a driver that only has a name: enough for the log line
+class _MysqlNamed implements DBDriver {
+  _MysqlNamed(ConnectionConfig config);
+
+  @override
+  Driver getName() => Driver.mysql;
+
+  @override
+  Future<void> close() async {}
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// a subclass with its own log(), like user code may have
+class _MyPretty extends PrettyQueryPrinter {
+  String query = '';
+  List<String> params = <String>[];
+
+  @override
+  void log(String query, List<String> params) {
+    this.query = query;
+    this.params = params;
+  }
 }
 
 List<String> _prints(void Function() body) {
