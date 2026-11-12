@@ -193,8 +193,10 @@ void main() async {
     test(
       'lazy() and chunk() with an order on a column that is not unique',
       () async {
-        // every row with n < 25 has half = 'low'
+        // every row with n < 25 has half = 'low'. setPrimaryKey(): a
+        // QueryBuilder.table() query adds the key only when it is known.
         List<Map<String, dynamic>> rows = await big()
+            .setPrimaryKey('id')
             .where('n', '<', 25)
             .orderBy('half')
             .lazy(chunkSize: 7)
@@ -207,17 +209,52 @@ void main() async {
 
         Set<dynamic> ids = <dynamic>{};
         int count = 0;
-        await big().where('n', '<', 25).orderBy('half').chunk(7, (
-          List<Map<String, dynamic>> page,
-        ) {
-          count += page.length;
-          ids.addAll(page.map((Map<String, dynamic> r) => r['id']));
-          return true;
-        });
+        await big()
+            .setPrimaryKey('id')
+            .where('n', '<', 25)
+            .orderBy('half')
+            .chunk(7, (List<Map<String, dynamic>> page) {
+              count += page.length;
+              ids.addAll(page.map((Map<String, dynamic> r) => r['id']));
+              return true;
+            });
         expect(count, 25);
         expect(ids.length, 25);
       },
     );
+
+    test('chunk() and lazy() with orderBy on a table with no id', () async {
+      await Schema().dropIfExists('lazy_noid');
+      await Schema().create('lazy_noid', (Table table) {
+        table.integer('n');
+      });
+      addTearDown(() => Schema().dropIfExists('lazy_noid'));
+      QueryBuilder<Map<String, dynamic>> noId() =>
+          QueryBuilder.table('lazy_noid');
+      // raw sql: insertMultiple() reads back an id column
+      await SqlQueryBuilder().dbDriver.execute(
+        'INSERT INTO lazy_noid (n) VALUES (0), (1), (2), (3), (4)',
+      );
+      List<dynamic> seen = <dynamic>[];
+      await noId().orderBy('n', 'desc').chunk(2, (
+        List<Map<String, dynamic>> rows,
+      ) {
+        seen.addAll(rows.map((Map<String, dynamic> r) => r['n']));
+        return true;
+      });
+      expect(seen, <int>[4, 3, 2, 1, 0]);
+      List<Map<String, dynamic>> rows = await noId()
+          .orderBy('n')
+          .lazy(chunkSize: 2)
+          .toList();
+      expect(rows.map((Map<String, dynamic> r) => r['n']), <int>[
+        0,
+        1,
+        2,
+        3,
+        4,
+      ]);
+    });
 
     test('lazy(), lazyById() and cursor() keep limit() and offset()', () async {
       List<int> ns(List<Map<String, dynamic>> rows) =>

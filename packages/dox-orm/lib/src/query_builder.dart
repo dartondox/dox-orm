@@ -189,8 +189,15 @@ class QueryBuilder<T>
   /// ```
   QueryBuilder<T> setPrimaryKey(String id) {
     primaryKey = id;
+    _keySet = true;
     return this;
   }
+
+  bool _keySet = false;
+
+  /// true when the table surely has the [primaryKey] column: a model, or
+  /// a query with [setPrimaryKey]. a QueryBuilder.table() query may not.
+  bool get hasKnownPrimaryKey => _keySet || self is Model;
 
   /// With trash (this function can be used with SoftDeletes only)
   ///

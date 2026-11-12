@@ -683,15 +683,18 @@ mixin Get<T> implements SharedMixin<T> {
     String orderBy = qb.getOrderByQuery();
     if (orderBy.isEmpty) {
       qb.orderBy(key);
-    } else if (!qb.hasUnion &&
+    } else if (qb.hasKnownPrimaryKey &&
+        !qb.hasUnion &&
         !qb.hasFromSub &&
         !qb.isDistinct &&
         qb.getGroupByQuery().isEmpty &&
         !orderBy.contains(helper.wrap(key))) {
       /// the primary key last: rows with the same value of the other
       /// order columns keep one order, so no row is read twice or
-      /// skipped. ponytail: not with distinct or groupBy, where the
-      /// database may not allow it.
+      /// skipped. only with a known primary key (a model, or
+      /// setPrimaryKey()): a QueryBuilder.table() query may have no `id`
+      /// column. ponytail: not with distinct or groupBy, where
+      /// the database may not allow it.
       qb.orderBy(key);
     }
     int read = 0;
@@ -876,7 +879,9 @@ mixin Get<T> implements SharedMixin<T> {
   ///
   /// Query listeners and the slow query log see the query once, when the
   /// first chunk comes (or the end, for no rows). Its time is the time to
-  /// the first chunk, not to the last row.
+  /// the first chunk, not to the last row. A query that fails before its
+  /// first chunk is not sent to them, like any failed query: the error
+  /// goes to your code.
   ///
   /// A driver of your own that does not override [DBDriver.stream] reads
   /// all rows at once.
