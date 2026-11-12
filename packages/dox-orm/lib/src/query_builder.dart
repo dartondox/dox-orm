@@ -73,6 +73,18 @@ class QueryBuilder<T>
     return this;
   }
 
+  /// true after [onWriteConnection]
+  bool get usesWriteConnection => _onWrite;
+
+  /// for a query made for [from], like the query of a relation: take its
+  /// connection (when this has none), [onWriteConnection] and
+  /// [cancelWith] token.
+  void useConnectionOf(QueryBuilder<dynamic> from) {
+    connection ??= from.connection;
+    if (from._onWrite) _onWrite = true;
+    cancelToken ??= from.cancelToken;
+  }
+
   @override
   late final QueryBuilderHelper<T> helper = QueryBuilderHelper<T>(this);
 

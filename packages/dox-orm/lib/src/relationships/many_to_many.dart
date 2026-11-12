@@ -23,7 +23,7 @@ M? manyToMany<T, M>(
 
   Model<T> local = list.first;
   Model<M> related = model();
-  related.connection ??= local.connection;
+  related.useConnectionOf(local);
   if (relationSubquery) startSubquery(related, local);
 
   localKey = localKey ?? local.primaryKey;
@@ -169,7 +169,7 @@ class _Pivot {
   /// a new query on the pivot table
   QueryBuilder<Map<String, dynamic>> newTable() {
     return QueryBuilder.table(table)
-      ..connection = owner.connection
+      ..useConnectionOf(owner)
       ..debug(owner.shouldDebug)
       // a pivot table often has no id column, so the insert returns
       // this column

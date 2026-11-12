@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:dox_orm/dox_orm.dart';
 
@@ -669,18 +670,42 @@ mixin Get<T> implements SharedMixin<T> {
     return true;
   }
 
-  /// the pages of [chunk]: [size] rows each, by LIMIT and OFFSET
-  Stream<List<T>> _pagesByOffset(int size) async* {
+  /// the pages of [chunk]: [size] rows each, by LIMIT and OFFSET.
+  /// [keepLimit]: start at the offset() of the query and stop after its
+  /// limit(). chunk() sets its own, as before.
+  Stream<List<T>> _pagesByOffset(int size, {bool keepLimit = false}) async* {
     _checkChunkSize(size);
     QueryBuilder<T> qb = queryBuilder;
-    if (qb.getOrderByQuery().isEmpty) {
-      qb.orderBy(_qualified(primaryKey));
+    var (int? limit, int? offset) = keepLimit
+        ? limitAndOffset(qb)
+        : (null, null);
+    String key = _qualified(primaryKey);
+    String orderBy = qb.getOrderByQuery();
+    if (orderBy.isEmpty) {
+      qb.orderBy(key);
+    } else if (!qb.hasUnion &&
+        !qb.hasFromSub &&
+        !qb.isDistinct &&
+        qb.getGroupByQuery().isEmpty &&
+        !orderBy.contains(helper.wrap(key))) {
+      /// the primary key last: rows with the same value of the other
+      /// order columns keep one order, so no row is read twice or
+      /// skipped. ponytail: not with distinct or groupBy, where the
+      /// database may not allow it.
+      qb.orderBy(key);
     }
+    int read = 0;
     for (int page = 0; ; page++) {
-      List<T> rows = await qb.limit(size).offset(page * size).get();
+      int take = limit == null ? size : min(size, limit - read);
+      if (take <= 0) return;
+      List<T> rows = await qb
+          .limit(take)
+          .offset((offset ?? 0) + page * size)
+          .get();
       if (rows.isEmpty) return;
+      read += rows.length;
       yield rows;
-      if (rows.length < size) return;
+      if (rows.length < take) return;
     }
   }
 
@@ -703,14 +728,21 @@ mixin Get<T> implements SharedMixin<T> {
     FutureOr<bool?> Function(List<T> rows) callback, {
     String? column,
   }) async {
-    await for (List<T> rows in _pagesById(size, column, 'chunkById')) {
+    await for (List<T> rows in _pagesById(size, column, 'chunkById', false)) {
       if (await callback(rows) == false) return false;
     }
     return true;
   }
 
-  /// the pages of [chunkById]: [size] rows each, `WHERE column > last`
-  Stream<List<T>> _pagesById(int size, String? column, String method) async* {
+  /// the pages of [chunkById]: [size] rows each, `WHERE column > last`.
+  /// [keepLimit]: start at the offset() of the query and stop after its
+  /// limit(). chunkById() sets its own, as before.
+  Stream<List<T>> _pagesById(
+    int size,
+    String? column,
+    String method,
+    bool keepLimit,
+  ) async* {
     _checkNoSub(method);
     _checkChunkSize(size);
     QueryBuilder<T> qb = queryBuilder;
@@ -723,13 +755,24 @@ mixin Get<T> implements SharedMixin<T> {
     String name = column ?? primaryKey;
     String qualified = _qualified(name);
     String key = name.split('.').last;
-    qb.orderBy(qualified).limit(size).offset(0);
+    var (int? limit, int? offset) = keepLimit
+        ? limitAndOffset(qb)
+        : (null, null);
+    qb.orderBy(qualified).offset(offset ?? 0);
     bool hasLastWhere = false;
+    int read = 0;
     while (true) {
-      List<T> rows = await qb.get();
+      int take = limit == null ? size : min(size, limit - read);
+      if (take <= 0) return;
+      List<T> rows = await qb.limit(take).get();
       if (rows.isEmpty) return;
+      read += rows.length;
       yield rows;
-      if (rows.length < size) return;
+      if (rows.length < take) return;
+
+      /// the offset is for the first page only: the next pages start
+      /// after the last value
+      qb.offset(0);
       dynamic last = _valueOfRow(rows.last, key);
       if (last == null) {
         throw StateError('$method() needs the "$key" column in each row');
@@ -758,7 +801,11 @@ mixin Get<T> implements SharedMixin<T> {
   ///   chunk is `WHERE id > last id`. it is safe when you change or delete
   ///   rows while you read. the rows must have the primary key.
   /// - with an orderBy() (or on a union() or fromSub() query) it pages
-  ///   with LIMIT and OFFSET, like [chunk], so the order is kept.
+  ///   with LIMIT and OFFSET, like [chunk], so the order is kept. The
+  ///   primary key is added as the last order column, so rows with the
+  ///   same order value are not read twice or skipped.
+  /// - limit() and offset() of the query are kept: it starts at the
+  ///   offset and stops after the limit (by LIMIT and OFFSET paging).
   ///
   /// Stop reading (eg. `break` in `await for`, or `take(3)`) to stop the
   /// queries. Use [cursor] for one query with no paging.
@@ -770,10 +817,15 @@ mixin Get<T> implements SharedMixin<T> {
   /// ```
   Stream<T> lazy({int chunkSize = 1000}) async* {
     QueryBuilder<T> qb = queryBuilder;
+    var (int? limit, int? offset) = limitAndOffset(qb);
     Stream<List<T>> pages =
-        qb.getOrderByQuery().isEmpty && !qb.hasUnion && !qb.hasFromSub
-        ? _pagesById(chunkSize, null, 'lazy')
-        : _pagesByOffset(chunkSize);
+        qb.getOrderByQuery().isEmpty &&
+            !qb.hasUnion &&
+            !qb.hasFromSub &&
+            limit == null &&
+            offset == null
+        ? _pagesById(chunkSize, null, 'lazy', true)
+        : _pagesByOffset(chunkSize, keepLimit: true);
     await for (List<T> rows in pages) {
       for (T row in rows) {
         yield row;
@@ -785,7 +837,7 @@ mixin Get<T> implements SharedMixin<T> {
   /// each chunk is `WHERE column > last value`, ordered by [column]. the
   /// column must be unique, and the rows must have it. it throws a
   /// [StateError] when the query has an orderBy(), and on a union() or
-  /// fromSub() query.
+  /// fromSub() query. limit() and offset() of the query are kept.
   ///
   /// ```
   /// await for (User user in User().lazyById(chunkSize: 500)) {
@@ -793,7 +845,12 @@ mixin Get<T> implements SharedMixin<T> {
   /// }
   /// ```
   Stream<T> lazyById({int chunkSize = 1000, String? column}) async* {
-    await for (List<T> rows in _pagesById(chunkSize, column, 'lazyById')) {
+    await for (List<T> rows in _pagesById(
+      chunkSize,
+      column,
+      'lazyById',
+      true,
+    )) {
       for (T row in rows) {
         yield row;
       }

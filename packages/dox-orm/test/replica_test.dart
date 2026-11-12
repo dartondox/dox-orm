@@ -3,6 +3,7 @@ import 'package:test/test.dart';
 
 import 'connection.dart';
 import 'models/blog/blog.model.dart';
+import 'models/event_post/event_post.model.dart';
 
 /// a driver that runs every query on [inner] and keeps its sql, so a test
 /// can see which host got a query
@@ -11,6 +12,9 @@ class CountingDriver extends DBDriver {
 
   final DBDriver inner;
   final List<String> sqls = <String>[];
+
+  /// the cancel token of each query, in the order of [sqls] (query only)
+  final List<QueryCancelToken?> tokens = <QueryCancelToken?>[];
 
   @override
   Driver getName() => inner.getName();
@@ -28,6 +32,7 @@ class CountingDriver extends DBDriver {
     Map<String, dynamic>? substitutionValues,
   }) {
     sqls.add(query);
+    tokens.add(DBDriver.currentCancelToken);
     return inner.query(
       query,
       primaryKey: primaryKey,
@@ -111,6 +116,31 @@ void main() async {
       sticky: sticky,
     );
     SqlQueryBuilder().dbDriver = replica;
+  }
+
+  Future<void> blogTables() async {
+    await Schema().dropIfExists('blog');
+    await Schema().dropIfExists('blog_info');
+    await Schema().create('blog', (Table table) {
+      table.id('uid');
+      table.string('title');
+      table.string('status').withDefault('active');
+      table.text('body');
+      table.string('slug').nullable();
+      table.softDeletes();
+      table.timestamps();
+    });
+    await Schema().create('blog_info', (Table table) {
+      table.id();
+      table.json('info');
+      table.integer('blog_id');
+      table.timestamps();
+    });
+    addTearDown(() async {
+      SqlQueryBuilder().dbDriver = real;
+      await Schema().dropIfExists('blog');
+      await Schema().dropIfExists('blog_info');
+    });
   }
 
   QueryBuilder<Map<String, dynamic>> item() => QueryBuilder.table('rep_item');
@@ -246,40 +276,83 @@ void main() async {
     });
 
     test('models read from a reader and save on the writer', () async {
-      await Schema().dropIfExists('blog');
-      await Schema().dropIfExists('blog_info');
-      await Schema().create('blog', (Table table) {
-        table.id('uid');
-        table.string('title');
-        table.string('status').withDefault('active');
-        table.text('body');
-        table.string('slug').nullable();
-        table.softDeletes();
-        table.timestamps();
-      });
-      await Schema().create('blog_info', (Table table) {
-        table.id();
-        table.json('info');
-        table.integer('blog_id');
-        table.timestamps();
-      });
-      addTearDown(() async {
-        SqlQueryBuilder().dbDriver = real;
-        await Schema().dropIfExists('blog');
-        await Schema().dropIfExists('blog_info');
-      });
+      await blogTables();
       useReplica();
       Blog blog = await Blog().create(<String, dynamic>{
         'title': 't',
         'body': 'b',
       });
-      // the insert (and the read back on MySQL). the eager relations are
-      // then read from a reader.
-      expect(counts()[0], real.supportsReturning ? 1 : 2);
+      // Postgres and SQLite: the insert, then the eager relations from a
+      // reader. MySQL: the insert, the read back and its two eager
+      // relations, all on the writer.
+      expect(counts()[0], real.supportsReturning ? 1 : 4);
 
       Blog? found = await Blog().find(blog.uid);
       expect(found?.title, 't');
       expect(counts()[0], 0);
+    });
+  });
+
+  group('read back and relations |', () {
+    test('a model with events reads the new row on the writer', () async {
+      await Schema().dropIfExists('event_posts');
+      await Schema().create('event_posts', (Table table) {
+        table.id();
+        table.string('title').nullable();
+        table.softDeletes();
+        table.timestamps();
+      });
+      addTearDown(() async {
+        SqlQueryBuilder().dbDriver = real;
+        await Schema().dropIfExists('event_posts');
+      });
+      useReplica();
+      EventPost post = await EventPost().create(<String, dynamic>{
+        'title': ' a ',
+      });
+      expect(post.title, 'a');
+      expect(counts().sublist(1), <int>[0, 0]);
+
+      /// the find goes to a reader, the update and the read back to the
+      /// writer
+      EventPost updated = await EventPost().updateOrCreate(
+        <String, dynamic>{'title': 'a'},
+        <String, dynamic>{'title': 'b'},
+      );
+      expect(updated.title, 'b');
+      List<int> c = counts();
+      expect(c[1] + c[2], 1);
+    });
+
+    test('onWriteConnection() reaches the relations', () async {
+      await blogTables();
+      await Blog().create(<String, dynamic>{'title': 't', 'body': 'b'});
+      useReplica();
+      List<Blog> blogs = await Blog().onWriteConnection().get();
+      expect(blogs.single.title, 't');
+      // the blogs and the two eager relations
+      expect(counts(), <int>[3, 0, 0]);
+      await Blog().get();
+      expect(counts()[0], 0);
+    });
+
+    test('cancelWith() reaches the relations, not a later save()', () async {
+      await blogTables();
+      await Blog().create(<String, dynamic>{'title': 't', 'body': 'b'});
+      useReplica();
+      QueryCancelToken token = QueryCancelToken();
+      Blog blog =
+          (await Blog().onWriteConnection().cancelWith(token).get()).single;
+      expect(w.tokens.length, 3);
+      expect(
+        w.tokens.every((QueryCancelToken? t) => identical(t, token)),
+        isTrue,
+      );
+      counts();
+      w.tokens.clear();
+      blog.title = 'u';
+      await blog.save();
+      expect(w.tokens.every((QueryCancelToken? t) => t == null), isTrue);
     });
   });
 

@@ -173,6 +173,136 @@ void main() async {
     });
   });
 
+  group('review fixes |', () {
+    test(
+      'lazy() and chunk() with an order on a column that is not unique',
+      () async {
+        // every row with n < 25 has half = 'low'
+        List<Map<String, dynamic>> rows = await big()
+            .where('n', '<', 25)
+            .orderBy('half')
+            .lazy(chunkSize: 7)
+            .toList();
+        expect(rows.length, 25);
+        expect(
+          rows.map((Map<String, dynamic> r) => r['id']).toSet().length,
+          25,
+        );
+
+        Set<dynamic> ids = <dynamic>{};
+        int count = 0;
+        await big().where('n', '<', 25).orderBy('half').chunk(7, (
+          List<Map<String, dynamic>> page,
+        ) {
+          count += page.length;
+          ids.addAll(page.map((Map<String, dynamic> r) => r['id']));
+          return true;
+        });
+        expect(count, 25);
+        expect(ids.length, 25);
+      },
+    );
+
+    test('lazy(), lazyById() and cursor() keep limit() and offset()', () async {
+      List<int> ns(List<Map<String, dynamic>> rows) =>
+          rows.map((Map<String, dynamic> r) => r['n'] as int).toList();
+
+      expect(
+        ns(
+          await big().where('n', '<', 100).limit(5).lazy(chunkSize: 2).toList(),
+        ),
+        <int>[0, 1, 2, 3, 4],
+      );
+      expect(
+        ns(
+          await big()
+              .where('n', '<', 100)
+              .orderBy('n', 'desc')
+              .limit(5)
+              .offset(3)
+              .lazy(chunkSize: 2)
+              .toList(),
+        ),
+        <int>[96, 95, 94, 93, 92],
+      );
+      expect(
+        ns(
+          await big().where('n', '<', 10).offset(7).lazy(chunkSize: 2).toList(),
+        ),
+        <int>[7, 8, 9],
+      );
+      expect(
+        ns(
+          await big()
+              .where('n', '<', 100)
+              .limit(5)
+              .offset(2)
+              .lazyById(chunkSize: 2)
+              .toList(),
+        ),
+        <int>[2, 3, 4, 5, 6],
+      );
+      expect(
+        ns(await big().orderBy('n').limit(5).cursor(chunkSize: 2).toList()),
+        <int>[0, 1, 2, 3, 4],
+      );
+    });
+
+    test('lazy() and cursor() with a join', () async {
+      await Schema().dropIfExists('lazy_tag');
+      await Schema().create('lazy_tag', (Table table) {
+        table.id();
+        table.integer('big_id');
+        table.string('tag');
+      });
+      addTearDown(() => Schema().dropIfExists('lazy_tag'));
+      await QueryBuilder.table('lazy_tag')
+          .insertMultiple(<Map<String, dynamic>>[
+            for (int i = 1; i <= 5; i++)
+              <String, dynamic>{'big_id': i * 2, 'tag': 't$i'},
+          ]);
+      QueryBuilder<Map<String, dynamic>> joined() => big()
+          .select(<String>['lazy_big.id', 'lazy_big.n', 'lazy_tag.tag'])
+          .join('lazy_tag', 'lazy_tag.big_id', '=', 'lazy_big.id');
+      List<Map<String, dynamic>> rows = await joined()
+          .lazy(chunkSize: 2)
+          .toList();
+      expect(rows.map((Map<String, dynamic> r) => r['tag']), <String>[
+        't1',
+        't2',
+        't3',
+        't4',
+        't5',
+      ]);
+      rows = await joined()
+          .orderBy('lazy_big.id')
+          .cursor(chunkSize: 2)
+          .toList();
+      expect(rows.length, 5);
+    });
+
+    test('delete rows while lazy() reads them', () async {
+      await Schema().dropIfExists('lazy_del');
+      await Schema().create('lazy_del', (Table table) {
+        table.id();
+        table.integer('n');
+      });
+      addTearDown(() => Schema().dropIfExists('lazy_del'));
+      QueryBuilder<Map<String, dynamic>> del() =>
+          QueryBuilder.table('lazy_del');
+      await del().insertMultiple(<Map<String, dynamic>>[
+        for (int i = 0; i < 30; i++) <String, dynamic>{'n': i},
+      ]);
+      int seen = 0;
+      await for (Map<String, dynamic> row in del().lazy(chunkSize: 7)) {
+        await del().where('id', row['id']).delete();
+        seen++;
+      }
+      expect(seen, 30);
+      expect(await del().count(), 0);
+    });
+  });
+
   group('empty result |', () {
     test('cursor(), lazy() and lazyById() give nothing', () async {
       expect(await big().where('n', -1).cursor().toList(), isEmpty);

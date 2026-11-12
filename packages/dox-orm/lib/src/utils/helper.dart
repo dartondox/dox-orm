@@ -250,6 +250,7 @@ class QueryBuilderHelper<T> {
 
     /// a many to many query: each row keeps the pivot settings
     Object? pivot = manyToManyQuery[queryBuilder];
+    bool onWrite = queryBuilder.usesWriteConnection;
     for (Map<String, dynamic> e in result) {
       Model<dynamic> res = self.fromMap(e);
       res.originalMap = e;
@@ -257,6 +258,9 @@ class QueryBuilderHelper<T> {
 
       /// so save() and delete() on this model use the same connection
       res.connection = queryBuilder.connection;
+
+      /// so its relations read from the same database
+      if (onWrite) res.onWriteConnection();
       for (String preload in preloads) {
         res.preload(preload);
       }
@@ -280,7 +284,25 @@ class QueryBuilderHelper<T> {
   }
 
   Future<List<T>> _preload(List<T> ret) async {
-    await queryBuilder.initPreload(ret as List<Model<T>>);
+    List<Model<T>> models = ret as List<Model<T>>;
+    QueryCancelToken? token = queryBuilder.cancelToken;
+    if (token == null) {
+      await queryBuilder.initPreload(models);
+      return ret;
+    }
+
+    /// the relation queries take the token from the models. only while
+    /// they are made: a later save() of a model does not use it.
+    for (Model<T> m in models) {
+      m.cancelToken = token;
+    }
+    try {
+      await queryBuilder.initPreload(models);
+    } finally {
+      for (Model<T> m in models) {
+        m.cancelToken = null;
+      }
+    }
     return ret;
   }
 

@@ -33,7 +33,7 @@ M? hasManyThrough<T, M>(
 
   Model<T> owner = list.first;
   Model<M> far = model().debug(owner.shouldDebug);
-  far.connection ??= owner.connection;
+  far.useConnectionOf(owner);
   Model<dynamic> middle = through();
 
   localKey ??= owner.primaryKey;

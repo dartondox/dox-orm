@@ -110,6 +110,63 @@ void main() {
       );
     });
 
+    test('cancel stops a cursor()', () async {
+      QueryCancelToken token = QueryCancelToken();
+      Future<List<Map<String, dynamic>>> slow = QueryBuilder.table('x')
+          .rawQuery(sleepSql(10))
+          .cancelWith(token)
+          .cursor()
+          .toList();
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      token.cancel();
+      await expectLater(slow, cancelled());
+    });
+
+    test('a cancelled token stops lazy() and update()', () async {
+      await Schema().dropIfExists('cancel_item');
+      await Schema().create('cancel_item', (Table table) {
+        table.id();
+        table.string('name');
+      });
+      addTearDown(() => Schema().dropIfExists('cancel_item'));
+      await QueryBuilder.table('cancel_item')
+          .insert(<String, dynamic>{'name': 'a'});
+      QueryCancelToken token = QueryCancelToken()..cancel();
+      await expectLater(
+        QueryBuilder.table('cancel_item').cancelWith(token).lazy().toList(),
+        cancelled(),
+      );
+      await expectLater(
+        QueryBuilder.table('cancel_item')
+            .cancelWith(token)
+            .update(<String, dynamic>{'name': 'b'}),
+        cancelled(),
+      );
+      expect(
+        (await QueryBuilder.table('cancel_item').get()).single['name'],
+        'a',
+      );
+    });
+
+    test('cancel in a transaction fails the transaction', () async {
+      QueryCancelToken token = QueryCancelToken();
+      Future<void> tx = QueryBuilder.transaction(() async {
+        await QueryBuilder.table('x')
+            .rawQuery(sleepSql(10))
+            .cancelWith(token)
+            .get();
+      });
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      token.cancel();
+      await expectLater(tx, cancelled());
+
+      /// the connection works after the rollback
+      List<Map<String, dynamic>> rows = await QueryBuilder.table('x')
+          .rawQuery('SELECT 1 AS n')
+          .get();
+      expect('${rows.first['n']}', '1');
+    });
+
     test('a query with a token that is not cancelled works', () async {
       List<Map<String, dynamic>> rows = await QueryBuilder.table('x')
           .rawQuery('SELECT 1 AS n')
