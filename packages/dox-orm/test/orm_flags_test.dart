@@ -83,6 +83,7 @@ void main() async {
         f.groupByAdds,
         f.lastPageAtLeastOne,
         f.laravelPostgresTypes,
+        f.updateSetsUpdatedAt,
       ];
       expect(values(off), everyElement(isFalse));
       expect(values(on), everyElement(isTrue));
@@ -305,6 +306,7 @@ void main() async {
       await Schema().create('event_posts', (Table table) {
         table.id();
         table.string('title').nullable().withDefault('untitled');
+        table.integer('views').withDefault(0);
         table.softDeletes();
         table.timestamps();
       });
@@ -522,6 +524,43 @@ void main() async {
       expect(await post.save(), isTrue);
       expect(queries, 0);
       expect(post.updatedAt, updatedAt);
+    });
+
+    /// a post whose updated_at is old, and the updated_at in the table
+    Future<EventPost> oldPost() async {
+      await EventPost().create(<String, dynamic>{'title': 'a'});
+      await QueryBuilder.table('event_posts')
+          .where('id', 1)
+          .update(<String, dynamic>{'updated_at': DateTime.utc(2000, 6)});
+      EventPost.log = <String>[];
+      return (await EventPost().find(1))!;
+    }
+
+    Future<DateTime> storedUpdatedAt() async {
+      Map<String, dynamic>? row = await QueryBuilder.table('event_posts')
+          .where('id', 1)
+          .getFirst();
+      return DateTime.parse('${row!['updated_at']}');
+    }
+
+    test('updateSetsUpdatedAt off: the query form keeps updated_at', () async {
+      await oldPost();
+      await EventPost().where('id', 1).update(<String, dynamic>{'title': 'b'});
+      expect((await storedUpdatedAt()).year, 2000);
+    });
+
+    test('updateSetsUpdatedAt on: the query form sets updated_at', () async {
+      flagsOn();
+      await oldPost();
+      await EventPost().where('id', 1).update(<String, dynamic>{'title': 'b'});
+      expect((await storedUpdatedAt()).year, greaterThan(2000));
+
+      /// a value in the data is kept
+      await EventPost().where('id', 1).update(<String, dynamic>{
+        'title': 'c',
+        'updated_at': DateTime.utc(2001, 6),
+      });
+      expect((await storedUpdatedAt()).year, 2001);
     });
 
     test('save(): how many times beforeSave runs', () async {

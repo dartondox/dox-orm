@@ -71,6 +71,14 @@ class OrmFlags {
   // NEXT MAJOR: make this the default, then remove the flag.
   final bool laravelPostgresTypes;
 
+  /// the query form of `update()` on a model, like
+  /// `User().where('id', 1).update({...})`, also sets `updated_at` when
+  /// the model has timestamps and the data has no value for it.
+  /// Off: it does not. `update()` on a model read from the table, and
+  /// `save()`, always set it.
+  // NEXT MAJOR: make this the default, then remove the flag.
+  final bool updateSetsUpdatedAt;
+
   const OrmFlags({
     this.skipCleanUpdateEvents = false,
     this.belongsToKeyFromRelation = false,
@@ -81,6 +89,7 @@ class OrmFlags {
     this.groupByAdds = false,
     this.lastPageAtLeastOne = false,
     this.laravelPostgresTypes = false,
+    this.updateSetsUpdatedAt = false,
   });
 
   /// every flag on
@@ -93,5 +102,6 @@ class OrmFlags {
       selectRawAdds = true,
       groupByAdds = true,
       lastPageAtLeastOne = true,
-      laravelPostgresTypes = true;
+      laravelPostgresTypes = true,
+      updateSetsUpdatedAt = true;
 }

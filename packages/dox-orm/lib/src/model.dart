@@ -1314,6 +1314,12 @@ class Model<T> extends QueryBuilder<T> {
   /// await user!.update({'name': 'Ann'}); // only user 1
   /// ```
   ///
+  /// With a where() it does not set updated_at, unless
+  /// [OrmFlags.updateSetsUpdatedAt] is on.
+  ///
+  /// With a where() it does not set updated_at, unless
+  /// [OrmFlags.updateSetsUpdatedAt] is on.
+  ///
   /// With no primary key value and no where(), it throws a [StateError],
   /// so it can not change every row by mistake. To change every row on
   /// purpose, use `whereRaw('1 = 1')`.
@@ -1345,6 +1351,12 @@ class Model<T> extends QueryBuilder<T> {
     _needKeyOrWhere('update');
     data = _onlyFillable(data);
     if (data.isEmpty) return 0;
+    String? updatedAtColumn = timestampsColumn['updated_at'];
+    if (SqlQueryBuilder().flags.updateSetsUpdatedAt &&
+        updatedAtColumn != null &&
+        !data.containsKey(updatedAtColumn)) {
+      data = <String, dynamic>{...data, updatedAtColumn: now()};
+    }
     return await super.update(data);
   }
 

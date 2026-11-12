@@ -1,5 +1,6 @@
 ## Unreleased
 
+- New: flag `OrmFlags.updateSetsUpdatedAt`: the query form of `update()` on a model (`User().where('id', 1).update({...})`) also sets `updated_at` when the model has timestamps and the data has no value for it. Off by default: it does not. `update()` on a model read from the table and `save()` always set it.
 - Fix: the name of the default connection (eg. `transaction(connection: 'main')`) now gives the default driver, not a second one. Before, a model query inside that transaction did not join it, `afterCommit()` with no name ran at once, and on SQLite `:memory:` it was another database.
 - Fix: the `sticky` warning no longer prints at the start of every app. It prints once, only when a read goes to a replica outside `stickyScope()` after a write that was outside a scope too. Migrations and the schema builder never print it.
 - Fix: `chunk()` with an `orderBy()` on a column that is not unique could read a row twice and skip another, because rows with the same value had no fixed order. The primary key is now the last order column, on a model or a query with `setPrimaryKey()` (a `QueryBuilder.table()` query may have no `id` column), and not with `distinct()` or `groupBy()`.
