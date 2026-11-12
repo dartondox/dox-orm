@@ -575,7 +575,7 @@ DROP TABLE IF EXISTS mig_tag
         File('${tempDir.path}/db/migration/2023_01_02_000000_create_tag.sql')
             .deleteSync();
 
-        /// like Laravel: it prints the name, rolls back the others, and
+        /// it prints the name, rolls back the others, and
         /// keeps the row of the missing one
         List<String> printed = <String>[];
         await runZoned(

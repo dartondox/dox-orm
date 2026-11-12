@@ -69,7 +69,7 @@ mixin Count<T> implements SharedMixin<T> {
   /// ```
   Future<bool> hasNoRows() async => !await hasRows();
 
-  /// the same as [hasNoRows], like Laravel's `doesntExist()`. There is
+  /// the same as [hasNoRows]. There is
   /// no `exists()`: a model already has the getter `exists`. Use
   /// [hasRows].
   Future<bool> doesntExist() => hasNoRows();
@@ -129,7 +129,7 @@ mixin Count<T> implements SharedMixin<T> {
         ? 'DISTINCT '
         : '';
 
-    /// like Laravel: the aggregate of the whole union result, after its
+    /// the aggregate of the whole union result, after its
     /// orderBy(), limit() and offset(). a groupBy() here is on the first
     /// part of the union.
     if (queryBuilder.hasUnion) {

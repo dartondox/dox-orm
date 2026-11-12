@@ -126,7 +126,7 @@ void main() async {
     });
 
     test('plural rules', () {
-      /// the Doctrine Inflector (Laravel Str::plural) value of each word
+      /// the Doctrine Inflector value of each word
       Map<String, String> words = <String, String>{
         'user': 'users',
         'blog_post': 'blog_posts',

@@ -126,7 +126,7 @@ void main() async {
       expect(page.data.map(_name).toList(), <String>['Carol']);
     });
 
-    test('union: aggregates use the whole result, like Laravel', () async {
+    test('union: aggregates use the whole result', () async {
       QueryBuilder<Map<String, dynamic>> q() => users()
           .select(<String>['name', 'age'])
           .where('age', 20)
@@ -147,7 +147,7 @@ void main() async {
           .union(users().select(<String>['name', 'age']).where('age', 40));
       expect(await distinct.sum('age'), 70);
 
-      /// like Laravel: orderBy(), limit() and offset() are kept
+      /// orderBy(), limit() and offset() are kept
       expect(await q().orderBy('age').limit(2).sum('age'), 50);
       expect(await q().orderBy('age').limit(2).offset(1).max('age'), 40);
       expect(await q().orderBy('age').limit(2).count(), 4);

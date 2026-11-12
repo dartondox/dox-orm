@@ -110,7 +110,7 @@ void main() async {
       expect(s.updatedAt!.isAfter(old), isTrue);
       expect((await modifiedAt(s.id))!.isAfter(old), isTrue);
 
-      /// the user set it: save() keeps it, like Laravel
+      /// the user set it: save() keeps it
       DateTime given = DateTime.utc(2021, 5, 6);
       s
         ..title = 'c'

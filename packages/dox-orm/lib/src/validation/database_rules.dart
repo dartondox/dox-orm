@@ -160,7 +160,7 @@ class Unique extends AsyncRule<Object?> {
     return (await _found(<Object?>[value], context)).isEmpty;
   }
 
-  /// Many values: one query for the whole list, like Laravel. See
+  /// Many values: one query for the whole list. See
   /// [PresenceVerifier.takenItems].
   @override
   Future<List<int>> failedItems(List<Object?> values, RuleContext context) {
@@ -221,7 +221,7 @@ class Exists extends AsyncRule<Object?> {
     return finder.found(table, column, values, connection: connection);
   }
 
-  /// Many values: one query for the whole list, like Laravel. See
+  /// Many values: one query for the whole list. See
   /// [PresenceVerifier.missingItems].
   @override
   Future<List<int>> failedItems(List<Object?> values, RuleContext context) {

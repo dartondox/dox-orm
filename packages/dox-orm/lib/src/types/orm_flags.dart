@@ -1,4 +1,4 @@
-/// opt-in ORM behaviors that work like Laravel. Each one is off by
+/// opt-in ORM behaviors. Each one is off by
 /// default, so the ORM works as it always does. Turn one on with its
 /// field, or turn all of them on with [OrmFlags.all].
 ///
@@ -34,7 +34,7 @@ class OrmFlags {
 
   /// the default table name is plural: `User` uses `users`,
   /// `BlogPost` uses `blog_posts`. Off: `user` and `blog_post`. The
-  /// last word gets the English plural of Laravel `Str::plural`.
+  /// last word gets the English plural.
   // NEXT MAJOR: make this the default, then remove the flag.
   final bool pluralTableNames;
 

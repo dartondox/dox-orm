@@ -11,7 +11,7 @@ class Model<T> extends QueryBuilder<T> {
   static final Map<Type, String> _morphNames = <Type, String>{};
 
   /// the morph map: the type names that polymorphic relations store in
-  /// the `<name>_type` column, like Laravel's `Relation::morphMap()`.
+  /// the `<name>_type` column.
   /// A `@MorphTo` relation needs every model it can point to in this
   /// map. The map is kept per isolate, so call it in the `setup()` of a
   /// provider, which runs in every isolate.
@@ -68,7 +68,7 @@ class Model<T> extends QueryBuilder<T> {
   /// columns that create(), insert(), insertMultiple() and update() take
   /// from a map.
   ///
-  /// A model is guarded by default, like Laravel: with no [fillable] and
+  /// A model is guarded by default: with no [fillable] and
   /// the default [guarded], a map with keys throws a
   /// [MassAssignmentException], so `User().create(req.body)` can not set
   /// `id` or `is_admin`. List the columns that users may set:
@@ -96,7 +96,7 @@ class Model<T> extends QueryBuilder<T> {
   static const Symbol _unguardedKey = #doxOrmUnguarded;
 
   /// run [callback] with [fillable] and [guarded] turned off for every
-  /// model, like Laravel's `Model::unguarded()`. create(), update(),
+  /// model. create(), update(),
   /// upsert() and the other writes take every key of a map inside it.
   /// It is not safe with user input.
   ///
@@ -182,7 +182,7 @@ class Model<T> extends QueryBuilder<T> {
   bool get exists => _savedValues != null || originalMap.isNotEmpty;
 
   /// the class name in snake case: `BlogPost` uses `blog_post`. With
-  /// [OrmFlags.pluralTableNames] it is plural, like Laravel:
+  /// [OrmFlags.pluralTableNames] it is plural:
   /// `blog_posts`. `@DoxModel(table: ...)` sets a name of your own.
   @override
   String get tableName {
@@ -191,7 +191,7 @@ class Model<T> extends QueryBuilder<T> {
   }
 
   /// the default foreign key that points to this model: the class name
-  /// in snake case and `_id`, like Laravel. `User` gives `user_id`, also
+  /// in snake case and `_id`. `User` gives `user_id`, also
   /// when the table is `users`.
   String get foreignKeyName => '${helper.tableNameOf(runtimeType)}_id';
 
@@ -304,8 +304,8 @@ class Model<T> extends QueryBuilder<T> {
 
   /// the columns of a saved model that changed since it was read or
   /// saved, without the primary key and created_at, then the primary
-  /// key value, then true when the user set updated_at (it is kept,
-  /// like Laravel). A field we never
+  /// key value, then true when the user set updated_at (it is kept).
+  /// A field we never
   /// loaded or saved is skipped when it is null, so a model loaded with
   /// select() does not clear the other columns.
   (Map<String, dynamic>, dynamic, bool) _changes() {
@@ -420,7 +420,7 @@ class Model<T> extends QueryBuilder<T> {
   }
 
   /// the values of a soft delete: deleted_at, and updated_at when the
-  /// model has timestamps, like Laravel
+  /// model has timestamps
   Map<String, dynamic> _softDeleteValues() {
     DateTime time = now();
     String? updatedAtColumn = timestampsColumn['updated_at'];
@@ -428,7 +428,7 @@ class Model<T> extends QueryBuilder<T> {
   }
 
   /// the values of a restore: deleted_at null, and updated_at when the
-  /// model has timestamps, like Laravel
+  /// model has timestamps
   Map<String, dynamic> _restoreValues() {
     String? updatedAtColumn = timestampsColumn['updated_at'];
     return <String, dynamic>{'deleted_at': null, ?updatedAtColumn: now()};
@@ -599,7 +599,7 @@ class Model<T> extends QueryBuilder<T> {
   bool setColumnValue(String column, dynamic value) => false;
 
   /// set the fields of [data] (column name => value) and ignore
-  /// [fillable] and [guarded], like Laravel's `forceFill()`. It does not
+  /// [fillable] and [guarded]. It does not
   /// save: call save() after it. It returns this model.
   ///
   /// ```
@@ -637,7 +637,7 @@ class Model<T> extends QueryBuilder<T> {
   /// runs no query.
   ///
   /// onlyTrashed() counts as a where: it picks only the soft deleted rows.
-  /// A global scope that adds a condition counts too, like Laravel, so
+  /// A global scope that adds a condition counts too, so
   /// `Post().delete()` under a tenant scope deletes the tenant's rows. It
   /// does not count on a model read without its key: that model means
   /// one row, not every row in the scope.
@@ -679,8 +679,8 @@ class Model<T> extends QueryBuilder<T> {
   /// ```
   ///
   /// On a query, like `Blog().where('status', 'old').restore()`, it
-  /// restores every soft deleted row of the query, with no events, like
-  /// Laravel. It returns true when it changed a row. With no where(), it
+  /// restores every soft deleted row of the query, with no events.
+  /// It returns true when it changed a row. With no where(), it
   /// throws a [StateError], so it can not restore every row by mistake.
   @override
   Future<bool> restore() async {
@@ -779,7 +779,7 @@ class Model<T> extends QueryBuilder<T> {
   /// a new model with the column values of this model, not saved yet.
   /// It has no primary key, created_at and updated_at, so save()
   /// inserts a new row. The [except] columns are left out (set to
-  /// null). Relations are not copied. Like Laravel, it copies
+  /// null). Relations are not copied. It copies
   /// deleted_at, so a copy of a soft deleted model is soft deleted too.
   ///
   /// ```
@@ -897,7 +897,7 @@ class Model<T> extends QueryBuilder<T> {
     }
   }
 
-  // ponytail: named on... and not creating/deleted like Laravel,
+  // ponytail: named on... and not creating/deleted,
   // because deleted/created are common column names.
   FutureOr<void> onSaving() {}
   FutureOr<void> onSaved() {}
@@ -928,7 +928,7 @@ class Model<T> extends QueryBuilder<T> {
   /// ```
   ///
   /// A model read by a `@ManyToMany` relation also has a `pivot` key with
-  /// its [ManyToManyWrites.pivot] values, like Laravel. Put `'pivot'` in
+  /// its [ManyToManyWrites.pivot] values. Put `'pivot'` in
   /// [hidden] to leave it out. A model with its own `pivot` column (or
   /// relation) keeps that value in the key: the pivot values are then
   /// only in [ManyToManyWrites.pivot].
@@ -1146,7 +1146,7 @@ class Model<T> extends QueryBuilder<T> {
   /// timestamps and [data] has no value for them. Null values are not
   /// sent, so the column default is used. With
   /// [OrmFlags.createWritesNull], a key that is null in [data] is
-  /// written as NULL, like Laravel.
+  /// written as NULL.
   ///
   /// When the model has events, it calls save(), so the hooks run. When
   /// a hook cancels, it returns the unsaved model (its id is null).
@@ -1274,8 +1274,7 @@ class Model<T> extends QueryBuilder<T> {
     };
   }
 
-  /// create() that ignores [fillable] and [guarded], like Laravel's
-  /// `forceCreate()`. Do not pass user input to it.
+  /// create() that ignores [fillable] and [guarded]. Do not pass user input to it.
   ///
   /// ```
   /// User user = await User().forceCreate({'name': 'Ann', 'is_admin': true});
@@ -1304,7 +1303,7 @@ class Model<T> extends QueryBuilder<T> {
   /// ```
   ///
   /// On a model from the table (it has a primary key value and no
-  /// where()), it changes only that row, like Laravel, and sets the
+  /// where()), it changes only that row, and sets the
   /// fields to the new values. It sets updated_at too, when the model
   /// has timestamps and [data] has no value for it. It runs one query
   /// and fires no model events. Use save() for the events.
@@ -1348,8 +1347,7 @@ class Model<T> extends QueryBuilder<T> {
     return await super.update(data);
   }
 
-  /// update() that ignores [fillable] and [guarded]. Laravel's query
-  /// update works like this. Do not pass user input to it.
+  /// update() that ignores [fillable] and [guarded]. Do not pass user input to it.
   ///
   /// ```
   /// await User().where('id', 1).forceUpdate({'is_admin': true});

@@ -130,7 +130,7 @@ class PostgresGrammar extends SchemaGrammar {
         'ORDER BY 1, 3';
   }
 
-  /// like Laravel: only keys made `DEFERRABLE` wait, and only until the
+  /// only keys made `DEFERRABLE` wait, and only until the
   /// end of the open transaction
   @override
   String compileDisableForeignKeyConstraints() =>

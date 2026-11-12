@@ -159,7 +159,7 @@ class MysqlGrammar extends SchemaGrammar {
         'ORDER BY ordinal_position';
   }
 
-  /// the primary key is `primary`, like Laravel
+  /// the primary key is `primary`
   @override
   String compileIndexListing() {
     return "SELECT CASE WHEN index_name = 'PRIMARY' THEN 'primary' "

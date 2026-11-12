@@ -168,7 +168,7 @@ mixin Where<T> implements SharedMixin<T> {
   /// A row where a column in the bracket is null can match neither the
   /// bracket nor NOT of it (sql null rules).
   ///
-  /// It also takes the args of [where], like Laravel:
+  /// It also takes the args of [where]:
   ///
   /// ```
   /// // WHERE NOT ("status" = @status_p0)
@@ -581,7 +581,7 @@ mixin Where<T> implements SharedMixin<T> {
   /// List blogs = await Blog().whereTime('created_at', '>', '18:00:00').get();
   /// ```
   /// on Postgres a column with fractions of a second (eg. `10:00:00.5`)
-  /// is not equal to `10:00:00`, like Laravel.
+  /// is not equal to `10:00:00`.
   QueryBuilder<T> whereTime(
     String column,
     dynamic arg2, [
@@ -684,7 +684,7 @@ mixin Where<T> implements SharedMixin<T> {
   ///   or a list of them, else it throws an [ArgumentError]. SQLite
   ///   stores `true` as `1`, so `true`, `1` and `1.0` match each other.
   ///
-  /// ponytail: like Laravel, whereJsonDoesntContain() on a row without the
+  /// ponytail: whereJsonDoesntContain() on a row without the
   /// key differs per database: SQLite and MariaDB match the row, Postgres
   /// and MySQL do not (the check is NULL there).
   QueryBuilder<T> whereJsonContains(String column, Object? value) {
@@ -1045,7 +1045,7 @@ mixin Where<T> implements SharedMixin<T> {
             left = 'CAST($col AS $sqlType)';
             right = 'CAST($key AS $sqlType)';
 
-          /// like Laravel: MySQL 8.4 reads a bound `03:00:00` in
+          /// MySQL 8.4 reads a bound `03:00:00` in
           /// `CAST(? AS time)` as a date, so the value is not cast
           case Driver.mysql:
             left = '${sqlType.toUpperCase()}($col)';

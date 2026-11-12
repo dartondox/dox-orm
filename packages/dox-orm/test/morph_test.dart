@@ -152,7 +152,7 @@ void main() async {
         throwsA(isA<UnsupportedError>()),
       );
 
-      /// an empty type is no type, like Laravel
+      /// an empty type is no type
       await Comment().where('body', 'x').update(<String, dynamic>{
         'commentable_type': '',
       });

@@ -129,8 +129,7 @@ mixin Insert<T> implements SharedMixin<T> {
     return _insert(list, helper.wrap(primaryKey));
   }
 
-  /// insert many rows and read nothing back, like Laravel's bulk
-  /// `insert()`. It returns true. An empty [rows] runs no query.
+  /// insert many rows and read nothing back. It returns true. An empty [rows] runs no query.
   ///
   /// ```
   /// await QueryBuilder.table('tag').insertMany([
@@ -150,8 +149,7 @@ mixin Insert<T> implements SharedMixin<T> {
     return true;
   }
 
-  /// insert one row and return its new id, like Laravel's
-  /// `insertGetId()`. The id is the auto increment id, or the id in
+  /// insert one row and return its new id. The id is the auto increment id, or the id in
   /// [data] when the table has no auto increment.
   ///
   /// ```
@@ -388,7 +386,7 @@ mixin Insert<T> implements SharedMixin<T> {
   /// update the rows that match all [where] pairs with [values], or
   /// insert one row made from [where] and [values] when no row matches.
   /// Unlike [updateOrCreate], it reads no row back. It returns true when
-  /// a row was inserted, or when the update changed a row, like Laravel.
+  /// a row was inserted, or when the update changed a row.
   /// An empty [where] throws an [ArgumentError], so it can not update
   /// every row by mistake. On a model it uses the insert() and update()
   /// of the model, so `fillable` and the create events apply.

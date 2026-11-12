@@ -26,7 +26,7 @@ mixin Delete<T> implements SharedMixin<T> {
 
   /// restore the soft deleted rows of this query, like
   /// `Blog().where('status', 'old').restore()`. It sets `deleted_at` to
-  /// null and fires no events, like Laravel. It returns true when it
+  /// null and fires no events. It returns true when it
   /// changed a row. A model also sets `updated_at` and has an instance
   /// `blog.restore()`, see [Model.restore].
   ///
