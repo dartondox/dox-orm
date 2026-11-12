@@ -83,6 +83,17 @@ void main() async {
     return (await Blog().find(blog.uid))!;
   }
 
+  /// a blog with an old updated_at. MySQL keeps whole seconds and
+  /// counts only the rows that changed, so a new stamp in the same second
+  /// is no change there.
+  Future<Blog> oldBlog() async {
+    Blog blog = await newBlog();
+    await QueryBuilder.table('blog')
+        .where('uid', blog.uid)
+        .update(<String, dynamic>{'updated_at': DateTime.utc(2020, 1, 2)});
+    return (await Blog().find(blog.uid))!;
+  }
+
   group('dirty tracking |', () {
     test('a new model is dirty for the columns with a value', () {
       Blog blog = Blog()
@@ -141,14 +152,14 @@ void main() async {
     });
 
     test('update() with the same value is not a change', () async {
-      Blog blog = await newBlog();
+      Blog blog = await oldBlog();
       await blog.update(<String, dynamic>{'title': 'a'});
       expect(blog.wasChanged('title'), isFalse);
       expect(blog.wasChanged('updated_at'), isTrue);
     });
 
     test('touch(), soft delete and restore() fill getChanges()', () async {
-      Blog blog = await newBlog();
+      Blog blog = await oldBlog();
       await blog.touch();
       expect(blog.getChanges().keys, <String>['updated_at']);
       await blog.delete();
