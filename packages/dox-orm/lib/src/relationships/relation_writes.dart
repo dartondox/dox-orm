@@ -61,6 +61,22 @@ extension RelationWrites<T> on Model<T> {
     return (k, <String, dynamic>{k.foreignKey: value, ...k.extra});
   }
 
+  /// an [ArgumentError] when [child] is not the model of the relation
+  static void _checkChild(
+    RelationKeys k,
+    String relation,
+    Model<dynamic> child,
+  ) {
+    Type want = k.model().runtimeType;
+    if (child.runtimeType != want) {
+      throw ArgumentError.value(
+        child,
+        'child',
+        'is a ${child.runtimeType}, the $relation relation has $want',
+      );
+    }
+  }
+
   /// sets [keys] on [child], and checks that they are set: a model with
   /// no field for a key would save the row without it
   static void _setKeys(Model<dynamic> child, Map<String, dynamic> keys) {
@@ -83,6 +99,13 @@ extension RelationWrites<T> on Model<T> {
   Future<M> createRelated<M>(String relation, Map<String, dynamic> data) async {
     var (RelationKeys k, Map<String, dynamic> keys) = _childKeys(relation);
     Model<dynamic> child = k.model()..useConnectionOf(this);
+    if (child is! M) {
+      throw ArgumentError.value(
+        M,
+        'M',
+        'is not the model of the $relation relation (${child.runtimeType})',
+      );
+    }
     _setKeys(child, keys);
 
     /// the keys of this model always win over the same keys in [data]
@@ -96,7 +119,8 @@ extension RelationWrites<T> on Model<T> {
   /// sets the foreign key of this model on [child] and saves it. It
   /// gives the result of `save()`: false when a hook stops it.
   Future<bool> saveRelated(String relation, Model<dynamic> child) async {
-    var (_, Map<String, dynamic> keys) = _childKeys(relation);
+    var (RelationKeys k, Map<String, dynamic> keys) = _childKeys(relation);
+    _checkChild(k, relation, child);
     _setKeys(child, keys);
     return await child.save();
   }
@@ -107,7 +131,12 @@ extension RelationWrites<T> on Model<T> {
     String relation,
     List<Model<dynamic>> children,
   ) async {
-    var (_, Map<String, dynamic> keys) = _childKeys(relation);
+    var (RelationKeys k, Map<String, dynamic> keys) = _childKeys(relation);
+
+    /// every child is checked first, so a wrong one saves nothing
+    for (Model<dynamic> child in children) {
+      _checkChild(k, relation, child);
+    }
     bool all = true;
     for (Model<dynamic> child in children) {
       _setKeys(child, keys);

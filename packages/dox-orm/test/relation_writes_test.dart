@@ -160,6 +160,26 @@ void main() async {
       );
     });
 
+    test('a child of the wrong model throws and saves nothing', () async {
+      Blog blog = await newBlog();
+      Comment c = Comment()..body = 'x';
+      expect(
+        () => blog.saveRelated('blogInfos', c),
+        throwsA(isA<ArgumentError>()),
+      );
+      expect(
+        () =>
+            blog.saveManyRelated('blogInfos', <Model<dynamic>>[BlogInfo(), c]),
+        throwsA(isA<ArgumentError>()),
+      );
+      expect(
+        () => blog.createRelated<Comment>('blogInfos', <String, dynamic>{}),
+        throwsA(isA<ArgumentError>()),
+      );
+      expect(await BlogInfo().count(), 0);
+      expect(c.id, isNull);
+    });
+
     test('a parent with no key throws', () async {
       expect(
         () => Blog().saveRelated('blogInfos', BlogInfo()),
