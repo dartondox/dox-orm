@@ -313,6 +313,137 @@ void main() async {
       );
     });
   });
+
+  group('refresh() |', () {
+    test('reads the columns again and makes the model clean', () async {
+      Blog blog = await newBlog();
+      await BlogInfo().create(<String, dynamic>{
+        'info': <String, dynamic>{'a': 1},
+        'blog_id': blog.uid,
+      });
+      await QueryBuilder.table('blog')
+          .where('uid', blog.uid)
+          .update(<String, dynamic>{'title': 'other', 'body': 'other body'});
+      blog.slug = 'local';
+      expect(blog.blogInfos, isEmpty);
+
+      Blog same = await blog.refresh();
+      expect(identical(same, blog), isTrue);
+      expect(blog.title, 'other');
+      expect(blog.description, 'other body');
+      expect(blog.slug, isNull);
+      expect(blog.isDirty(), isFalse);
+      expect(blog.getOriginal('title'), 'other');
+
+      /// relations load again, like reload()
+      expect(blog.blogInfos, hasLength(1));
+      expect(blog.blogInfo, isNotNull);
+
+      /// a save after it sends nothing
+      blog.title = 'third';
+      await blog.save();
+      expect(
+        blog.getChanges().keys,
+        unorderedEquals(<String>['title', 'updated_at']),
+      );
+    });
+
+    test('finds a soft deleted row', () async {
+      Blog blog = await newBlog();
+      await blog.delete();
+      await QueryBuilder.table('blog')
+          .where('uid', blog.uid)
+          .update(<String, dynamic>{'title': 'gone'});
+      await blog.refresh();
+      expect(blog.title, 'gone');
+      expect(blog.deletedAt, isNotNull);
+    });
+
+    test('throws on a model that is not in the table', () async {
+      expect(() => Blog().refresh(), throwsStateError);
+    });
+
+    test('throws when the row is gone', () async {
+      Blog blog = await newBlog();
+      await blog.forceDelete();
+      expect(blog.refresh(), throwsA(isA<ModelNotFoundException>()));
+    });
+
+    test('throws on cast columns and changes nothing', () async {
+      CastItem item = CastItem()..status = Status.live;
+      await item.save();
+      await QueryBuilder.table('cast_item')
+          .where('id', item.id)
+          .update(<String, dynamic>{'status': 'draft'});
+      await expectLater(item.refresh(), throwsStateError);
+      expect(item.status, Status.live);
+    });
+
+    test('custom timestamp columns', () async {
+      StampedRow row = StampedRow()..title = 'a';
+      await row.save();
+      DateTime later = DateTime.utc(2030, 1, 2);
+      await QueryBuilder.table('stamped_rows')
+          .where('id', row.id)
+          .update(<String, dynamic>{'title': 'b', 'changed_on': later});
+      await row.refresh();
+      expect(row.title, 'b');
+      expect(row.updatedAt!.isAtSameMomentAs(later), isTrue);
+      expect(row.isDirty(), isFalse);
+    });
+  });
+
+  group('fresh() |', () {
+    test('gives a new model and does not change this one', () async {
+      Blog blog = await newBlog();
+      await BlogInfo().create(<String, dynamic>{
+        'info': <String, dynamic>{'a': 1},
+        'blog_id': blog.uid,
+      });
+      await QueryBuilder.table('blog')
+          .where('uid', blog.uid)
+          .update(<String, dynamic>{'title': 'other'});
+      blog.slug = 'local';
+
+      Blog? now = await blog.fresh();
+      expect(now, isNotNull);
+      expect(identical(now, blog), isFalse);
+      expect(now!.title, 'other');
+      expect(now.slug, isNull);
+      expect(now.blogInfos, hasLength(1));
+      expect(now.isDirty(), isFalse);
+
+      expect(blog.title, 'a');
+      expect(blog.slug, 'local');
+      expect(blog.isDirty('slug'), isTrue);
+    });
+
+    test('finds a soft deleted row', () async {
+      Blog blog = await newBlog();
+      await blog.delete();
+      Blog? now = await blog.fresh();
+      expect(now, isNotNull);
+      expect(now!.deletedAt, isNotNull);
+    });
+
+    test('gives null for a new model or a gone row', () async {
+      expect(await Blog().fresh(), isNull);
+      Blog blog = await newBlog();
+      await blog.forceDelete();
+      expect(await blog.fresh(), isNull);
+    });
+
+    test('works with casts', () async {
+      CastItem item = CastItem()..status = Status.live;
+      await item.save();
+      await QueryBuilder.table('cast_item')
+          .where('id', item.id)
+          .update(<String, dynamic>{'status': 'draft'});
+      CastItem? now = await item.fresh();
+      expect(now!.status, Status.draft);
+      expect(item.status, Status.live);
+    });
+  });
 }
 
 DateTime? _date(dynamic v) => v is DateTime ? v : DateTime.tryParse('$v');

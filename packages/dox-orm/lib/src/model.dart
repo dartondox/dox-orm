@@ -1098,6 +1098,106 @@ class Model<T> extends QueryBuilder<T> {
 
   /// end ********** dirty tracking
 
+  /// read the columns of this row from the database again, set the
+  /// fields to them, and load the relations again like [reload]. The
+  /// model is clean after it. It returns this model.
+  ///
+  /// ```
+  /// Blog? blog = await Blog().find(1);
+  /// // ... another request changes the row
+  /// await blog!.refresh();
+  /// ```
+  ///
+  /// It reads the row by its primary key from the write database, on the
+  /// connection of the model. It finds a soft deleted row too, and global
+  /// scopes are not used: the model already is that row.
+  ///
+  /// It throws a [StateError] on a model that is not in the table (no
+  /// primary key value), and a [ModelNotFoundException] when the row is
+  /// gone. It also throws a [StateError] when a column can not be set
+  /// from the row (a column with a cast or a beforeGet, see
+  /// [setColumnValue]), and then changes nothing. Use [fresh] then.
+  Future<T> refresh() async {
+    if (tempIdValue == null || !exists) {
+      throw StateError(
+        'refresh() needs a model that is in the table, with a primary key '
+        'value. This $runtimeType was not read or saved.',
+      );
+    }
+    T? found = await _newQuery<T>(this).onWriteConnection().find(tempIdValue);
+    if (found == null) {
+      throw ModelNotFoundException(
+        tableName,
+        id: tempIdValue,
+        column: primaryKey,
+      );
+    }
+    Model<T> row = found as Model<T>;
+    Map<String, dynamic> raw = row.originalMap;
+    Map<String, dynamic> want = row.columnsToMap();
+
+    /// try it on the new row first: when a column can not be set to the
+    /// same value, this model is not changed. The key and the timestamps
+    /// are set below, by their own fields.
+    Set<String?> own = <String?>{primaryKey, ...timestampsColumn.values};
+    List<String> columns = <String>[
+      for (String column in want.keys)
+        if (raw.containsKey(column) && !own.contains(column)) column,
+    ];
+    List<String> failed = <String>[
+      for (String column in columns)
+        if (!row._setRaw(column, raw[column])) column,
+    ];
+    Map<String, dynamic> got = row.columnsToMap();
+    failed.addAll(<String>[
+      for (String column in columns)
+        if (!failed.contains(column) && !_sameValue(got[column], want[column]))
+          column,
+    ]);
+    if (failed.isNotEmpty) {
+      throw StateError(
+        'refresh() can not set the columns $failed of $runtimeType from the '
+        'row: they have a cast or a beforeGet, or the model was made by an '
+        'old dox_builder. Use fresh() to get a new model.',
+      );
+    }
+    for (String column in columns) {
+      _setRaw(column, raw[column]);
+    }
+    tempIdValue = row.tempIdValue;
+    createdAt = row.createdAt;
+    updatedAt = row.updatedAt;
+    originalMap = raw;
+    _savedValues = null;
+    await reload();
+    return this as T;
+  }
+
+  /// set the field of [column] to [value] from a row. A date text sets
+  /// a `DateTime` field, like [forceFill].
+  /// It returns false when it could not set the field.
+  bool _setRaw(String column, dynamic value) {
+    if (setColumnValue(column, value)) return true;
+    DateTime? date = value is String ? DateTime.tryParse(value) : null;
+    return date != null && setColumnValue(column, date);
+  }
+
+  /// a new model with this row as it is in the database now, with the
+  /// relations of this model. This model does not change. It gives null
+  /// when the row is gone, or the model is not in the table yet.
+  ///
+  /// ```
+  /// Blog? blog = await Blog().find(1);
+  /// Blog? now = await blog!.fresh();
+  /// ```
+  ///
+  /// It reads the row like [refresh]: by primary key, from the write
+  /// database, also when it is soft deleted, and with no global scopes.
+  Future<T?> fresh() async {
+    if (!exists) return null;
+    return await _findRow(tempIdValue);
+  }
+
   /// support jsonEncode()
   ///
   /// ```
@@ -1371,11 +1471,17 @@ class Model<T> extends QueryBuilder<T> {
   /// no global scopes) with the relations of this model. [model] itself
   /// when the row can not be read.
   Future<T> _readBack(Model<T> model) async {
-    dynamic id = model.tempIdValue;
-    if (id == null) return model as T;
+    return await _findRow(model.tempIdValue) ?? model as T;
+  }
+
+  /// the row with primary key [id], read on a new query (no where, no
+  /// global scopes, soft deleted rows too) from the write database, with
+  /// the relations of this model. null when there is no such row.
+  Future<T?> _findRow(dynamic id) async {
+    if (id == null) return null;
     // the write database: a read replica may not have the row yet
     T? row = await _newQuery<T>(this).onWriteConnection().find(id);
-    if (row == null) return model as T;
+    if (row == null) return null;
     if (getPreload().isNotEmpty) await initPreload(<Model<T>>[row as Model<T>]);
     return row;
   }
