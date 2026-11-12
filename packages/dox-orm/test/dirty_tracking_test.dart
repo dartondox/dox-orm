@@ -219,6 +219,55 @@ void main() async {
       expect(read.isDirty('info'), isTrue);
     });
 
+    test('a change in place of a json column is dirty', () async {
+      BlogInfo info = BlogInfo()
+        ..info = <String, dynamic>{'a': 1}
+        ..blogId = 1;
+      await info.save();
+
+      /// after a save
+      info.info!['a'] = 2;
+      expect(info.isDirty('info'), isTrue);
+      expect(info.getOriginal('info'), <String, dynamic>{'a': 1});
+      await info.save();
+      expect(info.isDirty(), isFalse);
+      expect(info.wasChanged('info'), isTrue);
+
+      /// after a load
+      BlogInfo read = (await BlogInfo().find(info.id))!;
+      expect(read.isDirty(), isFalse);
+      read.info!['a'] = 3;
+      expect(read.isDirty('info'), isTrue);
+      expect(read.getOriginal('info'), <String, dynamic>{'a': 2});
+    });
+
+    test('an unchanged json column is not in getChanges()', () async {
+      BlogInfo info = BlogInfo()
+        ..info = <String, dynamic>{'a': 1}
+        ..blogId = 1;
+      await info.save();
+      BlogInfo read = (await BlogInfo().find(info.id))!;
+      read.blogId = 2;
+      await read.save();
+      expect(read.wasChanged('info'), isFalse);
+      expect(
+        read.getChanges().keys,
+        unorderedEquals(<String>['blog_id', 'updated_at']),
+      );
+    });
+
+    test('updateOrCreate() keeps the changes of its update', () async {
+      Blog blog = await newBlog();
+      Blog updated = await Blog().updateOrCreate(
+        <String, dynamic>{'title': 'a'},
+        <String, dynamic>{'body': 'new body'},
+      );
+      expect(updated.uid, blog.uid);
+      expect(updated.wasRecentlyCreated, isFalse);
+      expect(updated.wasChanged('body'), isTrue);
+      expect(updated.wasChanged('title'), isFalse);
+    });
+
     test('a model with casts is clean after a load', () async {
       CastItem item = CastItem()
         ..meta = <String, dynamic>{'a': 1}
@@ -289,9 +338,14 @@ void main() async {
       Blog blog = await newBlog();
       blog.description = 'new body';
       await Schema().dropIfExists('blog');
+      DateTime? before = blog.updatedAt;
       await expectLater(blog.save(), throwsA(anything));
       expect(blog.isDirty('body'), isTrue);
       expect(blog.wasChanged(), isFalse);
+
+      /// updated_at is back, so a retry stamps a new time
+      expect(blog.updatedAt, before);
+      expect(blog.isDirty('updated_at'), isFalse);
     });
 
     test('custom timestamp columns', () async {

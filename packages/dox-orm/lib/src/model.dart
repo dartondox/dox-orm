@@ -297,7 +297,10 @@ class Model<T> extends QueryBuilder<T> {
       /// mysql only returns auto increment ids, so use the given id if any
       tempIdValue =
           (res.isNotEmpty ? res.first[primaryKey] : null) ?? values[primaryKey];
-      _savedValues = <String, dynamic>{...values, primaryKey: tempIdValue};
+      _savedValues = _copyJson(<String, dynamic>{
+        ...values,
+        primaryKey: tempIdValue,
+      });
       _wasRecentlyCreated = true;
       _lastChanges = const <String, dynamic>{};
     } else {
@@ -311,16 +314,29 @@ class Model<T> extends QueryBuilder<T> {
         _lastChanges = const <String, dynamic>{};
         return;
       }
-      if (updatedAtColumn != null && !keepUpdatedAt) {
+      DateTime? oldUpdatedAt = updatedAt;
+      bool stamp = updatedAtColumn != null && !keepUpdatedAt;
+      if (stamp) {
         values[updatedAtColumn] = currentTime;
         updatedAt = currentTime;
       }
 
-      await _newQuery<T>(this).where(primaryKey, id).update(values);
+      try {
+        await _newQuery<T>(this).where(primaryKey, id).update(values);
+      } catch (_) {
+        /// so a retry stamps a new time, not this one as if the user set it
+        if (stamp) updatedAt = oldUpdatedAt;
+        rethrow;
+      }
 
-      /// after the query: when it fails, the model stays dirty
-      _savedValues = <String, dynamic>{...saved, ...values};
-      _lastChanges = values;
+      /// after the query: when it fails, the model stays dirty.
+      /// save() always sends a map or a list column, so only the ones
+      /// that really changed count as changes.
+      _lastChanges = <String, dynamic>{
+        for (MapEntry<String, dynamic> e in values.entries)
+          if (!_sameValue(e.value, saved[e.key])) e.key: e.value,
+      };
+      _savedValues = _copyJson(<String, dynamic>{...saved, ...values});
     }
   }
 
@@ -643,10 +659,10 @@ class Model<T> extends QueryBuilder<T> {
     /// a model that was not read or saved keeps exists false
     if (done.isEmpty || !exists) return;
     Map<String, dynamic> map = columnsToMap();
-    _savedValues = <String, dynamic>{
+    _savedValues = _copyJson(<String, dynamic>{
       ...(_savedValues ?? originalMap),
       for (String key in done) key: map[key],
-    };
+    });
     _lastChanges = <String, dynamic>{for (String key in done) key: values[key]};
   }
 
@@ -991,6 +1007,40 @@ class Model<T> extends QueryBuilder<T> {
   /// the values of the row as it was last read or saved, by column name.
   /// Empty for a new model.
   Map<String, dynamic> get _original => _savedValues ?? originalMap;
+
+  /// the row this model was read from. A map or a list value is kept as
+  /// a copy, so a change in place of the field (`info['a'] = 2`) does not
+  /// change it too, and [isDirty] sees it.
+  @override
+  set originalMap(Map<String, dynamic> value) {
+    super.originalMap = _copyJson(value);
+  }
+
+  /// [map] with a deep copy of each map or list value. [map] itself when
+  /// it has none, so most rows make no new map.
+  static Map<String, dynamic> _copyJson(Map<String, dynamic> map) {
+    bool has = false;
+    for (dynamic value in map.values) {
+      if (value is Map || value is List) {
+        has = true;
+        break;
+      }
+    }
+    if (!has) return map;
+    return <String, dynamic>{
+      for (MapEntry<String, dynamic> e in map.entries)
+        e.key: e.value is Map || e.value is List ? _deepCopy(e.value) : e.value,
+    };
+  }
+
+  /// a copy of [value] by JSON. A value that is not JSON stays as it is.
+  static dynamic _deepCopy(dynamic value) {
+    try {
+      return jsonDecode(jsonEncode(value));
+    } catch (_) {
+      return value;
+    }
+  }
 
   /// the columns that changed since the model was read or saved, with
   /// their new values. Keys are column names, like `body`, not the Dart
@@ -1550,7 +1600,9 @@ class Model<T> extends QueryBuilder<T> {
     });
     model.originalMap = old.originalMap;
     if (!await model.save()) return found;
-    return await _readBack(model);
+    T row = await _readBack(model);
+    (row as Model<T>)._lastChanges = model._lastChanges;
+    return row;
   }
 
   /// fromMap() reads dates as strings, like rows from the database
