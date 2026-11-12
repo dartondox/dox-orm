@@ -53,9 +53,7 @@ class PhotoGenerator extends Model<Photo> {
   static Future<void> getComments(List<Model<Photo>> list) async {
     var result = await getMorphMany<Photo, Comment>(queryComments(list), list);
     for (dynamic i in list) {
-      if (result[i.tempIdValue.toString()] != null) {
-        i.comments = result[i.tempIdValue.toString()]!;
-      }
+      i.comments = result[i.tempIdValue.toString()] ?? <Comment>[];
     }
   }
 
@@ -73,9 +71,7 @@ class PhotoGenerator extends Model<Photo> {
       list,
     );
     for (dynamic i in list) {
-      if (result[i.tempIdValue.toString()] != null) {
-        i.latestComment = result[i.tempIdValue.toString()]!;
-      }
+      i.latestComment = result[i.tempIdValue.toString()];
     }
   }
 

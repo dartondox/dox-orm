@@ -56,9 +56,7 @@ class CommentGenerator extends Model<Comment> {
       list,
     );
     for (dynamic i in list) {
-      if (result[i.tempIdValue.toString()] != null) {
-        i.commentable = result[i.tempIdValue.toString()]!;
-      }
+      i.commentable = result[i.tempIdValue.toString()];
     }
   }
 

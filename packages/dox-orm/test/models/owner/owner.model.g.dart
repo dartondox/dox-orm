@@ -53,9 +53,7 @@ class OwnerGenerator extends Model<Owner> {
   static Future<void> getPets(List<Model<Owner>> list) async {
     var result = await getHasMany<Owner, Pet>(queryPets(list), list);
     for (dynamic i in list) {
-      if (result[i.tempIdValue.toString()] != null) {
-        i.pets = result[i.tempIdValue.toString()]!;
-      }
+      i.pets = result[i.tempIdValue.toString()] ?? <Pet>[];
     }
   }
 
@@ -66,9 +64,7 @@ class OwnerGenerator extends Model<Owner> {
   static Future<void> getFirstPet(List<Model<Owner>> list) async {
     var result = await getHasOne<Owner, Pet>(queryFirstPet(list), list);
     for (dynamic i in list) {
-      if (result[i.tempIdValue.toString()] != null) {
-        i.firstPet = result[i.tempIdValue.toString()]!;
-      }
+      i.firstPet = result[i.tempIdValue.toString()];
     }
   }
 
@@ -79,9 +75,7 @@ class OwnerGenerator extends Model<Owner> {
   static Future<void> getClubs(List<Model<Owner>> list) async {
     var result = await getManyToMany<Owner, Club>(queryClubs(list), list);
     for (dynamic i in list) {
-      if (result[i.tempIdValue.toString()] != null) {
-        i.clubs = result[i.tempIdValue.toString()]!;
-      }
+      i.clubs = result[i.tempIdValue.toString()] ?? <Club>[];
     }
   }
 
@@ -183,14 +177,12 @@ class PetGenerator extends Model<Pet> {
   static Future<void> getOwner(List<Model<Pet>> list) async {
     var result = await getBelongsTo<Pet, Owner>(queryOwner(list), list);
     for (dynamic i in list) {
-      if (result[i.tempIdValue.toString()] != null) {
-        i.owner = result[i.tempIdValue.toString()]!;
-      }
+      i.owner = result[i.tempIdValue.toString()];
     }
   }
 
   static Owner? queryOwner(List<Model<Pet>> list) {
-    return belongsTo<Pet, Owner>(list, () => Owner());
+    return belongsTo<Pet, Owner>(list, () => Owner(), relation: 'owner');
   }
 
   @override

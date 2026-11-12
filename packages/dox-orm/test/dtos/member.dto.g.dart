@@ -23,6 +23,9 @@ class _$CreateMemberDto extends DtoSchema<CreateMember> {
   String get name => 'CreateMember';
 
   @override
+  bool get usesRequiredWhen => false;
+
+  @override
   bool get isAsync => true;
 
   @override
@@ -44,6 +47,7 @@ class _$CreateMemberDto extends DtoSchema<CreateMember> {
     Object? c2;
     c2 = s.list(s.read(input, 'tag_ids'), p, 'tag_ids', _m);
     if (c2 is List) {
+      int b0 = s.issues.length;
       List<Object> q0 = <Object>[...p, 'tag_ids'];
       List<int> o0 = <int>[];
       for (int i0 = 0; i0 < c2.length; i0++) {
@@ -55,10 +59,10 @@ class _$CreateMemberDto extends DtoSchema<CreateMember> {
           o0.add(x0 as int);
         }
       }
-      c2 = o0;
+      c2 = s.issues.length != b0 ? invalid : o0;
     }
     if (c2 == null) s.required(p, 'tag_ids', _m);
-    if (s.issues.length != e) return null;
+    if (s.issues.length != e && !s.allErrors) return null;
     if (c0 is String) {
       if (!(Patterns.email.hasMatch(c0))) {
         s.fail(
@@ -171,6 +175,9 @@ class _$UpdateMemberDto extends DtoSchema<UpdateMember> {
   String get name => 'UpdateMember';
 
   @override
+  bool get usesRequiredWhen => false;
+
+  @override
   bool get isAsync => true;
 
   @override
@@ -184,6 +191,7 @@ class _$UpdateMemberDto extends DtoSchema<UpdateMember> {
     Object? c0;
     c0 = s.string(s.read(input, 'email'), p, 'email', _m);
     if (c0 == null || c0 is Undefined) s.required(p, 'email', _m);
+    if (s.issues.length != e && !s.allErrors) return null;
     if (s.issues.length != e) return null;
     return UpdateMember(email: c0 as String);
   }

@@ -55,9 +55,7 @@ class AuthorGenerator extends Model<Author> {
   static Future<void> getBooks(List<Model<Author>> list) async {
     var result = await getHasMany<Author, Book>(queryBooks(list), list);
     for (dynamic i in list) {
-      if (result[i.tempIdValue.toString()] != null) {
-        i.books = result[i.tempIdValue.toString()]!;
-      }
+      i.books = result[i.tempIdValue.toString()] ?? <Book>[];
     }
   }
 
@@ -73,9 +71,7 @@ class AuthorGenerator extends Model<Author> {
   static Future<void> getFirstBook(List<Model<Author>> list) async {
     var result = await getHasOne<Author, Book>(queryFirstBook(list), list);
     for (dynamic i in list) {
-      if (result[i.tempIdValue.toString()] != null) {
-        i.firstBook = result[i.tempIdValue.toString()]!;
-      }
+      i.firstBook = result[i.tempIdValue.toString()];
     }
   }
 
@@ -91,9 +87,7 @@ class AuthorGenerator extends Model<Author> {
   static Future<void> getTags(List<Model<Author>> list) async {
     var result = await getManyToMany<Author, Tag>(queryTags(list), list);
     for (dynamic i in list) {
-      if (result[i.tempIdValue.toString()] != null) {
-        i.tags = result[i.tempIdValue.toString()]!;
-      }
+      i.tags = result[i.tempIdValue.toString()] ?? <Tag>[];
     }
   }
 

@@ -55,9 +55,7 @@ class WriterGenerator extends Model<Writer> with SoftDeletes<Writer> {
   static Future<void> getArticles(List<Model<Writer>> list) async {
     var result = await getHasMany<Writer, Article>(queryArticles(list), list);
     for (dynamic i in list) {
-      if (result[i.tempIdValue.toString()] != null) {
-        i.articles = result[i.tempIdValue.toString()]!;
-      }
+      i.articles = result[i.tempIdValue.toString()] ?? <Article>[];
     }
   }
 
@@ -71,9 +69,7 @@ class WriterGenerator extends Model<Writer> with SoftDeletes<Writer> {
       list,
     );
     for (dynamic i in list) {
-      if (result[i.tempIdValue.toString()] != null) {
-        i.firstArticle = result[i.tempIdValue.toString()]!;
-      }
+      i.firstArticle = result[i.tempIdValue.toString()];
     }
   }
 
@@ -87,9 +83,7 @@ class WriterGenerator extends Model<Writer> with SoftDeletes<Writer> {
       list,
     );
     for (dynamic i in list) {
-      if (result[i.tempIdValue.toString()] != null) {
-        i.publishedArticles = result[i.tempIdValue.toString()]!;
-      }
+      i.publishedArticles = result[i.tempIdValue.toString()] ?? <Article>[];
     }
   }
 
@@ -104,9 +98,7 @@ class WriterGenerator extends Model<Writer> with SoftDeletes<Writer> {
   static Future<void> getTopics(List<Model<Writer>> list) async {
     var result = await getManyToMany<Writer, Topic>(queryTopics(list), list);
     for (dynamic i in list) {
-      if (result[i.tempIdValue.toString()] != null) {
-        i.topics = result[i.tempIdValue.toString()]!;
-      }
+      i.topics = result[i.tempIdValue.toString()] ?? <Topic>[];
     }
   }
 
@@ -227,22 +219,18 @@ class ArticleGenerator extends Model<Article> with SoftDeletes<Article> {
   static Future<void> getWriter(List<Model<Article>> list) async {
     var result = await getBelongsTo<Article, Writer>(queryWriter(list), list);
     for (dynamic i in list) {
-      if (result[i.tempIdValue.toString()] != null) {
-        i.writer = result[i.tempIdValue.toString()]!;
-      }
+      i.writer = result[i.tempIdValue.toString()];
     }
   }
 
   static Writer? queryWriter(List<Model<Article>> list) {
-    return belongsTo<Article, Writer>(list, () => Writer());
+    return belongsTo<Article, Writer>(list, () => Writer(), relation: 'writer');
   }
 
   static Future<void> getRemarks(List<Model<Article>> list) async {
     var result = await getHasMany<Article, Remark>(queryRemarks(list), list);
     for (dynamic i in list) {
-      if (result[i.tempIdValue.toString()] != null) {
-        i.remarks = result[i.tempIdValue.toString()]!;
-      }
+      i.remarks = result[i.tempIdValue.toString()] ?? <Remark>[];
     }
   }
 
@@ -538,9 +526,7 @@ class SectionGenerator extends Model<Section> with SoftDeletes<Section> {
   static Future<void> getParent(List<Model<Section>> list) async {
     var result = await getBelongsTo<Section, Section>(queryParent(list), list);
     for (dynamic i in list) {
-      if (result[i.tempIdValue.toString()] != null) {
-        i.parent = result[i.tempIdValue.toString()]!;
-      }
+      i.parent = result[i.tempIdValue.toString()];
     }
   }
 
@@ -549,15 +535,14 @@ class SectionGenerator extends Model<Section> with SoftDeletes<Section> {
       list,
       () => Section(),
       foreignKey: 'parent_id',
+      relation: 'parent',
     );
   }
 
   static Future<void> getChildren(List<Model<Section>> list) async {
     var result = await getHasMany<Section, Section>(queryChildren(list), list);
     for (dynamic i in list) {
-      if (result[i.tempIdValue.toString()] != null) {
-        i.children = result[i.tempIdValue.toString()]!;
-      }
+      i.children = result[i.tempIdValue.toString()] ?? <Section>[];
     }
   }
 
