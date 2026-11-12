@@ -1,5 +1,6 @@
-// The plural rules below are ported from Doctrine Inflector (MIT), the
-// English rules for plural words, plus the uncountable words.
+// The plural rules below are ported from Doctrine Inflector (MIT). They
+// turn an English word into its plural, and list the words that have no
+// plural form.
 //
 // Copyright (c) 2006-2015 Doctrine Project
 //
@@ -21,9 +22,9 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-/// words that do not change (Doctrine `Uninflected::getPlural` and
-/// extra words). Each is a pattern for the whole
-/// word.
+/// words that do not change (the Doctrine
+/// `Uninflected::getPlural` list, plus two words Dox adds). Each is a
+/// pattern for the whole word.
 const List<String> _uninflectedWords = <String>[
   r'\w+media', 'advice', 'aircraft', 'amoyese', 'art', 'audio',
   'baggage', 'bison', 'borghese', 'bream', 'breeches', 'britches',
@@ -50,7 +51,7 @@ const List<String> _uninflectedWords = <String>[
   'wool', 'yengeese',
   // plural only
   'people', 'trivia', r'\w+ware$', 'media',
-  // extra words
+  // added by Dox: these words stay the same
   'recommended', 'related',
 ];
 

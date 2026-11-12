@@ -67,7 +67,8 @@ class Table {
   Table(this.name, {this.creating = false, OrmFlags? flags})
     : flags = flags ?? SqlQueryBuilder().flags;
 
-  /// true when this new table uses the opt-in types on postgres
+  /// true when this new table uses the postgres types that
+  /// [OrmFlags.laravelPostgresTypes] turns on
   bool get _laravelTypes => creating && flags.laravelPostgresTypes;
 
   /// sql for this table, for the database of [grammar]
