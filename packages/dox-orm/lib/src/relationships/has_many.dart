@@ -31,6 +31,7 @@ M? hasMany<T, M>(
   if (onQuery != null) {
     m = onQuery(m);
   }
+  takePreloadQuery(m);
   relationLocalKeys[m] = localKey;
   return m as M;
 }

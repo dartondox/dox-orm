@@ -1382,6 +1382,20 @@ class Model<T> extends QueryBuilder<T> {
   /// made on the first preload(), most models never call it
   List<String>? _preloads;
 
+  /// the dot paths of preload(), like `posts.comments`. null when there
+  /// is none, so a plain preload() does no more work.
+  List<String>? _preloadPaths;
+
+  /// copies the preload() names and paths of [query] to this row, so
+  /// toJson() and reload() of the row know them. get() calls it for each
+  /// row of a query with preload().
+  void $copyPreloads(Model<dynamic> query) {
+    List<String>? names = query._preloads;
+    if (names != null) _preloads = List<String>.of(names);
+    List<String>? paths = query._preloadPaths;
+    if (paths != null) _preloadPaths = List<String>.of(paths);
+  }
+
   /// the generator overrides these with the relations of the model
   Map<String, Function> get relationsResultMatcher =>
       _resultMatcher ??= <String, Function>{};
@@ -1400,8 +1414,20 @@ class Model<T> extends QueryBuilder<T> {
   /// Blog blog = await Blog().preload('comments').find(1);
   /// print(blog.comments);
   /// ```
+  ///
+  /// A dot path loads relations of the loaded rows too, one query for
+  /// each level: `preload('posts.comments')` loads the posts, then the
+  /// comments of all those posts. toJson() has both.
   Model<T> preload(String key) {
-    (_preloads ??= <String>[]).add(key);
+    List<String> names = _preloads ??= <String>[];
+    int dot = key.indexOf('.');
+    if (dot < 0) {
+      names.add(key);
+      return this;
+    }
+    String name = key.substring(0, dot);
+    if (!names.contains(name)) names.add(name);
+    (_preloadPaths ??= <String>[]).add(key);
     return this;
   }
 
@@ -1432,9 +1458,31 @@ class Model<T> extends QueryBuilder<T> {
   }
 
   Future<void> _getRelation(List<Model<T>> i, String name) async {
-    if (relationsResultMatcher[name] != null) {
-      Function funcName = relationsResultMatcher[name]!;
+    Function? funcName = relationsResultMatcher[name];
+    if (funcName == null) return;
+    if (_preloadPaths == null) {
       return await Function.apply(funcName, <dynamic>[i]);
+    }
+
+    /// the relation query is made before the first await of funcName,
+    /// so it takes [preloadQuery] while it is set
+    preloadQuery = (QueryBuilder<dynamic> q) => _onRelationQuery(name, q);
+    Future<dynamic> load;
+    try {
+      load = Function.apply(funcName, <dynamic>[i]) as Future<dynamic>;
+    } finally {
+      preloadQuery = null;
+    }
+    return await load;
+  }
+
+  /// adds the nested paths of relation [name] to its query [q]
+  void _onRelationQuery(String name, QueryBuilder<dynamic> q) {
+    String prefix = '$name.';
+    for (String path in _preloadPaths!) {
+      if (path.startsWith(prefix)) {
+        (q as Model<dynamic>).preload(path.substring(prefix.length));
+      }
     }
   }
 

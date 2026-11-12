@@ -40,6 +40,20 @@ String subqueryKeyPrefix = '';
 /// work with belongsTo, whereHas() does.
 bool aggregateSubquery = false;
 
+/// the where and the nested relations of `preload()` for the relation
+/// query that is made now. `Model` sets it only while a relation load
+/// starts, and only when `preload()` has a dot path or a where. The
+/// first relation query made takes it, see [takePreloadQuery].
+void Function(QueryBuilder<dynamic> query)? preloadQuery;
+
+/// runs [preloadQuery] on [q] once, then clears it
+void takePreloadQuery(QueryBuilder<dynamic> q) {
+  void Function(QueryBuilder<dynamic> query)? f = preloadQuery;
+  if (f == null) return;
+  preloadQuery = null;
+  f(q);
+}
+
 /// starts the subquery of [child]. it sets the param key prefix, and
 /// an alias when [child] and [parent] use the same table (like a parent
 /// category), so the subquery rows and the parent rows have their own

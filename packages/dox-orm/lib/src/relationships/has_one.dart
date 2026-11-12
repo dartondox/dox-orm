@@ -45,6 +45,7 @@ M? hasOne<T, M>(
   if (onQuery != null) {
     m = onQuery(m);
   }
+  takePreloadQuery(m);
   relationLocalKeys[m] = localKey;
   return m as M;
 }

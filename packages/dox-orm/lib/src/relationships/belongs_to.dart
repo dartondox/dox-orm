@@ -56,6 +56,7 @@ M? belongsTo<T, M>(
   if (onQuery != null) {
     owner = onQuery(owner);
   }
+  takePreloadQuery(owner);
   _keys[owner] = (childKeys, localKey);
   return owner as M;
 }

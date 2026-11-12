@@ -261,9 +261,7 @@ class QueryBuilderHelper<T> {
 
       /// so its relations read from the same database
       if (onWrite) res.onWriteConnection();
-      for (String preload in preloads) {
-        res.preload(preload);
-      }
+      if (preloads.isNotEmpty) res.$copyPreloads(self);
       for (String key in aggregateKeys) {
         dynamic value = e[key];
 

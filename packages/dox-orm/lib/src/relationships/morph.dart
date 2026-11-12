@@ -89,7 +89,17 @@ class _MorphTo {
   final String? ownerKey;
   final dynamic onQuery;
 
-  const _MorphTo(this.typeColumn, this.idColumn, this.ownerKey, this.onQuery);
+  /// the where and nested relations of `preload()`, for the query of
+  /// each type
+  final void Function(QueryBuilder<dynamic> query)? preload;
+
+  const _MorphTo(
+    this.typeColumn,
+    this.idColumn,
+    this.ownerKey,
+    this.onQuery,
+    this.preload,
+  );
 
   /// the type of [m], null when it has none. An empty type is no type.
   String? typeOf(Model<dynamic> m) {
@@ -111,6 +121,7 @@ class _MorphTo {
       ]),
     );
     if (onQuery != null) related = onQuery(related);
+    preload?.call(related);
     return related;
   }
 }
@@ -139,7 +150,9 @@ M? morphTo<T, M>(
     idColumn ?? '${name}_id',
     ownerKey,
     onQuery,
+    preloadQuery,
   );
+  preloadQuery = null;
   for (Model<T> owner in list) {
     String? type = m.typeOf(owner);
     if (type == null) continue;

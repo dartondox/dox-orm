@@ -74,6 +74,7 @@ M? hasManyThrough<T, M>(
   if (onQuery != null) {
     far = onQuery(far);
   }
+  takePreloadQuery(far);
   relationLocalKeys[far] = localKey;
   return far as M;
 }

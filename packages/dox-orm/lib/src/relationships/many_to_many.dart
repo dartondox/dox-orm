@@ -76,6 +76,7 @@ M? manyToMany<T, M>(
   if (onQuery != null) {
     q = onQuery(q);
   }
+  takePreloadQuery(q);
   _localKeys[q] = localKey;
   manyToManyQuery[q] = _Pivot(
     owner: local,
