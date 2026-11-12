@@ -78,6 +78,9 @@ class MysqlGrammar extends SchemaGrammar {
   String columnSql(Table table, ColumnDefinition column) {
     StringBuffer sql = StringBuffer('${wrap(column.name)} ${typeOf(column)}');
     if (column.isUnsigned) sql.write(' UNSIGNED');
+    if (column.collationName != null) {
+      sql.write(' COLLATE ${column.collationName}');
+    }
     sql.write(column.isNullable ? ' NULL' : ' NOT NULL');
     String def = defaultSql(column);
     if (column.rawDefault == null &&

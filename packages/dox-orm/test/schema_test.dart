@@ -62,6 +62,16 @@ void main() async {
 
   group('Schema |', () {
     setUp(clean);
+
+    test('collation utf8mb4_bin keeps A and a as two keys', () async {
+      await schema.create('sch_all', (Table table) {
+        table.string('k').primary().collation('utf8mb4_bin');
+      });
+      await QueryBuilder.table('sch_all').insert(<String, dynamic>{'k': 'A'});
+      await QueryBuilder.table('sch_all').insert(<String, dynamic>{'k': 'a'});
+      List<dynamic> list = await QueryBuilder.table('sch_all').get();
+      expect(list.length, 2);
+    }, skip: driver == Driver.mysql ? false : 'mysql only');
     tearDown(clean);
 
     test('create with every type, read the rows back', () async {

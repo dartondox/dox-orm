@@ -33,6 +33,15 @@ enum ColumnType {
   year,
 }
 
+const Set<ColumnType> _textTypes = <ColumnType>{
+  ColumnType.char,
+  ColumnType.string,
+  ColumnType.text,
+  ColumnType.mediumText,
+  ColumnType.longText,
+  ColumnType.enumeration,
+};
+
 /// one column of a table, made by the methods of [Table].
 /// the modifiers return the column, so they can be chained:
 /// `table.string('email').nullable().unique()`.
@@ -65,6 +74,7 @@ class ColumnDefinition {
   String? rawDefault;
   String? commentText;
   String? afterColumn;
+  String? _collation;
 
   /// `JSON`, not `JSONB`, on postgres. `Table.json` sets it with
   /// [OrmFlags.laravelPostgresTypes].
@@ -133,6 +143,36 @@ class ColumnDefinition {
   /// mysql only: UNSIGNED. postgres and sqlite ignore it.
   ColumnDefinition unsigned() {
     isUnsigned = true;
+    return this;
+  }
+
+  /// the collation set by [collation], or null
+  String? get collationName => _collation;
+
+  /// mysql and mariadb only: `COLLATE <name>`, eg. `utf8mb4_bin` makes
+  /// `A` and `a` two different keys. postgres and sqlite ignore it: their
+  /// collation names are different, and their text compare is already case
+  /// sensitive. [name] may have only letters, digits and `_`, or it throws
+  /// an `ArgumentError`. Text columns only (`string`, `char`, the text
+  /// types and `enumeration`): any other column throws an `ArgumentError`,
+  /// because MySQL does not accept a collation on it.
+  ///
+  /// On MySQL, `.change()` is `MODIFY COLUMN`. Give `.collation(...)` again
+  /// in the change, or the column goes back to the collation of the table.
+  ColumnDefinition collation(String name) {
+    if (!_textTypes.contains(type)) {
+      throw ArgumentError(
+        'collation() is for text columns only, column "${this.name}" is ${type.name}',
+      );
+    }
+    if (!RegExp(r'^[A-Za-z0-9_]+$').hasMatch(name)) {
+      throw ArgumentError.value(
+        name,
+        'name',
+        'A collation name has only letters, digits and _',
+      );
+    }
+    _collation = name;
     return this;
   }
 
