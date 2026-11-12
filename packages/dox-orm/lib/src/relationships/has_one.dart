@@ -2,9 +2,6 @@ import 'package:dox_orm/dox_orm.dart';
 
 import 'keys.dart';
 
-/// local key used by each query, so the result can be matched to owners
-final Expando<String> _localKeys = Expando<String>();
-
 /// one to one relationship query
 ///
 /// when an owner has many child rows, eager loading keeps the last row the
@@ -48,7 +45,7 @@ M? hasOne<T, M>(
   if (onQuery != null) {
     m = onQuery(m);
   }
-  _localKeys[m] = localKey;
+  relationLocalKeys[m] = localKey;
   return m as M;
 }
 
@@ -68,7 +65,7 @@ Future<Map<String, M>> getHasOne<T, M>(dynamic q, List<Model<T>> list) async {
   }
 
   /// match each owner by its local key
-  String? localKey = _localKeys[q];
+  String? localKey = relationLocalKeys[q];
   Map<String, M> byOwner = <String, M>{};
   for (Model<T> i in list) {
     dynamic key = localKey == null ? i.tempIdValue : relationKey(i, localKey);

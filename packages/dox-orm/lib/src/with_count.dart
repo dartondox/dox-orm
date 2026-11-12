@@ -40,7 +40,8 @@ mixin WithCount<T> implements SharedMixin<T> {
   };
 
   /// adds `<relation>_count`, the number of related rows, with a
-  /// subquery. Works with hasOne, hasMany and manyToMany relations.
+  /// subquery. Works with hasOne, hasMany, manyToMany, hasOneThrough and
+  /// hasManyThrough relations.
   /// [where] adds conditions to the related rows.
   /// `'posts as published_count'` sets the key.
   ///
@@ -227,9 +228,9 @@ mixin WithCount<T> implements SharedMixin<T> {
 
   /// keeps the rows that have at least one related row of [relation].
   /// [where] adds conditions to the related rows. Soft deleted related
-  /// rows do not count. Works with hasOne, hasMany, belongsTo and
-  /// manyToMany relations. `'posts.comments'` checks a relation of a
-  /// relation.
+  /// rows do not count. Works with hasOne, hasMany, belongsTo,
+  /// manyToMany, hasOneThrough and hasManyThrough relations.
+  /// `'posts.comments'` checks a relation of a relation.
   ///
   /// ```
   /// List<User> users = await User().whereHas('posts').get();

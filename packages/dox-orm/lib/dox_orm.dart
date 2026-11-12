@@ -26,6 +26,7 @@ export 'src/query_builder.dart';
 export 'src/relationships/belongs_to.dart';
 export 'src/relationships/has_many.dart';
 export 'src/relationships/has_one.dart';
+export 'src/relationships/has_through.dart';
 export 'src/relationships/many_to_many.dart';
 export 'src/relationships/morph.dart';
 export 'src/schema.dart';

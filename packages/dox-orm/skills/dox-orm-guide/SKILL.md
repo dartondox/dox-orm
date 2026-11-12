@@ -1,6 +1,6 @@
 ---
 name: dox-orm-guide
-description: How to use the Dox ORM (dox_orm) in a Dox app. Use it when you add or change a model, its columns, fillable or hidden fields, queries, relations (HasMany, BelongsTo, HasOne, ManyToMany), pagination, soft deletes, transactions, model factories, database tests, or when you switch the database from SQLite to Postgres or MySQL.
+description: How to use the Dox ORM (dox_orm) in a Dox app. Use it when you add or change a model, its columns, fillable or hidden fields, queries, relations (HasMany, BelongsTo, HasOne, ManyToMany, HasManyThrough, HasOneThrough), pagination, soft deletes, transactions, model factories, database tests, or when you switch the database from SQLite to Postgres or MySQL.
 ---
 
 # Dox ORM guide
@@ -211,6 +211,8 @@ User? user;
 | `@HasOne(Profile)` | `Profile? profile;` | `profile.user_id` |
 | `@BelongsTo(User)` | `User? user;` | `this.user_id` |
 | `@ManyToMany(Tag)` | `List<Tag> tags = <Tag>[];` | a pivot table like `post_tag` |
+| `@HasManyThrough(Post, through: User)` | `List<Post> posts = <Post>[];` | `user.country_id`, then `post.user_id` |
+| `@HasOneThrough(Post, through: User)` | `Post? post;` | the same, one row |
 
 - The default foreign key uses the class name in snake_case: `User` gives `user_id`.
   Set `foreignKey:` and `localKey:` when your columns are different.
@@ -231,6 +233,31 @@ List<User> idle = await User().whereDoesntHave('posts').get();
 ```
 
 - `eager: true` on the annotation loads the relation on every query.
+- A through relation reads the far rows through a model in the middle.
+  A country has many posts through its users:
+
+```dart
+// in Country. users.country_id points to the country,
+// posts.user_id points to the user.
+@HasManyThrough(Post, through: User)
+List<Post> posts = <Post>[];
+
+// other column names
+@HasManyThrough(
+  Post,
+  through: User,
+  foreignKey: 'home_country_id', // on users, points to the country
+  localKey: 'id',                // on countries
+  throughForeignKey: 'author_id', // on posts, points to the user
+  throughLocalKey: 'id',         // on users
+)
+List<Post> authored = <Post>[];
+```
+
+  `preload`, `withCount`, `whereHas` and `has` work on it. Soft deleted
+  users and posts are left out. In `onQuery` or a `whereHas` callback,
+  write the table in front of a column (`'post.title'`): the query joins
+  the two tables.
 - A relation loaded with `preload` is in `toJson()`, under the field name in snake_case.
 
 ## Soft deletes
