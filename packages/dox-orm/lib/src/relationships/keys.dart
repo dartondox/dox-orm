@@ -103,3 +103,41 @@ final Expando<Object> manyToManyQuery = Expando<Object>();
 /// too. It is a second Expando because a row is also a query: a new
 /// query made from a row must not give its rows the settings.
 final Expando<Object> manyToManyRow = Expando<Object>();
+
+/// the keys of a hasOne, hasMany or belongsTo relation, for the
+/// relation writes like `createRelated()`. [extra] has the columns a
+/// morph relation sets too, like `commentable_type`.
+typedef RelationKeys = ({
+  String kind,
+  String foreignKey,
+  String localKey,
+  Map<String, dynamic> extra,
+  Model<dynamic> Function() model,
+});
+
+/// true while a relation write reads the keys of a relation. The next
+/// relation query then sets [relationKeysFound] and turns it off. On a
+/// plain relation query it is one bool check.
+bool findRelationKeys = false;
+
+/// the keys found while [findRelationKeys] was true
+RelationKeys? relationKeysFound;
+
+/// sets [relationKeysFound] when a relation write asked for it.
+/// A subquery (whereHas in an onQuery) is not the relation itself.
+void foundRelationKeys(
+  String kind,
+  String foreignKey,
+  String localKey,
+  Model<dynamic> Function() model,
+) {
+  if (!findRelationKeys || relationSubquery) return;
+  findRelationKeys = false;
+  relationKeysFound = (
+    kind: kind,
+    foreignKey: foreignKey,
+    localKey: localKey,
+    extra: const <String, dynamic>{},
+    model: model,
+  );
+}

@@ -70,6 +70,89 @@ class Model<T> extends QueryBuilder<T> {
   set hidden(List<String> value) => _hidden = value;
   List<String>? _hidden;
 
+  /// the only fields that toJson() keeps, the opposite of [hidden].
+  /// It is not named `visible`, so a model can keep a `visible` column
+  /// or scope.
+  /// Empty (the default) keeps every field. [hidden] still leaves a
+  /// field out.
+  ///
+  /// ```
+  /// @override
+  /// List<String> get visibleFields => const <String>['id', 'name'];
+  /// ```
+  List<String> get visibleFields => const <String>[];
+
+  /// the fields of [makeHidden] and [makeVisible] of this model:
+  /// (hidden, shown). null when neither was called, so toJson() of a
+  /// plain model reads one null field.
+  (Set<String>, Set<String>)? _visibility;
+
+  /// leaves [fields] out of toJson() of this model only, on top of
+  /// [hidden]. It returns this model.
+  ///
+  /// ```
+  /// return user.makeHidden(<String>['email']).toJson();
+  /// ```
+  Model<T> makeHidden(List<String> fields) {
+    var (Set<String> hide, Set<String> show) = _visibility ??= (
+      <String>{},
+      <String>{},
+    );
+    hide.addAll(fields);
+    show.removeAll(fields);
+    return this;
+  }
+
+  /// keeps [fields] in toJson() of this model only, also when they are
+  /// in [hidden] or not in [visibleFields]. It returns this model.
+  ///
+  /// ```
+  /// return user.makeVisible(<String>['email']).toJson();
+  /// ```
+  Model<T> makeVisible(List<String> fields) {
+    var (Set<String> hide, Set<String> show) = _visibility ??= (
+      <String>{},
+      <String>{},
+    );
+    show.addAll(fields);
+    hide.removeAll(fields);
+    return this;
+  }
+
+  /// removes the fields of [hidden], [visibleFields], [makeHidden] and
+  /// [makeVisible] from [data]
+  void _removeHidden(Map<String, dynamic> data) {
+    (Set<String>, Set<String>)? v = _visibility;
+    if (v == null) {
+      for (String h in hidden) {
+        data.remove(h);
+      }
+      List<String> only = visibleFields;
+      if (only.isNotEmpty) _keepOnly(data, only, const <String>{});
+      return;
+    }
+    var (Set<String> hide, Set<String> show) = v;
+    for (String h in hidden) {
+      if (!show.contains(h)) data.remove(h);
+    }
+    for (String h in hide) {
+      data.remove(h);
+    }
+    List<String> only = visibleFields;
+    if (only.isNotEmpty) _keepOnly(data, only, show);
+  }
+
+  /// removes the keys of [data] that are not in [only] or [show]
+  static void _keepOnly(
+    Map<String, dynamic> data,
+    List<String> only,
+    Set<String> show,
+  ) {
+    for (String key in data.keys.toList()) {
+      if (!only.contains(key) && !show.contains(key)) data.remove(key);
+    }
+  }
+
   /// columns that create(), insert(), insertMultiple() and update() take
   /// from a map.
   ///
@@ -417,7 +500,8 @@ class Model<T> extends QueryBuilder<T> {
   /// int count = await blog!.delete();
   /// ```
   ///
-  /// It fires deleting and deleted. A query delete like
+  /// It fires deleting and deleted. A soft delete that changed the row
+  /// fires trashed after deleted. A query delete like
   /// `Blog().where('id', 1).delete()` fires no events, and returns how
   /// many rows it deleted.
   ///
@@ -454,7 +538,10 @@ class Model<T> extends QueryBuilder<T> {
     } else {
       count = await _thisRecord().forceDelete();
     }
-    if (events) await _fire(ModelEvent.deleted);
+    if (events) {
+      await _fire(ModelEvent.deleted);
+      if (isSoftDeletes && count > 0) await _fireTrashed();
+    }
     return count;
   }
 
@@ -965,6 +1052,20 @@ class Model<T> extends QueryBuilder<T> {
     }
   }
 
+  /// the trashed event: not a [ModelEvent] value, so a switch on
+  /// [ModelEvent] in an app keeps working. Observers get it only with
+  /// [TrashedObserver].
+  Future<void> _fireTrashed() async {
+    if (hasModelHooks) await onTrashed();
+    List<ModelObserver<dynamic>>? list = _observers?[runtimeType];
+    if (list == null) return;
+    for (ModelObserver<dynamic> observer in list) {
+      if (observer is TrashedObserver) {
+        await (observer as TrashedObserver<dynamic>).onTrashed(this);
+      }
+    }
+  }
+
   FutureOr<void> _hook(ModelEvent event) {
     switch (event) {
       case ModelEvent.saving:
@@ -1008,6 +1109,9 @@ class Model<T> extends QueryBuilder<T> {
   FutureOr<void> onRestored() {}
   FutureOr<void> onForceDeleting() {}
   FutureOr<void> onForceDeleted() {}
+
+  /// after a soft delete of this model, after onDeleted()
+  FutureOr<void> onTrashed() {}
 
   /// end ********** events
 
@@ -1277,9 +1381,10 @@ class Model<T> extends QueryBuilder<T> {
               : e.value,
       };
     }
-    for (String h in hidden) {
-      data.remove(h);
-    }
+
+    /// again after pivot, and for a toMap() override that did not
+    /// remove the hidden fields
+    _removeHidden(data);
     return data;
   }
 
@@ -1306,11 +1411,7 @@ class Model<T> extends QueryBuilder<T> {
     setComputedValues(data);
     Map<String, dynamic>? aggregates = _aggregates;
     if (aggregates != null) data.addAll(aggregates);
-    if (removeHiddenField) {
-      for (String h in hidden) {
-        data.remove(h);
-      }
-    }
+    if (removeHiddenField) _removeHidden(data);
     return data;
   }
 
@@ -1913,5 +2014,29 @@ class Model<T> extends QueryBuilder<T> {
     return await super.insertMultiple(<Map<String, dynamic>>[
       for (Map<String, dynamic> data in list) _onlyFillable(data),
     ]);
+  }
+}
+
+/// [Model.makeHidden] and [Model.makeVisible] for each model of a list
+///
+/// ```
+/// List<User> users = await User().all();
+/// return users.makeVisible(<String>['email']);
+/// ```
+extension ModelListVisibility<M extends Model<dynamic>> on List<M> {
+  /// [Model.makeHidden] on each model. It returns this list.
+  List<M> makeHidden(List<String> fields) {
+    for (M m in this) {
+      m.makeHidden(fields);
+    }
+    return this;
+  }
+
+  /// [Model.makeVisible] on each model. It returns this list.
+  List<M> makeVisible(List<String> fields) {
+    for (M m in this) {
+      m.makeVisible(fields);
+    }
+    return this;
   }
 }

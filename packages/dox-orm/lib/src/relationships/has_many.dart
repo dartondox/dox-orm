@@ -18,6 +18,9 @@ M? hasMany<T, M>(
   foreignKey = foreignKey ?? owner.foreignKeyName;
 
   List<dynamic> ids = relationKeys(list, localKey);
+  if (findRelationKeys) {
+    foundRelationKeys('hasMany', foreignKey, localKey, model);
+  }
 
   Model<M> m = model().debug(owner.shouldDebug);
   m.useConnectionOf(owner);

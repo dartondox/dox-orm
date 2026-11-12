@@ -16,6 +16,20 @@ dynamic Function(dynamic) _whereType(
   };
 }
 
+/// adds the type column of a morphMany or morphOne to the keys that a
+/// relation write asked for
+void _setMorphType(String column, Model<dynamic> owner) {
+  RelationKeys? k = relationKeysFound;
+  if (k == null) return;
+  relationKeysFound = (
+    kind: k.kind,
+    foreignKey: k.foreignKey,
+    localKey: k.localKey,
+    extra: <String, dynamic>{column: Model.morphTypeOf(owner)},
+    model: k.model,
+  );
+}
+
 /// polymorphic one to many relation query, like a post that has many
 /// comments: `comment.commentable_id = post.id` and
 /// `comment.commentable_type = 'post'`.
@@ -29,7 +43,8 @@ M? morphMany<T, M>(
   dynamic onQuery,
 }) {
   if (list.isEmpty) return null;
-  return hasMany<T, M>(
+  bool find = findRelationKeys;
+  M? q = hasMany<T, M>(
     list,
     model,
     foreignKey: idColumn ?? '${name}_id',
@@ -40,6 +55,8 @@ M? morphMany<T, M>(
       onQuery,
     ),
   );
+  if (find) _setMorphType(typeColumn ?? '${name}_type', list.first);
+  return q;
 }
 
 /// get the result of [morphMany], keyed by each owner primary key
@@ -61,7 +78,8 @@ M? morphOne<T, M>(
   dynamic onQuery,
 }) {
   if (list.isEmpty) return null;
-  return hasOne<T, M>(
+  bool find = findRelationKeys;
+  M? q = hasOne<T, M>(
     list,
     model,
     foreignKey: idColumn ?? '${name}_id',
@@ -72,6 +90,8 @@ M? morphOne<T, M>(
       onQuery,
     ),
   );
+  if (find) _setMorphType(typeColumn ?? '${name}_type', list.first);
+  return q;
 }
 
 /// get the result of [morphOne], keyed by each owner primary key

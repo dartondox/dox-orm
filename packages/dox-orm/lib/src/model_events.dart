@@ -92,3 +92,16 @@ abstract class ModelObserver<T> {
     }
   }
 }
+
+/// Add this to a [ModelObserver] to hear about soft deletes. `onTrashed`
+/// runs after `onDeleted`, when a soft delete changed the row.
+///
+/// ```
+/// class PostObserver extends ModelObserver<Post> with TrashedObserver<Post> {
+///   @override
+///   void onTrashed(Post post) => print('trashed ${post.id}');
+/// }
+/// ```
+abstract mixin class TrashedObserver<T> {
+  FutureOr<void> onTrashed(T model) {}
+}
