@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import '../dox_orm.dart';
 import 'relationships/keys.dart';
@@ -297,10 +298,7 @@ class Model<T> extends QueryBuilder<T> {
       /// mysql only returns auto increment ids, so use the given id if any
       tempIdValue =
           (res.isNotEmpty ? res.first[primaryKey] : null) ?? values[primaryKey];
-      _savedValues = _copyJson(<String, dynamic>{
-        ...values,
-        primaryKey: tempIdValue,
-      });
+      _setSaved(<String, dynamic>{...values, primaryKey: tempIdValue}, values);
       _wasRecentlyCreated = true;
       _lastChanges = const <String, dynamic>{};
     } else {
@@ -308,6 +306,7 @@ class Model<T> extends QueryBuilder<T> {
           _changes();
       DateTime currentTime = now();
       Map<String, dynamic> saved = _savedValues ?? originalMap;
+      Map<String, String>? savedJson = _baseJson;
 
       /// nothing changed: no query, and updated_at stays as it is
       if (values.isEmpty) {
@@ -334,9 +333,10 @@ class Model<T> extends QueryBuilder<T> {
       /// that really changed count as changes.
       _lastChanges = <String, dynamic>{
         for (MapEntry<String, dynamic> e in values.entries)
-          if (!_sameValue(e.value, saved[e.key])) e.key: e.value,
+          if (!_sameValue(e.value, savedJson?[e.key] ?? saved[e.key]))
+            e.key: e.value,
       };
-      _savedValues = _copyJson(<String, dynamic>{...saved, ...values});
+      _setSaved(<String, dynamic>{...saved, ...values}, values);
     }
   }
 
@@ -659,10 +659,13 @@ class Model<T> extends QueryBuilder<T> {
     /// a model that was not read or saved keeps exists false
     if (done.isEmpty || !exists) return;
     Map<String, dynamic> map = columnsToMap();
-    _savedValues = _copyJson(<String, dynamic>{
-      ...(_savedValues ?? originalMap),
+    Map<String, dynamic> changed = <String, dynamic>{
       for (String key in done) key: map[key],
-    });
+    };
+    _setSaved(<String, dynamic>{
+      ...(_savedValues ?? originalMap),
+      ...changed,
+    }, changed);
     _lastChanges = <String, dynamic>{for (String key in done) key: values[key]};
   }
 
@@ -1008,38 +1011,52 @@ class Model<T> extends QueryBuilder<T> {
   /// Empty for a new model.
   Map<String, dynamic> get _original => _savedValues ?? originalMap;
 
-  /// the row this model was read from. A map or a list value is kept as
-  /// a copy, so a change in place of the field (`info['a'] = 2`) does not
-  /// change it too, and [isDirty] sees it.
+  /// the JSON text of the map and list values of [originalMap] and of
+  /// the saved values, by column name. The field holds the same map or
+  /// list as the row, so a change in place (`info['a'] = 2`) changes the
+  /// row too. The text does not change, so [isDirty] still sees it.
+  /// [originalMap] itself keeps the values as the driver gave them.
+  Map<String, String>? _origJson;
+  Map<String, String>? _savedJson;
+
+  /// the JSON text of the row as it was last read or saved
+  Map<String, String>? get _baseJson =>
+      _savedValues != null ? _savedJson : _origJson;
+
   @override
   set originalMap(Map<String, dynamic> value) {
-    super.originalMap = _copyJson(value);
+    super.originalMap = value;
+    _origJson = _jsonOf(value, null);
   }
 
-  /// [map] with a deep copy of each map or list value. [map] itself when
-  /// it has none, so most rows make no new map.
-  static Map<String, dynamic> _copyJson(Map<String, dynamic> map) {
-    bool has = false;
-    for (dynamic value in map.values) {
-      if (value is Map || value is List) {
-        has = true;
-        break;
+  /// set the saved values to [saved]. [changed] are the columns that
+  /// got a new value: the others keep the JSON text they had.
+  void _setSaved(Map<String, dynamic> saved, Map<String, dynamic> changed) {
+    Map<String, String>? json = _jsonOf(changed, _baseJson);
+    _savedValues = saved;
+    _savedJson = json;
+  }
+
+  /// [old] with the JSON text of the map and list values of [values].
+  /// null when there is none. Bytes (a blob) are not JSON: they are
+  /// compared as they are, so a change in place of a blob is not seen.
+  // ponytail: no copy of a blob, a row with a big blob costs nothing.
+  static Map<String, String>? _jsonOf(
+    Map<String, dynamic> values,
+    Map<String, String>? old,
+  ) {
+    Map<String, String>? out = old == null ? null : <String, String>{...old};
+    for (MapEntry<String, dynamic> e in values.entries) {
+      dynamic value = e.value;
+      out?.remove(e.key);
+      if (value is TypedData || (value is! Map && value is! List)) continue;
+      try {
+        (out ??= <String, String>{})[e.key] = jsonEncode(value);
+      } catch (_) {
+        /// not JSON: compared as it is
       }
     }
-    if (!has) return map;
-    return <String, dynamic>{
-      for (MapEntry<String, dynamic> e in map.entries)
-        e.key: e.value is Map || e.value is List ? _deepCopy(e.value) : e.value,
-    };
-  }
-
-  /// a copy of [value] by JSON. A value that is not JSON stays as it is.
-  static dynamic _deepCopy(dynamic value) {
-    try {
-      return jsonDecode(jsonEncode(value));
-    } catch (_) {
-      return value;
-    }
+    return out == null || out.isEmpty ? null : out;
   }
 
   /// the columns that changed since the model was read or saved, with
@@ -1053,9 +1070,11 @@ class Model<T> extends QueryBuilder<T> {
   /// ```
   Map<String, dynamic> getDirty() {
     Map<String, dynamic> original = _original;
+    Map<String, String>? json = _baseJson;
     return <String, dynamic>{
       for (MapEntry<String, dynamic> e in columnsToMap().entries)
-        if (!_sameValue(e.value, original[e.key])) e.key: e.value,
+        if (!_sameValue(e.value, json?[e.key] ?? original[e.key]))
+          e.key: e.value,
     };
   }
 
@@ -1087,7 +1106,16 @@ class Model<T> extends QueryBuilder<T> {
   /// ```
   dynamic getOriginal([String? column]) {
     Map<String, dynamic> original = _original;
-    return column == null ? <String, dynamic>{...original} : original[column];
+    Map<String, String> json = _baseJson ?? const <String, String>{};
+    if (column != null) {
+      String? text = json[column];
+      return text == null ? original[column] : jsonDecode(text);
+    }
+    return <String, dynamic>{
+      ...original,
+      for (MapEntry<String, String> e in json.entries)
+        e.key: jsonDecode(e.value),
+    };
   }
 
   /// the columns that the last save() changed, with their new values.
@@ -1128,11 +1156,26 @@ class Model<T> extends QueryBuilder<T> {
   /// Unlike [_same], a map or a list is compared by its JSON, and a
   /// time by its moment.
   static bool _sameValue(dynamic a, dynamic b) {
+    if (a is TypedData || b is TypedData) {
+      return a is TypedData && b is TypedData && _sameBytes(a, b);
+    }
     if (a is DateTime || b is DateTime) return _sameTime(a, b);
     if (a is Map || a is List || b is Map || b is List) {
       return _json(a) == _json(b);
     }
     return _same(a, b);
+  }
+
+  /// true when [a] and [b] hold the same bytes
+  static bool _sameBytes(TypedData a, TypedData b) {
+    if (identical(a, b)) return true;
+    if (a.lengthInBytes != b.lengthInBytes) return false;
+    Uint8List x = a.buffer.asUint8List(a.offsetInBytes, a.lengthInBytes);
+    Uint8List y = b.buffer.asUint8List(b.offsetInBytes, b.lengthInBytes);
+    for (int i = 0; i < x.length; i++) {
+      if (x[i] != y[i]) return false;
+    }
+    return true;
   }
 
   /// [value] as JSON text. A text stays as it is (a JSON column can be
@@ -1219,6 +1262,8 @@ class Model<T> extends QueryBuilder<T> {
     updatedAt = row.updatedAt;
     originalMap = raw;
     _savedValues = null;
+    _savedJson = null;
+    _lastChanges = const <String, dynamic>{};
     await reload();
     return this as T;
   }

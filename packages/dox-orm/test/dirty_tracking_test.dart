@@ -1,3 +1,6 @@
+import 'dart:io';
+import 'dart:typed_data';
+
 import 'package:dox_orm/dox_orm.dart';
 import 'package:test/test.dart';
 
@@ -45,6 +48,11 @@ void main() async {
       table.integer('level').nullable();
       table.integer('price').nullable();
     });
+    await Schema().create('blob_rows', (Table table) {
+      table.id();
+      table.binary('data').nullable();
+      table.json('info').nullable();
+    });
     await Schema().create('stamped_rows', (Table table) {
       table.id();
       table.string('title').nullable();
@@ -60,6 +68,7 @@ void main() async {
       'event_posts',
       'cast_item',
       'stamped_rows',
+      'blob_rows',
     ]) {
       await Schema().dropIfExists(table);
     }
@@ -241,6 +250,46 @@ void main() async {
       expect(read.getOriginal('info'), <String, dynamic>{'a': 2});
     });
 
+    test(
+      'a blob column keeps its bytes and type',
+      () async {
+        /// the ORM writes a list as JSON, so put the bytes in with SQL
+        await SqlQueryBuilder().dbDriver.execute(
+          "INSERT INTO blob_rows (data) VALUES (X'010203')",
+        );
+        BlobRow read = (await BlobRow().first())!;
+        expect(read.originalMap['data'], isA<Uint8List>());
+        expect(identical(read.originalMap['data'], read.data), isTrue);
+        expect(read.isDirty(), isFalse);
+        List<dynamic> plucked = await BlobRow().pluck('data');
+        expect(plucked.first, isA<Uint8List>());
+
+        /// new bytes: dirty only when they differ
+        read.data = Uint8List.fromList(<int>[1, 2, 3]);
+        expect(read.isDirty('data'), isFalse);
+        read.data = Uint8List.fromList(<int>[1, 2, 4]);
+        expect(read.isDirty('data'), isTrue);
+
+        /// a change in place of a blob is not seen: the model keeps no copy
+        BlobRow again = (await BlobRow().first())!;
+        again.data![0] = 9;
+        expect(again.isDirty('data'), isFalse);
+      },
+      skip: Platform.environment['DRIVER'] == 'sqlite'
+          ? false
+          : 'the raw blob insert is written for SQLite',
+    );
+
+    test('originalMap keeps the values as the driver gave them', () async {
+      BlobRow row = BlobRow()..info = <String, dynamic>{'a': 1};
+      await row.save();
+      BlobRow read = (await BlobRow().find(row.id))!;
+      expect(identical(read.originalMap['info'], read.info), isTrue);
+      read.info!['a'] = 2;
+      expect(read.isDirty('info'), isTrue);
+      expect(read.getOriginal('info'), <String, dynamic>{'a': 1});
+    });
+
     test('an unchanged json column is not in getChanges()', () async {
       BlogInfo info = BlogInfo()
         ..info = <String, dynamic>{'a': 1}
@@ -375,6 +424,8 @@ void main() async {
         'info': <String, dynamic>{'a': 1},
         'blog_id': blog.uid,
       });
+      await blog.update(<String, dynamic>{'status': 'old'});
+      expect(blog.wasChanged('status'), isTrue);
       await QueryBuilder.table('blog')
           .where('uid', blog.uid)
           .update(<String, dynamic>{'title': 'other', 'body': 'other body'});
@@ -388,6 +439,7 @@ void main() async {
       expect(blog.slug, isNull);
       expect(blog.isDirty(), isFalse);
       expect(blog.getOriginal('title'), 'other');
+      expect(blog.wasChanged(), isFalse);
 
       /// relations load again, like reload()
       expect(blog.blogInfos, hasLength(1));
@@ -561,4 +613,43 @@ class StampedRow extends Model<StampedRow> {
     }
     return false;
   }
+}
+
+/// a hand-written model with a blob and a json column
+class BlobRow extends Model<BlobRow> {
+  @override
+  List<String> get guarded => const <String>[];
+  int? get id => tempIdValue as int?;
+  set id(int? value) => tempIdValue = value;
+
+  Uint8List? data;
+  Map<String, dynamic>? info;
+
+  @override
+  String get tableName => 'blob_rows';
+
+  @override
+  Map<String, dynamic> get timestampsColumn => const <String, dynamic>{
+    'created_at': null,
+    'updated_at': null,
+  };
+
+  @override
+  List<String> get tableColumns => const <String>['id', 'data', 'info'];
+
+  @override
+  BlobRow fromMap(Map<String, dynamic> m) => BlobRow()
+    ..id = m['id'] as int?
+    ..data = m['data'] as Uint8List?
+    ..info = m['info'] as Map<String, dynamic>?;
+
+  @override
+  Map<String, dynamic> columnsToMap() => <String, dynamic>{
+    'id': id,
+    'data': data,
+    'info': info,
+  };
+
+  @override
+  Map<String, dynamic> convertToMap(dynamic i) => (i as BlobRow).columnsToMap();
 }
