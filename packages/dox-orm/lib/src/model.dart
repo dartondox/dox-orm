@@ -82,9 +82,10 @@ class Model<T> extends QueryBuilder<T> {
   /// ```
   List<String> get visibleFields => const <String>[];
 
-  /// fields of [makeHidden] and [makeVisible], null when not used
-  Set<String>? _madeHidden;
-  Set<String>? _madeVisible;
+  /// the fields of [makeHidden] and [makeVisible] of this model:
+  /// (hidden, shown). null when neither was called, so toJson() of a
+  /// plain model reads one null field.
+  (Set<String>, Set<String>)? _visibility;
 
   /// leaves [fields] out of toJson() of this model only, on top of
   /// [hidden]. It returns this model.
@@ -93,8 +94,12 @@ class Model<T> extends QueryBuilder<T> {
   /// return user.makeHidden(<String>['email']).toJson();
   /// ```
   Model<T> makeHidden(List<String> fields) {
-    (_madeHidden ??= <String>{}).addAll(fields);
-    _madeVisible?.removeAll(fields);
+    var (Set<String> hide, Set<String> show) = _visibility ??= (
+      <String>{},
+      <String>{},
+    );
+    hide.addAll(fields);
+    show.removeAll(fields);
     return this;
   }
 
@@ -105,32 +110,46 @@ class Model<T> extends QueryBuilder<T> {
   /// return user.makeVisible(<String>['email']).toJson();
   /// ```
   Model<T> makeVisible(List<String> fields) {
-    (_madeVisible ??= <String>{}).addAll(fields);
-    _madeHidden?.removeAll(fields);
+    var (Set<String> hide, Set<String> show) = _visibility ??= (
+      <String>{},
+      <String>{},
+    );
+    show.addAll(fields);
+    hide.removeAll(fields);
     return this;
   }
 
   /// removes the fields of [hidden], [visibleFields], [makeHidden] and
-  /// [makeVisible] from [data]. With none of them used it only reads
-  /// [hidden] and two null fields.
+  /// [makeVisible] from [data]
   void _removeHidden(Map<String, dynamic> data) {
-    Set<String>? shown = _madeVisible;
-    for (String h in hidden) {
-      if (shown == null || !shown.contains(h)) data.remove(h);
-    }
-    Set<String>? more = _madeHidden;
-    if (more != null) {
-      for (String h in more) {
+    (Set<String>, Set<String>)? v = _visibility;
+    if (v == null) {
+      for (String h in hidden) {
         data.remove(h);
       }
+      List<String> only = visibleFields;
+      if (only.isNotEmpty) _keepOnly(data, only, const <String>{});
+      return;
+    }
+    var (Set<String> hide, Set<String> show) = v;
+    for (String h in hidden) {
+      if (!show.contains(h)) data.remove(h);
+    }
+    for (String h in hide) {
+      data.remove(h);
     }
     List<String> only = visibleFields;
-    if (only.isNotEmpty) {
-      for (String key in data.keys.toList()) {
-        if (!only.contains(key) && shown?.contains(key) != true) {
-          data.remove(key);
-        }
-      }
+    if (only.isNotEmpty) _keepOnly(data, only, show);
+  }
+
+  /// removes the keys of [data] that are not in [only] or [show]
+  static void _keepOnly(
+    Map<String, dynamic> data,
+    List<String> only,
+    Set<String> show,
+  ) {
+    for (String key in data.keys.toList()) {
+      if (!only.contains(key) && !show.contains(key)) data.remove(key);
     }
   }
 
@@ -1361,8 +1380,10 @@ class Model<T> extends QueryBuilder<T> {
               ? (e.value as DateTime).toIso8601String()
               : e.value,
       };
+
+      /// toMap() removed the hidden fields, only pivot is new
+      _removeHidden(data);
     }
-    _removeHidden(data);
     return data;
   }
 
