@@ -86,6 +86,7 @@ void main() async {
         f.updateSetsUpdatedAt,
         f.incrementFiresEvents,
         f.preloadUnknownThrows,
+        f.toJsonLoadedRelations,
       ];
       expect(values(off), everyElement(isFalse));
       expect(values(on), everyElement(isTrue));

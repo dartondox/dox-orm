@@ -94,6 +94,14 @@ class OrmFlags {
   // NEXT MAJOR: make this the default, then remove the flag.
   final bool preloadUnknownThrows;
 
+  /// `toJson()` and `toMap()` also have the relations loaded with
+  /// `$getRelation()`, not only the ones named in `preload()`. The name
+  /// then counts like a `preload()` name, so `reload()` loads it again
+  /// too. `hidden` still leaves it out. Off: only `preload()` names and
+  /// eager relations are in it.
+  // NEXT MAJOR: make this the default, then remove the flag.
+  final bool toJsonLoadedRelations;
+
   const OrmFlags({
     this.skipCleanUpdateEvents = false,
     this.belongsToKeyFromRelation = false,
@@ -107,6 +115,7 @@ class OrmFlags {
     this.updateSetsUpdatedAt = false,
     this.incrementFiresEvents = false,
     this.preloadUnknownThrows = false,
+    this.toJsonLoadedRelations = false,
   });
 
   /// every flag on
@@ -122,5 +131,6 @@ class OrmFlags {
       laravelPostgresTypes = true,
       updateSetsUpdatedAt = true,
       incrementFiresEvents = true,
-      preloadUnknownThrows = true;
+      preloadUnknownThrows = true,
+      toJsonLoadedRelations = true;
 }

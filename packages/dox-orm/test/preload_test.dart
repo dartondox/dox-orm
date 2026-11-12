@@ -231,5 +231,34 @@ void main() async {
       Writer? w = await Writer().preload('articles.remarks').find(1);
       expect(w!.articles[0].remarks, hasLength(2));
     });
+    test(
+      'toJsonLoadedRelations off: \$getRelation() is not in toJson',
+      () async {
+        Writer w = (await Writer().find(1))!;
+        await w.$getRelation<dynamic>('articles');
+        expect(w.articles, hasLength(2));
+        expect(w.toJson().containsKey('articles'), isFalse);
+      },
+    );
+
+    test('toJsonLoadedRelations on: \$getRelation() is in toJson', () async {
+      SqlQueryBuilder().flags = const OrmFlags.all();
+      Writer w = (await Writer().find(1))!;
+      expect(w.toJson().containsKey('articles'), isFalse);
+      await w.$getRelation<dynamic>('articles');
+      await w.$getRelation<dynamic>('articles');
+      await w.$getRelation<dynamic>('typo');
+      expect(w.toJson()['articles'], hasLength(2));
+      expect(w.toJson().containsKey('topics'), isFalse);
+
+      /// reload() loads it again
+      w.articles = <Article>[];
+      await w.reload();
+      expect(w.articles, hasLength(2));
+
+      /// hidden still leaves it out
+      w.hidden = <String>['articles'];
+      expect(w.toJson().containsKey('articles'), isFalse);
+    });
   });
 }

@@ -1460,8 +1460,17 @@ class Model<T> extends QueryBuilder<T> {
   /// await blog.$getRelation('comments');
   /// print(blog.comments);
   /// `
+  ///
+  /// With [OrmFlags.toJsonLoadedRelations], toJson() then has the
+  /// relation too, like a name given to [preload].
   Future<M?> $getRelation<M>(String name) async {
-    return await _getRelation(<Model<T>>[this], name) as M;
+    M? result = await _getRelation(<Model<T>>[this], name) as M;
+    if (SqlQueryBuilder().flags.toJsonLoadedRelations &&
+        relationsResultMatcher[name] != null) {
+      List<String> names = _preloads ??= <String>[];
+      if (!names.contains(name)) names.add(name);
+    }
+    return result;
   }
 
   /// Get relation query
