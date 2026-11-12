@@ -78,13 +78,19 @@ extension RelationWrites<T> on Model<T> {
   /// creates a row of [relation] from [data] with the foreign key of this
   /// model, and gives the new model. [data] goes through `create()`, so
   /// `fillable`, `guarded`, events and timestamps work as usual. The
-  /// foreign key does not need to be in `fillable`. A foreign key in
-  /// [data] that `fillable` allows wins over the one of this model.
+  /// foreign key does not need to be in `fillable`. A foreign key (or
+  /// morph type) in [data] is not used: the one of this model wins.
   Future<M> createRelated<M>(String relation, Map<String, dynamic> data) async {
     var (RelationKeys k, Map<String, dynamic> keys) = _childKeys(relation);
     Model<dynamic> child = k.model()..useConnectionOf(this);
     _setKeys(child, keys);
-    return await child.create(data) as M;
+
+    /// the keys of this model always win over the same keys in [data]
+    Map<String, dynamic> rest = <String, dynamic>{...data};
+    for (String key in keys.keys) {
+      rest.remove(key);
+    }
+    return await child.create(rest) as M;
   }
 
   /// sets the foreign key of this model on [child] and saves it. It

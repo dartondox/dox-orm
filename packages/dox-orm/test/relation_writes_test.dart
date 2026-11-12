@@ -73,6 +73,7 @@ void main() async {
         <String, dynamic>{
           'info': <String, dynamic>{'a': 1},
           'not_a_column': 1,
+          'blog_id': 999,
         },
       );
       expect(info.blogId, blog.uid);
@@ -113,7 +114,11 @@ void main() async {
       Photo photo = await Photo().create(<String, dynamic>{'title': 'p'});
       Comment c = await photo.createRelated<Comment>(
         'comments',
-        <String, dynamic>{'body': 'hi'},
+        <String, dynamic>{
+          'body': 'hi',
+          'commentable_id': 999,
+          'commentable_type': 'other',
+        },
       );
       expect(c.commentableId, photo.id);
       expect(c.commentableType, Model.morphTypeOf(photo));
