@@ -387,6 +387,77 @@ void main() async {
     });
   });
 
+  group('stickyReads middleware |', () {
+    late DatabaseConfig? savedConfig;
+
+    setUp(() {
+      savedConfig = SqlQueryBuilder().databaseConfig;
+      GlobalMiddleware.clear();
+      ReplicaDriver.stickyInUse = false;
+    });
+
+    tearDown(() async {
+      DBDriver test = SqlQueryBuilder().dbDriver;
+      SqlQueryBuilder().databaseConfig = savedConfig;
+      SqlQueryBuilder().dbDriver = real;
+      if (!identical(test, real)) await test.close();
+      GlobalMiddleware.clear();
+      ReplicaDriver.stickyInUse = false;
+    });
+
+    DatabaseConfig config({required bool sticky}) => DatabaseConfig(
+      connection: 'main',
+      url: '',
+      connections: <String, ConnectionConfig>{
+        'main': ConnectionConfig(
+          driver: Driver.sqlite,
+          database: ':memory:',
+          debug: false,
+          read: <Map<String, dynamic>>[<String, dynamic>{}],
+          sticky: sticky,
+        ),
+      },
+    );
+
+    test('init with sticky adds it once', () async {
+      SqlQueryBuilder.initializeWithDatabaseConfig(config(sticky: true));
+      expect(GlobalMiddleware.items, <Object>[stickyReads]);
+      expect(ReplicaDriver.stickyInUse, isTrue);
+      await SqlQueryBuilder().dbDriver.close();
+      SqlQueryBuilder.initializeWithDatabaseConfig(config(sticky: true));
+      expect(GlobalMiddleware.items, <Object>[stickyReads]);
+    });
+
+    test('init without sticky does not add it', () {
+      SqlQueryBuilder.initializeWithDatabaseConfig(config(sticky: false));
+      expect(GlobalMiddleware.items, isEmpty);
+      expect(ReplicaDriver.stickyInUse, isFalse);
+    });
+
+    test('stickyReads runs next in a sticky scope', () async {
+      useReplica(sticky: true);
+      Object? result = await stickyReads(null, () async {
+        await item().insert(<String, dynamic>{'name': 'b'});
+        await item().get();
+        return 'done';
+      });
+      expect(result, 'done');
+      // the read after the write went to the writer
+      expect(counts().sublist(1), <int>[0, 0]);
+    });
+
+    test('with no sticky connection it just runs next', () async {
+      useReplica();
+      ReplicaDriver.stickyInUse = false;
+      Object? result = await stickyReads(null, () async {
+        await item().get();
+        return 1;
+      });
+      expect(result, 1);
+      expect(counts(), <int>[0, 1, 0]);
+    });
+  });
+
   group('config |', () {
     test('read and write hosts make a ReplicaDriver', () {
       List<ConnectionConfig> made = <ConnectionConfig>[];

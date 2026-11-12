@@ -434,9 +434,9 @@ SQLite does not support it: the query runs to its end.
   in a transaction go to the write host.
 - `User().onWriteConnection().find(id)` reads from the write host.
 - With `DATABASE_URL` set, the url is the write host. The `read` hosts and `sticky` stay.
-- `sticky: true` works only inside `ReplicaDriver.stickyScope(() => ...)`. Add a middleware
-  (`IDoxNextMiddleware`) whose `handle(req, next)` returns `ReplicaDriver.stickyScope(next)`:
-  then a request reads its own writes.
+- `sticky: true`: after a write, the reads of the same request go to the write host. It works
+  by itself in a Dox app (the ORM adds the `stickyReads` middleware). Outside a request (a job,
+  a script), wrap the work in `ReplicaDriver.stickyScope(() => ...)`.
 
 ## Switch from SQLite to Postgres or MySQL
 

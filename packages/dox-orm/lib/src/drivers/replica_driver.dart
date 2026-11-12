@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:dox_orm/dox_orm.dart';
 
@@ -28,7 +29,12 @@ class ReplicaDriver extends DBDriver {
     if (readers.isEmpty) {
       throw ArgumentError.value(readers, 'readers', 'must not be empty');
     }
+    if (sticky) stickyInUse = true;
   }
+
+  /// true when a connection uses `sticky`. [stickyReads] makes no scope
+  /// when it is false.
+  static bool stickyInUse = false;
 
   /// the driver of the write (primary) database
   final DBDriver writer;
@@ -46,15 +52,14 @@ class ReplicaDriver extends DBDriver {
 
   /// run [body] as one unit of work (eg. one request) for `sticky`: after
   /// a write inside it, its reads go to the write database. Outside a
-  /// scope, `sticky` does nothing. A nested scope starts fresh.
+  /// scope, `sticky` does nothing (it prints a warning once). A nested
+  /// scope starts fresh.
+  ///
+  /// In a Dox app each request gets a scope by itself: see [stickyReads].
+  /// Use this one outside Dox, eg. around each job of a worker.
   ///
   /// ```
-  /// // a middleware of your app (dox_core)
-  /// class StickyReads implements IDoxNextMiddleware {
-  ///   @override
-  ///   Future<DoxResponse> handle(DoxRequest req, Next next) =>
-  ///       ReplicaDriver.stickyScope(next);
-  /// }
+  /// await ReplicaDriver.stickyScope(() => handleJob(job));
   /// ```
   static R stickyScope<R>(R Function() body) {
     return runZoned(
@@ -88,7 +93,8 @@ class ReplicaDriver extends DBDriver {
       _wrote();
       return writer;
     }
-    if (writer.hasOpenTransaction || (sticky && _wroteInScope)) {
+    if (writer.hasOpenTransaction ||
+        (sticky && _scope()?.contains(this) == true)) {
       return writer;
     }
     DBDriver reader = readers[_next];
@@ -96,13 +102,28 @@ class ReplicaDriver extends DBDriver {
     return reader;
   }
 
-  bool get _wroteInScope =>
-      (Zone.current[_stickyKey] as Set<DBDriver>?)?.contains(this) ?? false;
+  /// the drivers that wrote in this [stickyScope], or null outside one
+  static Set<DBDriver>? _scope() {
+    Set<DBDriver>? scope = Zone.current[_stickyKey] as Set<DBDriver>?;
+    if (scope == null && !_noScopeWarned) {
+      _noScopeWarned = true;
+      stderr.writeln(
+        'Dox ORM warning: a connection has sticky: true, but this query '
+        'runs outside ReplicaDriver.stickyScope(), so sticky does nothing '
+        'here. In a Dox app each request gets a scope by itself. Outside a '
+        'request (eg. a job or a script), wrap the work in '
+        'ReplicaDriver.stickyScope().',
+      );
+    }
+    return scope;
+  }
+
+  static bool _noScopeWarned = false;
 
   /// remember a write for [sticky]
   void _wrote() {
     if (!sticky) return;
-    (Zone.current[_stickyKey] as Set<DBDriver>?)?.add(this);
+    _scope()?.add(this);
   }
 
   @override
@@ -182,4 +203,15 @@ class ReplicaDriver extends DBDriver {
       await driver.close();
     }
   }
+}
+
+/// A Dox middleware (a `NextMiddlewareFunction` of dox_core, with no
+/// dox_core types here): it runs the rest of the request [next] in a
+/// [ReplicaDriver.stickyScope], so `sticky: true` works per request.
+/// `SqlQueryBuilder.initializeWithDatabaseConfig()` adds it to
+/// `GlobalMiddleware` when a connection uses `sticky`, so a Dox app does
+/// not add it itself. With no sticky connection it just runs [next].
+Future<Object?> stickyReads(Object? req, Future<Object?> Function() next) {
+  if (!ReplicaDriver.stickyInUse) return next();
+  return ReplicaDriver.stickyScope(next);
 }
