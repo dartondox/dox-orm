@@ -136,6 +136,24 @@ class PostgresNativeDriver extends DBDriver {
 
   static List<Map<String, dynamic>> _rows(PgNativeResult result) => result.rows;
 
+  /// the rows from a server-side portal, see [PgNativePool.stream]
+  @override
+  Stream<List<Map<String, dynamic>>> stream(
+    String query, {
+    Map<String, dynamic>? substitutionValues,
+    int chunkSize = 1000,
+  }) {
+    return pool
+        .stream(
+          query,
+          parameters: substitutionValues,
+          transaction: _tx,
+          chunkSize: chunkSize,
+          cancelToken: _cancelToken,
+        )
+        .map(_rows);
+  }
+
   @override
   Future<void> execute(
     String query, {

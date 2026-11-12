@@ -663,6 +663,14 @@ mixin Get<T> implements SharedMixin<T> {
     int size,
     FutureOr<bool?> Function(List<T> rows) callback,
   ) async {
+    await for (List<T> rows in _pagesByOffset(size)) {
+      if (await callback(rows) == false) return false;
+    }
+    return true;
+  }
+
+  /// the pages of [chunk]: [size] rows each, by LIMIT and OFFSET
+  Stream<List<T>> _pagesByOffset(int size) async* {
     _checkChunkSize(size);
     QueryBuilder<T> qb = queryBuilder;
     if (qb.getOrderByQuery().isEmpty) {
@@ -670,9 +678,9 @@ mixin Get<T> implements SharedMixin<T> {
     }
     for (int page = 0; ; page++) {
       List<T> rows = await qb.limit(size).offset(page * size).get();
-      if (rows.isEmpty) return true;
-      if (await callback(rows) == false) return false;
-      if (rows.length < size) return true;
+      if (rows.isEmpty) return;
+      yield rows;
+      if (rows.length < size) return;
     }
   }
 
@@ -695,12 +703,20 @@ mixin Get<T> implements SharedMixin<T> {
     FutureOr<bool?> Function(List<T> rows) callback, {
     String? column,
   }) async {
-    _checkNoSub('chunkById');
+    await for (List<T> rows in _pagesById(size, column, 'chunkById')) {
+      if (await callback(rows) == false) return false;
+    }
+    return true;
+  }
+
+  /// the pages of [chunkById]: [size] rows each, `WHERE column > last`
+  Stream<List<T>> _pagesById(int size, String? column, String method) async* {
+    _checkNoSub(method);
     _checkChunkSize(size);
     QueryBuilder<T> qb = queryBuilder;
     if (qb.getOrderByQuery().isNotEmpty) {
       throw StateError(
-        'chunkById() orders by the id column itself. '
+        '$method() orders by the id column itself. '
         'Remove orderBy() from the query.',
       );
     }
@@ -711,12 +727,12 @@ mixin Get<T> implements SharedMixin<T> {
     bool hasLastWhere = false;
     while (true) {
       List<T> rows = await qb.get();
-      if (rows.isEmpty) return true;
-      if (await callback(rows) == false) return false;
-      if (rows.length < size) return true;
+      if (rows.isEmpty) return;
+      yield rows;
+      if (rows.length < size) return;
       dynamic last = _valueOfRow(rows.last, key);
       if (last == null) {
-        throw StateError('chunkById() needs the "$key" column in each row');
+        throw StateError('$method() needs the "$key" column in each row');
       }
       if (hasLastWhere) {
         substitutionValues[_chunkKey] = last;
@@ -731,6 +747,108 @@ mixin Get<T> implements SharedMixin<T> {
         _chunkKey: last,
       });
       hasLastWhere = true;
+    }
+  }
+
+  /// the rows of this query one by one, read [chunkSize] rows at a time,
+  /// so a big table does not fill the memory. Relations of `preload()`
+  /// are loaded for each chunk.
+  ///
+  /// - with no orderBy() it reads by the primary key, like [lazyById]: each
+  ///   chunk is `WHERE id > last id`. it is safe when you change or delete
+  ///   rows while you read. the rows must have the primary key.
+  /// - with an orderBy() (or on a union() or fromSub() query) it pages
+  ///   with LIMIT and OFFSET, like [chunk], so the order is kept.
+  ///
+  /// Stop reading (eg. `break` in `await for`, or `take(3)`) to stop the
+  /// queries. Use [cursor] for one query with no paging.
+  ///
+  /// ```
+  /// await for (User user in User().where('active', true).lazy()) {
+  ///   await sendMail(user);
+  /// }
+  /// ```
+  Stream<T> lazy({int chunkSize = 1000}) async* {
+    QueryBuilder<T> qb = queryBuilder;
+    Stream<List<T>> pages =
+        qb.getOrderByQuery().isEmpty && !qb.hasUnion && !qb.hasFromSub
+        ? _pagesById(chunkSize, null, 'lazy')
+        : _pagesByOffset(chunkSize);
+    await for (List<T> rows in pages) {
+      for (T row in rows) {
+        yield row;
+      }
+    }
+  }
+
+  /// like [lazy], but always by [column] (the primary key by default):
+  /// each chunk is `WHERE column > last value`, ordered by [column]. the
+  /// column must be unique, and the rows must have it. it throws a
+  /// [StateError] when the query has an orderBy(), and on a union() or
+  /// fromSub() query.
+  ///
+  /// ```
+  /// await for (User user in User().lazyById(chunkSize: 500)) {
+  ///   await user.delete();
+  /// }
+  /// ```
+  Stream<T> lazyById({int chunkSize = 1000, String? column}) async* {
+    await for (List<T> rows in _pagesById(chunkSize, column, 'lazyById')) {
+      for (T row in rows) {
+        yield row;
+      }
+    }
+  }
+
+  /// the rows of this query one by one, from ONE query. the driver reads
+  /// the rows from the database [chunkSize] at a time, only when you are
+  /// ready for them, so a big result does not fill the memory:
+  /// - Postgres: a server-side portal. MySQL: the rows as they come.
+  /// - SQLite: a statement cursor, also with `background` on.
+  ///
+  /// Each row is a model with its casts, like get(). It works in a
+  /// transaction. Stop reading (eg. `break`, or `take(3)`) to stop the
+  /// query. `cancelWith()` works on Postgres and MySQL.
+  ///
+  /// Relations of `preload()` are loaded for each chunk. On Postgres and
+  /// MySQL inside a transaction this throws a [StateError] then: the
+  /// transaction has one connection, and it is busy with the cursor. Use
+  /// [lazy] there. For the same reason, do not run other queries of the
+  /// same transaction inside the loop on Postgres or MySQL: they wait
+  /// until the cursor ends.
+  ///
+  /// A driver of your own that does not override [DBDriver.stream] reads
+  /// all rows at once.
+  ///
+  /// ```
+  /// await for (Order order in Order().where('year', 2025).cursor()) {
+  ///   total += order.amount;
+  /// }
+  /// ```
+  Stream<T> cursor({int chunkSize = 1000}) async* {
+    _checkChunkSize(chunkSize);
+    QueryBuilder<T> qb = queryBuilder;
+    DBDriver driver = dbDriver;
+    if (qb.getPreload().isNotEmpty &&
+        driver.getName() != Driver.sqlite &&
+        DBDriver.inTransaction) {
+      throw StateError(
+        'cursor() can not load relations inside a transaction on '
+        'Postgres or MySQL. Use lazy(), or leave out preload().',
+      );
+    }
+    String sql = _buildQuery();
+    Map<String, dynamic> values = substitutionValues;
+    if (shouldDebug) logger.log(sql, values, connection);
+    Stream<List<Map<String, dynamic>>> chunks = DBDriver.withCancelToken(
+      qb.cancelToken,
+      () =>
+          driver.stream(sql, substitutionValues: values, chunkSize: chunkSize),
+    );
+    await for (List<Map<String, dynamic>> rows in chunks) {
+      for (T row in _typed(await helper.formatResult(rows))) {
+        yield row;
+      }
     }
   }
 

@@ -161,7 +161,116 @@ class SqliteDriver extends DBDriver {
       }
       return <Map<String, dynamic>>[];
     }
-    return _toMapList(db, sql, result);
+    return _toMapList(db, sql, result.columnNames, result.rows);
+  }
+
+  /// the rows of [query] from a statement cursor, [chunkSize] at a time.
+  /// with `background` on, the helper isolate keeps the cursor and sends
+  /// one chunk per request. so only one chunk is in memory, in both modes.
+  ///
+  /// the statement is not the kept one of [query]: it stays open between
+  /// the chunks, while other queries may run the same sql.
+  @override
+  Stream<List<Map<String, dynamic>>> stream(
+    String query, {
+    Map<String, dynamic>? substitutionValues,
+    int chunkSize = 1000,
+  }) async* {
+    if (chunkSize < 1) {
+      throw ArgumentError.value(chunkSize, 'chunkSize', 'must be 1 or more');
+    }
+    Object? db;
+    while ((db = _ready()) == null) {
+      await _waitReady();
+    }
+    int id =
+        await _op(db!, _SqliteOp.streamOpen, query, substitutionValues) as int;
+    bool done = false;
+    try {
+      while (!done) {
+        while ((db = _ready()) == null) {
+          await _waitReady();
+        }
+        List<Map<String, dynamic>> rows = (await _op(
+          db!,
+          _SqliteOp.streamNext,
+          '',
+          null,
+          (id, chunkSize),
+        ) as List<Object?>).cast<Map<String, dynamic>>();
+        // fewer rows than asked: the end, and the cursor closed itself
+        done = rows.length < chunkSize;
+        if (rows.isNotEmpty) yield rows;
+      }
+    } finally {
+      // stopped early, or an error: close the cursor. it is safe when the
+      // cursor closed itself already.
+      if (!done && conn != null) {
+        try {
+          await _op(db!, _SqliteOp.streamClose, '', null, id);
+        } catch (_) {
+          // the database is closed: so is the cursor
+        }
+      }
+    }
+  }
+
+  /// run [op] on [db], here or in the helper isolate
+  Future<Object?> _op(
+    Object db,
+    _SqliteOp op,
+    String sql,
+    Map<String, dynamic>? values, [
+    Object? arg,
+  ]) async {
+    if (db is SqliteIsolate) return db._call(op, sql, values, arg);
+    return _run(db as Database, op, sql, values, arg);
+  }
+
+  /// the open cursors of [stream]: id => (statement, cursor, sql)
+  final Map<int, (PreparedStatement, IteratingCursor, String)> _cursors =
+      <int, (PreparedStatement, IteratingCursor, String)>{};
+
+  int _nextCursor = 0;
+
+  int _streamOpen(Database db, String query, Map<String, dynamic>? values) {
+    var (String sql, List<Object?> params) = toPositionalParams(
+      query,
+      values,
+      _toSqliteValue,
+    );
+    PreparedStatement statement = db.prepare(sql, checkNoTail: true);
+    IteratingCursor cursor;
+    try {
+      cursor = statement.selectCursor(params);
+    } catch (_) {
+      statement.close();
+      rethrow;
+    }
+    int id = _nextCursor++;
+    _cursors[id] = (statement, cursor, sql);
+    return id;
+  }
+
+  /// up to [size] rows of cursor [id]. at the end it closes the cursor.
+  List<Map<String, dynamic>> _streamNext(Database db, int id, int size) {
+    var (_, IteratingCursor cursor, String sql) =
+        _cursors[id] ?? (throw StateError('the sqlite cursor is closed'));
+    List<List<Object?>> rows = <List<Object?>>[];
+    try {
+      while (rows.length < size && cursor.moveNext()) {
+        rows.add(cursor.current.values);
+      }
+    } catch (_) {
+      _streamClose(id);
+      rethrow;
+    }
+    if (rows.length < size) _streamClose(id);
+    return _toMapList(db, sql, cursor.columnNames, rows);
+  }
+
+  void _streamClose(int id) {
+    _cursors.remove(id)?.$1.close();
   }
 
   /// sqlite counts the rows the query matched, not the rows changed by
@@ -254,6 +363,9 @@ class SqliteDriver extends DBDriver {
     if (conn is! Database) {
       return;
     }
+    for (int id in _cursors.keys.toList()) {
+      _streamClose(id);
+    }
     for (PreparedStatement statement
         in _caches[conn]?.clear() ?? <PreparedStatement>[]) {
       statement.close();
@@ -334,11 +446,18 @@ class SqliteDriver extends DBDriver {
     _SqliteOp op,
     String sql,
     Map<String, dynamic>? values,
-    String? primaryKey,
+    Object? arg,
   ) {
     switch (op) {
       case _SqliteOp.query:
-        return _query(db, sql, values, primaryKey);
+        return _query(db, sql, values, arg as String?);
+      case _SqliteOp.streamOpen:
+        return _streamOpen(db, sql, values);
+      case _SqliteOp.streamNext:
+        var (int id, int size) = arg as (int, int);
+        return _streamNext(db, id, size);
+      case _SqliteOp.streamClose:
+        _streamClose(arg as int);
       case _SqliteOp.affecting:
         return _affecting(db, sql, values);
       case _SqliteOp.execute:
@@ -357,16 +476,16 @@ class SqliteDriver extends DBDriver {
   List<Map<String, dynamic>> _toMapList(
     Database db,
     String sql,
-    ResultSet result,
+    List<String> names,
+    List<List<Object?>> rows,
   ) {
-    List<String> names = result.columnNames;
     Map<String, int> kinds = _schemaOf(db).kindsFor(sql);
     List<int> columnKinds = <int>[for (String n in names) kinds[n] ?? 0];
     bool convert = columnKinds.any((int k) => k != 0);
     int length = names.length;
 
     List<Map<String, dynamic>> list = <Map<String, dynamic>>[];
-    for (List<Object?> row in result.rows) {
+    for (List<Object?> row in rows) {
       Map<String, dynamic> data = <String, dynamic>{};
       for (int i = 0; i < length; i++) {
         Object? value = row[i];
@@ -533,7 +652,15 @@ void _switchToWal(Database db, int busyTimeout) {
 }
 
 /// the work a request asks the helper isolate to do
-enum _SqliteOp { query, affecting, execute, rollback }
+enum _SqliteOp {
+  query,
+  affecting,
+  execute,
+  rollback,
+  streamOpen,
+  streamNext,
+  streamClose,
+}
 
 /// a sqlite database that lives in a helper isolate. the helper opens it,
 /// runs every request on it in the order they come, and closes it. this
@@ -602,7 +729,7 @@ class SqliteIsolate {
     _SqliteOp op,
     String sql,
     Map<String, dynamic>? values, [
-    String? primaryKey,
+    Object? arg,
   ]) async {
     SendPort requests = await _requests.future;
     if (_stopped != null) {
@@ -620,7 +747,7 @@ class SqliteIsolate {
     Completer<Object?> answer = Completer<Object?>();
     _waiting[id] = answer;
     _port.keepIsolateAlive = true;
-    requests.send((id, op, sql, sendable, primaryKey));
+    requests.send((id, op, sql, sendable, arg));
     return answer.future;
   }
 
@@ -729,10 +856,10 @@ class _SqliteHelper {
       _SqliteOp op,
       String sql,
       Map<String, dynamic>? values,
-      String? primaryKey,
+      Object? arg,
     )) {
       try {
-        answers.send((id, driver._run(db, op, sql, values, primaryKey)));
+        answers.send((id, driver._run(db, op, sql, values, arg)));
       } catch (error, stack) {
         _sendError(answers, id, error, stack);
       }

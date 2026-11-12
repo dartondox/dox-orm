@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:dox_mysql_native/dox_mysql_native.dart';
 import 'package:dox_orm/dox_orm.dart';
@@ -95,6 +96,27 @@ abstract class DBDriver {
     String? primaryKey,
     Map<String, dynamic>? substitutionValues,
   });
+
+  /// run [query] and give its rows in chunks of up to [chunkSize] rows,
+  /// for `cursor()`. The query starts when the stream is listened to.
+  /// Cancel the subscription to stop it.
+  ///
+  /// The built-in drivers read the rows from the database as the listener
+  /// takes them, so a big result does not fill the memory. This default,
+  /// for a driver of your own, runs [query] and splits all its rows.
+  Stream<List<Map<String, dynamic>>> stream(
+    String query, {
+    Map<String, dynamic>? substitutionValues,
+    int chunkSize = 1000,
+  }) async* {
+    List<Map<String, dynamic>> rows = await this.query(
+      query,
+      substitutionValues: substitutionValues,
+    );
+    for (int i = 0; i < rows.length; i += chunkSize) {
+      yield rows.sublist(i, min(i + chunkSize, rows.length));
+    }
+  }
 
   /// run query, this function do not return any value
   Future<void> execute(

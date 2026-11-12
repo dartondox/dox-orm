@@ -137,6 +137,34 @@ class MysqlNativeDriver extends DBDriver {
     return result.rows;
   }
 
+  /// the rows as they come from the server, see [MysqlNativePool.stream]
+  @override
+  Stream<List<Map<String, dynamic>>> stream(
+    String query, {
+    Map<String, dynamic>? substitutionValues,
+    int chunkSize = 1000,
+  }) {
+    _checkOpen();
+    var (String sql, List<Object?> params) = toPositionalParams(
+      query,
+      substitutionValues,
+      _toMysqlValue,
+      mysql: true,
+    );
+    return pool
+        .stream(
+          sql,
+          parameters: params,
+          transaction: _tx,
+          chunkSize: chunkSize,
+          cancelToken: DBDriver.currentCancelToken?.mysqlToken,
+        )
+        .map(_rows);
+  }
+
+  static List<Map<String, dynamic>> _rows(MysqlNativeResult result) =>
+      result.rows;
+
   @override
   Future<void> execute(
     String query, {

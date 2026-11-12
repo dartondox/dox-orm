@@ -171,7 +171,21 @@ await Post().chunkById(100, (List<Post> posts) {
   }
   return true; // false stops
 });
+
+// one row at a time, read 1000 rows per query (by id, or LIMIT/OFFSET with an orderBy)
+await for (Post post in Post().where('status', 'draft').lazy()) {
+  await post.delete();
+}
+
+// one row at a time from ONE query, the driver streams the rows
+await for (Post post in Post().orderBy('id').cursor(chunkSize: 500)) {
+  print(post.title);
+}
 ```
+
+`break` or `.take(n)` stops the query. `lazyById(column: 'n')` pages by another unique column.
+In a transaction on Postgres or MySQL, `cursor()` can not `preload()` relations and other queries
+of that transaction wait until it ends: use `lazy()` there.
 
 ## Relations
 
