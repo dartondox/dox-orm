@@ -118,6 +118,18 @@ Post one = await Post().firstOrCreate(
   <String, dynamic>{'title': 'Hello'},
   <String, dynamic>{'body': 'Text'},
 );
+print(one.wasRecentlyCreated); // true when it made a new row
+
+// changes (keys are column names, not Dart field names)
+found?.title = 'Draft';
+found?.isDirty('title'); // true: changed since it was read or saved
+found?.getOriginal('title'); // the value it had then
+await found?.save();
+found?.wasChanged('title'); // true: the last save changed it
+
+// read the row again
+await found?.refresh(); // in place; throws on a column with a cast
+Post? again = await found?.fresh(); // a new model, or null when gone
 ```
 
 ## Query
