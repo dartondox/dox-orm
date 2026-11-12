@@ -77,8 +77,8 @@ class SqlQueryBuilder {
 
   final List<QueryListener> _listeners = <QueryListener>[];
 
-  /// run [listener] after each query of every connection, like Laravel
-  /// `DB::listen`. it gets the sql, the values (`logRedact` names are
+  /// run [listener] after each query of every connection.
+  /// it gets the sql, the values (`logRedact` names are
   /// hidden), the time and the connection name. it runs after the query
   /// ends well. a failed query is not sent to the listeners and not to
   /// the slow query log: its error goes to the caller. the queries of the
