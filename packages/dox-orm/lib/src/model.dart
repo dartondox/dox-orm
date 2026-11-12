@@ -70,6 +70,70 @@ class Model<T> extends QueryBuilder<T> {
   set hidden(List<String> value) => _hidden = value;
   List<String>? _hidden;
 
+  /// the only fields that toJson() keeps, the opposite of [hidden].
+  /// It is not named `visible`, so a model can keep a `visible` column
+  /// or scope.
+  /// Empty (the default) keeps every field. [hidden] still leaves a
+  /// field out.
+  ///
+  /// ```
+  /// @override
+  /// List<String> get visibleFields => const <String>['id', 'name'];
+  /// ```
+  List<String> get visibleFields => const <String>[];
+
+  /// fields of [makeHidden] and [makeVisible], null when not used
+  Set<String>? _madeHidden;
+  Set<String>? _madeVisible;
+
+  /// leaves [fields] out of toJson() of this model only, on top of
+  /// [hidden]. It returns this model.
+  ///
+  /// ```
+  /// return user.makeHidden(<String>['email']).toJson();
+  /// ```
+  Model<T> makeHidden(List<String> fields) {
+    (_madeHidden ??= <String>{}).addAll(fields);
+    _madeVisible?.removeAll(fields);
+    return this;
+  }
+
+  /// keeps [fields] in toJson() of this model only, also when they are
+  /// in [hidden] or not in [visibleFields]. It returns this model.
+  ///
+  /// ```
+  /// return user.makeVisible(<String>['email']).toJson();
+  /// ```
+  Model<T> makeVisible(List<String> fields) {
+    (_madeVisible ??= <String>{}).addAll(fields);
+    _madeHidden?.removeAll(fields);
+    return this;
+  }
+
+  /// removes the fields of [hidden], [visibleFields], [makeHidden] and
+  /// [makeVisible] from [data]. With none of them used it only reads
+  /// [hidden] and two null fields.
+  void _removeHidden(Map<String, dynamic> data) {
+    Set<String>? shown = _madeVisible;
+    for (String h in hidden) {
+      if (shown == null || !shown.contains(h)) data.remove(h);
+    }
+    Set<String>? more = _madeHidden;
+    if (more != null) {
+      for (String h in more) {
+        data.remove(h);
+      }
+    }
+    List<String> only = visibleFields;
+    if (only.isNotEmpty) {
+      for (String key in data.keys.toList()) {
+        if (!only.contains(key) && shown?.contains(key) != true) {
+          data.remove(key);
+        }
+      }
+    }
+  }
+
   /// columns that create(), insert(), insertMultiple() and update() take
   /// from a map.
   ///
@@ -1286,9 +1350,7 @@ class Model<T> extends QueryBuilder<T> {
               : e.value,
       };
     }
-    for (String h in hidden) {
-      data.remove(h);
-    }
+    _removeHidden(data);
     return data;
   }
 
@@ -1315,11 +1377,7 @@ class Model<T> extends QueryBuilder<T> {
     setComputedValues(data);
     Map<String, dynamic>? aggregates = _aggregates;
     if (aggregates != null) data.addAll(aggregates);
-    if (removeHiddenField) {
-      for (String h in hidden) {
-        data.remove(h);
-      }
-    }
+    if (removeHiddenField) _removeHidden(data);
     return data;
   }
 
@@ -1922,5 +1980,29 @@ class Model<T> extends QueryBuilder<T> {
     return await super.insertMultiple(<Map<String, dynamic>>[
       for (Map<String, dynamic> data in list) _onlyFillable(data),
     ]);
+  }
+}
+
+/// [Model.makeHidden] and [Model.makeVisible] for each model of a list
+///
+/// ```
+/// List<User> users = await User().all();
+/// return users.makeVisible(<String>['email']);
+/// ```
+extension ModelListVisibility<M extends Model<dynamic>> on List<M> {
+  /// [Model.makeHidden] on each model. It returns this list.
+  List<M> makeHidden(List<String> fields) {
+    for (M m in this) {
+      m.makeHidden(fields);
+    }
+    return this;
+  }
+
+  /// [Model.makeVisible] on each model. It returns this list.
+  List<M> makeVisible(List<String> fields) {
+    for (M m in this) {
+      m.makeVisible(fields);
+    }
+    return this;
   }
 }
