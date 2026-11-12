@@ -433,6 +433,7 @@ SQLite does not support it: the query runs to its end.
 - Plain `SELECT`s go to the read hosts in turn. Writes, locks, schema changes and every query
   in a transaction go to the write host.
 - `User().onWriteConnection().find(id)` reads from the write host.
+- With `DATABASE_URL` set, the url is the write host. The `read` hosts and `sticky` stay.
 - `sticky: true` works only inside `ReplicaDriver.stickyScope(() => ...)`. Add a middleware
   (`IDoxNextMiddleware`) whose `handle(req, next)` returns `ReplicaDriver.stickyScope(next)`:
   then a request reads its own writes.

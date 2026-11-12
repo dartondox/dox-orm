@@ -438,6 +438,48 @@ void main() async {
       expect(made.every((ConnectionConfig c) => c.read == null), isTrue);
     });
 
+    test('DATABASE_URL is the write host, the read hosts stay', () {
+      DatabaseConfig config = DatabaseConfig(
+        connection: 'main',
+        url: 'postgres://app:secret@primary.db:6000/app',
+        connections: <String, ConnectionConfig>{
+          'main': ConnectionConfig(
+            driver: Driver.postgres,
+            host: 'old',
+            database: 'old',
+            debug: false,
+            read: <Map<String, dynamic>>[
+              <String, dynamic>{'host': 'replica-1'},
+            ],
+            write: <String, dynamic>{'host': 'ignored'},
+            sticky: true,
+          ),
+        },
+      );
+      ConnectionConfig c = config.getConnectionConfig();
+      expect(c.host, 'primary.db');
+      expect(c.port, 6000);
+      expect(c.read, <Map<String, dynamic>>[
+        <String, dynamic>{'host': 'replica-1'},
+      ]);
+      expect(c.sticky, isTrue);
+      expect(c.write, isNull);
+
+      List<ConnectionConfig> made = <ConnectionConfig>[];
+      c.driverFactory = (ConnectionConfig h) {
+        made.add(h);
+        return CountingDriver(real);
+      };
+      expect(c.createDriver(), isA<ReplicaDriver>());
+      expect(made.map((ConnectionConfig h) => h.host), <String>[
+        'primary.db',
+        'replica-1',
+      ]);
+      // the read host takes the user and database of the url
+      expect(made[1].user, 'app');
+      expect(made[1].database, 'app');
+    });
+
     test('no read hosts: a plain driver', () {
       ConnectionConfig config = ConnectionConfig(
         driver: Driver.sqlite,

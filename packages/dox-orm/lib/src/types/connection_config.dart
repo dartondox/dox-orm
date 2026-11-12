@@ -82,8 +82,9 @@ class ConnectionConfig {
   /// Each map changes some settings of this config for that host: `host`,
   /// `port`, `user`, `password`, `database`, and `extra` (added to
   /// [extra]). The other settings are shared. The hosts take turns (round
-  /// robin). A database url (`DATABASE_URL`) replaces the whole default
-  /// connection, so its read hosts too.
+  /// robin). With a database url (`DATABASE_URL`, see
+  /// [DatabaseConfig.url]), the url is the write host, and these read
+  /// hosts and [sticky] stay. [write] is not used then.
   ///
   /// ```
   /// ConnectionConfig(
