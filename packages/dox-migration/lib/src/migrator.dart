@@ -284,7 +284,7 @@ class Migrator {
       String name = row['migration'].toString();
       Object? migration = known[name];
 
-      /// like Laravel: say so, keep its row, and go on with the others
+      /// say so, keep its row, and go on with the others
       if (migration == null) {
         Logger.warn('Migration not found: $name');
         continue;

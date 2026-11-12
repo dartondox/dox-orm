@@ -261,7 +261,7 @@ void main() async {
         expect(r.detached, <int>[2, 1]);
       });
 
-      test('null ids are no ids, like Laravel', () async {
+      test('null ids are no ids', () async {
         await artist.attach('songs', null);
         await artist.attach('songs', <dynamic>[null, 1]);
         await artist.attach('songs', <dynamic, dynamic>{null: null, 2: null});

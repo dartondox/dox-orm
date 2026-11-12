@@ -13,7 +13,7 @@ final Expando<(List<dynamic>, String)> _keys =
 /// the default [foreignKey] comes from the owner class: `User` gives
 /// `user_id`. With [OrmFlags.belongsToKeyFromRelation] and a
 /// [relation] name, it comes from the relation name and the owner
-/// primary key, like Laravel: `author` gives `author_id`.
+/// primary key: `author` gives `author_id`.
 M? belongsTo<T, M>(
   List<Model<T>> list,
   Model<M> Function() model, {

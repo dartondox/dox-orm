@@ -172,7 +172,7 @@ class ForeignIdColumnDefinition extends ColumnDefinition {
   });
 
   /// every modifier returns this type, so `.nullable().constrained()`
-  /// and `.unique().constrained()` work, like Laravel
+  /// and `.unique().constrained()` work
   @override
   ForeignIdColumnDefinition nullable([bool value = true]) {
     super.nullable(value);

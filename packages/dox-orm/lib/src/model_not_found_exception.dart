@@ -3,7 +3,7 @@ import 'package:dox_annotation/dox_annotation.dart';
 /// thrown by firstOrFail() and findOrFail() when no row matches
 ///
 /// In a Dox app it answers 404 with
-/// `{"code": "not_found", "message": "Not Found"}`, like Laravel.
+/// `{"code": "not_found", "message": "Not Found"}`.
 /// The table, column and id are not sent to the client.
 ///
 /// ```

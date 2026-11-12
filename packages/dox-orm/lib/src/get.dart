@@ -233,7 +233,7 @@ mixin Get<T> implements SharedMixin<T> {
     );
   }
 
-  /// a page of rows after (or before) a cursor, like Laravel. It is
+  /// a page of rows after (or before) a cursor. It is
   /// fast on big tables, because it uses `WHERE column > value`, not
   /// OFFSET.
   ///
@@ -530,8 +530,7 @@ mixin Get<T> implements SharedMixin<T> {
     return _first(_buildQuery());
   }
 
-  /// the first row, or null. The same as [getFirst], like Laravel's
-  /// `first()`.
+  /// the first row, or null. The same as [getFirst].
   ///
   /// ```
   /// Blog? blog = await Blog().where('status', 'active').first();
@@ -812,8 +811,7 @@ mixin Get<T> implements SharedMixin<T> {
   }
 
   /// run [callback] with [value] when [value] is not null, else run
-  /// [otherwise] when it is given. It is Laravel's `when($value, fn)`:
-  /// the callback gets the value, and the value is not null in it.
+  /// [otherwise] when it is given. The callback gets the value, and the value is not null in it.
   ///
   /// ```
   /// List<Blog> blogs = await Blog()
@@ -853,8 +851,7 @@ mixin Get<T> implements SharedMixin<T> {
   /// `status = active`. Use [toRawSql] for SQL with quoted values.
   String toSql() => _withValues((dynamic value) => value.toString());
 
-  /// the SQL with each value quoted for the database, like Laravel's
-  /// `toRawSql()`. It is for logs and debugging: run queries with
+  /// the SQL with each value quoted for the database. It is for logs and debugging: run queries with
   /// bound values, not with this text.
   ///
   /// ```

@@ -1,6 +1,5 @@
 // The plural rules below are ported from Doctrine Inflector (MIT), the
-// English rules that Laravel `Str::plural` uses, plus the uncountable
-// words of Laravel `Pluralizer`.
+// English rules for plural words, plus the uncountable words.
 //
 // Copyright (c) 2006-2015 Doctrine Project
 //
@@ -23,7 +22,7 @@
 // SOFTWARE.
 
 /// words that do not change (Doctrine `Uninflected::getPlural` and
-/// Laravel `Pluralizer::$uncountable`). Each is a pattern for the whole
+/// extra words). Each is a pattern for the whole
 /// word.
 const List<String> _uninflectedWords = <String>[
   r'\w+media', 'advice', 'aircraft', 'amoyese', 'art', 'audio',
@@ -51,7 +50,7 @@ const List<String> _uninflectedWords = <String>[
   'wool', 'yengeese',
   // plural only
   'people', 'trivia', r'\w+ware$', 'media',
-  // Laravel
+  // extra words
   'recommended', 'related',
 ];
 
@@ -188,7 +187,7 @@ final RegExp _group = RegExp(r'\\(\d)');
 /// plurals already made, by snake name
 final Map<String, String> _cache = <String, String>{};
 
-/// the plural of a snake case name, like Laravel: only the last word
+/// the plural of a snake case name: only the last word
 /// changes, so `blog_post` gives `blog_posts` and `category` gives
 /// `categories`. `user_data` stays `user_data`.
 String pluralName(String name) {

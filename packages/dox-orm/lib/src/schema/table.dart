@@ -67,7 +67,7 @@ class Table {
   Table(this.name, {this.creating = false, OrmFlags? flags})
     : flags = flags ?? SqlQueryBuilder().flags;
 
-  /// true when this new table uses the Laravel types on postgres
+  /// true when this new table uses the opt-in types on postgres
   bool get _laravelTypes => creating && flags.laravelPostgresTypes;
 
   /// sql for this table, for the database of [grammar]
@@ -236,7 +236,7 @@ class Table {
     return col;
   }
 
-  /// big unsigned integer for a foreign key to [model], like Laravel.
+  /// big unsigned integer for a foreign key to [model].
   /// The column is the default foreign key of the model (`User` gives
   /// `user_id`), or [column]. `.constrained()` points to the model table
   /// and primary key.

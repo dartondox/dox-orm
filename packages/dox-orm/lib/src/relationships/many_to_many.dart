@@ -31,7 +31,7 @@ M? manyToMany<T, M>(
 
   String relatedTable = tableRef(related);
 
-  /// the defaults use the model names, like Laravel:
+  /// the defaults use the model names:
   /// Artist and Song give artist_song, artist_id and song_id
   String localName = local.helper.tableNameOf(local.runtimeType);
   String relatedName = related.helper.tableNameOf(related.runtimeType);
@@ -214,7 +214,7 @@ class _Pivot {
   /// [ids] as `id => extra pivot values`. [ids] can be one id, one
   /// model, a list of ids or models, or a map of `id => values`.
   ///
-  /// Like Laravel, null means no ids, and a null id (or a model without
+  /// Null means no ids, and a null id (or a model without
   /// a key) is skipped. A whole number like `2.0` becomes the int `2`,
   /// because Postgres does not take `2.0` for an integer column. Any other
   /// double (`1.5`, NaN, infinity, or past ±2^53 like `1e20`) throws an
@@ -466,7 +466,7 @@ class PivotSyncResult {
       'updated: $updated)';
 }
 
-/// writes to the pivot table of a `@ManyToMany` relation, like Laravel.
+/// writes to the pivot table of a `@ManyToMany` relation.
 /// [relation] is the field name of the relation, like `'songs'`.
 ///
 /// ```

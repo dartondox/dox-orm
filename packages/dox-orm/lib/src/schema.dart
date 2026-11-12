@@ -146,7 +146,7 @@ class Schema {
   ///   migration runs in one), else a [StateError] is thrown. turn it on
   ///   again before the transaction ends: the connection goes back to the
   ///   pool with the setting.
-  /// - postgres: `SET CONSTRAINTS ALL DEFERRED`, like Laravel. only keys
+  /// - postgres: `SET CONSTRAINTS ALL DEFERRED`. only keys
   ///   made `DEFERRABLE` (with raw sql) wait, and only until the commit.
   ///   it must run inside a transaction, else a [StateError] is thrown.
   Future<void> disableForeignKeyConstraints() async {

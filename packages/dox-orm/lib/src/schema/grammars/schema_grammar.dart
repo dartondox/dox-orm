@@ -207,7 +207,7 @@ abstract class SchemaGrammar {
     return 'ALTER INDEX ${wrap(from)} RENAME TO ${wrap(to)}';
   }
 
-  /// postgres, like Laravel: a gin index on the words of the columns.
+  /// postgres: a gin index on the words of the columns.
   /// mysql overrides it.
   String compileFullText(Table table, String name, List<String> columns) {
     String words = columns
