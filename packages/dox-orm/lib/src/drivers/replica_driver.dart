@@ -112,7 +112,7 @@ class ReplicaDriver extends DBDriver {
 
   static bool _noScopeWarned = false;
 
-  /// forget that the warning was printed (for tests)
+  /// forget that the warning was printed. This is for tests only.
   static void resetStickyWarning() => _noScopeWarned = false;
 
   /// a read goes to a replica outside any scope, after an unscoped write:
