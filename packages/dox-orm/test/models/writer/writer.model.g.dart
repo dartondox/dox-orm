@@ -42,6 +42,7 @@ class WriterGenerator extends Model<Writer> with SoftDeletes<Writer> {
     'firstArticle': getFirstArticle,
     'publishedArticles': getPublishedArticles,
     'topics': getTopics,
+    'remarkedArticles': getRemarkedArticles,
   };
 
   @override
@@ -50,6 +51,7 @@ class WriterGenerator extends Model<Writer> with SoftDeletes<Writer> {
     'firstArticle': queryFirstArticle,
     'publishedArticles': queryPublishedArticles,
     'topics': queryTopics,
+    'remarkedArticles': queryRemarkedArticles,
   };
 
   static Future<void> getArticles(List<Model<Writer>> list) async {
@@ -106,6 +108,24 @@ class WriterGenerator extends Model<Writer> with SoftDeletes<Writer> {
     return manyToMany<Writer, Topic>(list, () => Topic());
   }
 
+  static Future<void> getRemarkedArticles(List<Model<Writer>> list) async {
+    var result = await getHasMany<Writer, Article>(
+      queryRemarkedArticles(list),
+      list,
+    );
+    for (dynamic i in list) {
+      i.remarkedArticles = result[i.tempIdValue.toString()] ?? <Article>[];
+    }
+  }
+
+  static Article? queryRemarkedArticles(List<Model<Writer>> list) {
+    return hasMany<Writer, Article>(
+      list,
+      () => Article(),
+      onQuery: Writer.withRemarks,
+    );
+  }
+
   @override
   Writer fromMap(Map<String, dynamic> m) => Writer()
     ..id = m['id'] as int?
@@ -142,6 +162,9 @@ class WriterGenerator extends Model<Writer> with SoftDeletes<Writer> {
     }
     if (preload.contains('topics')) {
       map['topics'] = toMap(instance.topics);
+    }
+    if (preload.contains('remarkedArticles')) {
+      map['remarked_articles'] = toMap(instance.remarkedArticles);
     }
 
     return map;

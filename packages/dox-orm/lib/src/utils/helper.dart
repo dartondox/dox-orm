@@ -261,9 +261,7 @@ class QueryBuilderHelper<T> {
 
       /// so its relations read from the same database
       if (onWrite) res.onWriteConnection();
-      for (String preload in preloads) {
-        res.preload(preload);
-      }
+      if (preloads.isNotEmpty) res.$copyPreloads(self);
       for (String key in aggregateKeys) {
         dynamic value = e[key];
 
@@ -277,9 +275,19 @@ class QueryBuilderHelper<T> {
     }
 
     /// no relations to load: skip the preload work
-    if (ret.isNotEmpty && queryBuilder.getPreload().isNotEmpty) {
-      return _preload(ret);
+    if (ret.isNotEmpty) {
+      if (queryBuilder.getPreload().isNotEmpty) return _preload(ret);
+    } else if (SqlQueryBuilder().flags.preloadUnknownThrows &&
+        queryBuilder.getPreload().isNotEmpty) {
+      return _checkPreloadNames(ret);
     }
+    return ret;
+  }
+
+  /// no rows: initPreload() only checks the preload() names, so an
+  /// unknown name throws with no rows too
+  Future<List<T>> _checkPreloadNames(List<T> ret) async {
+    await queryBuilder.initPreload(<Model<T>>[]);
     return ret;
   }
 

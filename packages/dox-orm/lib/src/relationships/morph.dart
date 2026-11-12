@@ -89,7 +89,17 @@ class _MorphTo {
   final String? ownerKey;
   final dynamic onQuery;
 
-  const _MorphTo(this.typeColumn, this.idColumn, this.ownerKey, this.onQuery);
+  /// the where and nested relations of `preload()`, for the query of
+  /// each type
+  final PreloadQuery? preload;
+
+  const _MorphTo(
+    this.typeColumn,
+    this.idColumn,
+    this.ownerKey,
+    this.onQuery,
+    this.preload,
+  );
 
   /// the type of [m], null when it has none. An empty type is no type.
   String? typeOf(Model<dynamic> m) {
@@ -139,6 +149,7 @@ M? morphTo<T, M>(
     idColumn ?? '${name}_id',
     ownerKey,
     onQuery,
+    takePreloadQuery(),
   );
   for (Model<T> owner in list) {
     String? type = m.typeOf(owner);
@@ -164,6 +175,20 @@ Future<Map<String, M>> getMorphTo<T, M>(dynamic q, List<Model<T>> list) async {
     String? type = m.typeOf(owner);
     if (type == null || queries.containsKey(type)) continue;
     queries[type] = m.query(type, list);
+  }
+
+  /// the where and nested relations of preload(), now that all types
+  /// are known
+  PreloadQuery? preload = m.preload;
+  if (preload != null) {
+    morphTypeQueries = queries.values.toList();
+    try {
+      for (Model<dynamic> typeQuery in queries.values) {
+        preload(typeQuery);
+      }
+    } finally {
+      morphTypeQueries = null;
+    }
   }
 
   /// `type|key` => model. one query at a time, so it works in a

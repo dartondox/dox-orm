@@ -7,6 +7,9 @@ import 'relationships/keys.dart';
 import 'utils/plural.dart';
 import 'union.dart';
 
+/// the where of [Model.preload]
+typedef _PreloadWhere = void Function(QueryBuilder<dynamic> query);
+
 class Model<T> extends QueryBuilder<T> {
   static final Map<String, Model<dynamic> Function()> _morphModels =
       <String, Model<dynamic> Function()>{};
@@ -1382,6 +1385,23 @@ class Model<T> extends QueryBuilder<T> {
   /// made on the first preload(), most models never call it
   List<String>? _preloads;
 
+  /// the dot paths of preload(), like `posts.comments`, and the names
+  /// with a where, each with its where. null when there is none, so a
+  /// plain preload() does no more work.
+  List<(String, _PreloadWhere?)>? _preloadPaths;
+
+  /// copies the preload() names and paths of [query] to this row, so
+  /// toJson() and reload() of the row know them. get() calls it for each
+  /// row of a query with preload().
+  void $copyPreloads(Model<dynamic> query) {
+    List<String>? names = query._preloads;
+    if (names != null) _preloads = List<String>.of(names);
+    List<(String, _PreloadWhere?)>? paths = query._preloadPaths;
+    if (paths != null) {
+      _preloadPaths = List<(String, _PreloadWhere?)>.of(paths);
+    }
+  }
+
   /// the generator overrides these with the relations of the model
   Map<String, Function> get relationsResultMatcher =>
       _resultMatcher ??= <String, Function>{};
@@ -1400,8 +1420,37 @@ class Model<T> extends QueryBuilder<T> {
   /// Blog blog = await Blog().preload('comments').find(1);
   /// print(blog.comments);
   /// ```
-  Model<T> preload(String key) {
-    (_preloads ??= <String>[]).add(key);
+  ///
+  /// A dot path loads relations of the loaded rows too, one query for
+  /// each level: `preload('posts.comments')` loads the posts, then the
+  /// comments of all those posts. toJson() has both.
+  ///
+  /// [where] adds conditions to the query of the relation. With a dot
+  /// path it is for the last relation of the path:
+  ///
+  /// ```
+  /// await User().preload('posts', (QueryBuilder<dynamic> q) {
+  ///   q.where('published', true).orderBy('id');
+  /// }).get();
+  ///
+  /// // all posts, only the approved comments of each post
+  /// await User().preload('posts.comments', (QueryBuilder<dynamic> q) {
+  ///   q.where('approved', true);
+  /// }).get();
+  /// ```
+  Model<T> preload(
+    String key, [
+    void Function(QueryBuilder<dynamic> query)? where,
+  ]) {
+    List<String> names = _preloads ??= <String>[];
+    int dot = key.indexOf('.');
+    if (dot < 0 && where == null) {
+      names.add(key);
+      return this;
+    }
+    String name = dot < 0 ? key : key.substring(0, dot);
+    if (!names.contains(name)) names.add(name);
+    (_preloadPaths ??= <(String, _PreloadWhere?)>[]).add((key, where));
     return this;
   }
 
@@ -1411,8 +1460,17 @@ class Model<T> extends QueryBuilder<T> {
   /// await blog.$getRelation('comments');
   /// print(blog.comments);
   /// `
+  ///
+  /// With [OrmFlags.toJsonLoadedRelations], toJson() then has the
+  /// relation too, like a name given to [preload].
   Future<M?> $getRelation<M>(String name) async {
-    return await _getRelation(<Model<T>>[this], name) as M;
+    M? result = await _getRelation(<Model<T>>[this], name) as M;
+    if (SqlQueryBuilder().flags.toJsonLoadedRelations &&
+        relationsResultMatcher[name] != null) {
+      List<String> names = _preloads ??= <String>[];
+      if (!names.contains(name)) names.add(name);
+    }
+    return result;
   }
 
   /// Get relation query
@@ -1432,10 +1490,54 @@ class Model<T> extends QueryBuilder<T> {
   }
 
   Future<void> _getRelation(List<Model<T>> i, String name) async {
-    if (relationsResultMatcher[name] != null) {
-      Function funcName = relationsResultMatcher[name]!;
+    Function? funcName = relationsResultMatcher[name];
+    if (funcName == null) return;
+    if (_preloadPaths == null) {
       return await Function.apply(funcName, <dynamic>[i]);
     }
+
+    /// the relation query is made before the first await of funcName,
+    /// so it takes [preloadQuery] while it is set
+    preloadQuery = (QueryBuilder<dynamic> q) => _onRelationQuery(name, q);
+    Future<dynamic> load;
+    try {
+      load = Function.apply(funcName, <dynamic>[i]) as Future<dynamic>;
+    } finally {
+      preloadQuery = null;
+    }
+    return await load;
+  }
+
+  /// adds the wheres and the nested paths of relation [name] to its
+  /// query [q]
+  void _onRelationQuery(String name, QueryBuilder<dynamic> q) {
+    String prefix = '$name.';
+    for ((String, _PreloadWhere?) p in _preloadPaths!) {
+      String path = p.$1;
+      if (path == name) {
+        p.$2?.call(q);
+      } else if (path.startsWith(prefix)) {
+        String rest = path.substring(prefix.length);
+        if (_otherMorphTypeHas(q as Model<dynamic>, rest)) continue;
+        q.preload(rest, p.$2);
+      }
+    }
+  }
+
+  /// true when [q] is the query of one type of a morphTo, it does not
+  /// have the first relation of [path], and another type does. Then
+  /// [q] skips the path. When no type has it, it is a typo: [q] keeps
+  /// it, so [OrmFlags.preloadUnknownThrows] can throw.
+  bool _otherMorphTypeHas(Model<dynamic> q, String path) {
+    List<Model<dynamic>>? types = morphTypeQueries;
+    if (types == null) return false;
+    int dot = path.indexOf('.');
+    String name = dot < 0 ? path : path.substring(0, dot);
+    if (q.relationsResultMatcher[name] != null) return false;
+    for (Model<dynamic> t in types) {
+      if (t.relationsResultMatcher[name] != null) return true;
+    }
+    return false;
   }
 
   @override
@@ -1449,6 +1551,18 @@ class Model<T> extends QueryBuilder<T> {
   @override
   Future<void> initPreload(List<Model<T>> list) async {
     List<String> pList = getPreload();
+    if (pList.isNotEmpty && SqlQueryBuilder().flags.preloadUnknownThrows) {
+      for (String key in pList) {
+        if (relationsResultMatcher[key] == null) {
+          throw ArgumentError.value(
+            key,
+            'relation',
+            'is not a relation of $runtimeType',
+          );
+        }
+      }
+    }
+    if (list.isEmpty) return;
 
     /// in a transaction the queries run one by one on one connection.
     /// outside, they run together, so the native drivers can send them

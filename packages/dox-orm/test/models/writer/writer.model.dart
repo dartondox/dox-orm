@@ -31,8 +31,18 @@ class Writer extends WriterGenerator {
   @ManyToMany(Topic)
   List<Topic> topics = <Topic>[];
 
+  /// onQuery makes another relation query (whereHas), for the preload()
+  /// test: the where of preload() must go to this query, not that one
+  @HasMany(Article, onQuery: withRemarks)
+  List<Article> remarkedArticles = <Article>[];
+
   static Model<Article> onlyPublished(Article q) {
     return q..where('published', true);
+  }
+
+  static Model<Article> withRemarks(Article q) {
+    q.whereHas('remarks');
+    return q;
   }
 }
 

@@ -30,6 +30,7 @@ M? hasManyThrough<T, M>(
   dynamic onQuery,
 }) {
   if (list.isEmpty) return null;
+  PreloadQuery? preload = takePreloadQuery();
 
   Model<T> owner = list.first;
   Model<M> far = model().debug(owner.shouldDebug);
@@ -74,6 +75,7 @@ M? hasManyThrough<T, M>(
   if (onQuery != null) {
     far = onQuery(far);
   }
+  preload?.call(far);
   relationLocalKeys[far] = localKey;
   return far as M;
 }

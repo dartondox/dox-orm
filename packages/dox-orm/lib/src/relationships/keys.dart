@@ -40,6 +40,29 @@ String subqueryKeyPrefix = '';
 /// work with belongsTo, whereHas() does.
 bool aggregateSubquery = false;
 
+/// adds the where and the nested relations of `preload()` to a
+/// relation query
+typedef PreloadQuery = void Function(QueryBuilder<dynamic> query);
+
+/// the [PreloadQuery] for the relation query that is made now. `Model`
+/// sets it only while a relation load starts, and only when `preload()`
+/// has a dot path or a where. See [takePreloadQuery].
+PreloadQuery? preloadQuery;
+
+/// gives [preloadQuery] and clears it. A relation query takes it first,
+/// before its `onQuery` runs, so a relation query made inside `onQuery`
+/// (like a `whereHas()`) does not get it.
+PreloadQuery? takePreloadQuery() {
+  PreloadQuery? f = preloadQuery;
+  preloadQuery = null;
+  return f;
+}
+
+/// the query of each type of a `morphTo` while [PreloadQuery] runs on
+/// them, so a nested path can skip a type that does not have the
+/// relation. null at other times.
+List<Model<dynamic>>? morphTypeQueries;
+
 /// starts the subquery of [child]. it sets the param key prefix, and
 /// an alias when [child] and [parent] use the same table (like a parent
 /// category), so the subquery rows and the parent rows have their own
