@@ -9,6 +9,7 @@ import 'models/blog/blog.model.dart';
 import 'models/blog_info/blog_info.model.dart';
 import 'models/cast_item/cast_item.model.dart';
 import 'models/event_post/event_post.model.dart';
+import 'models/scoped_post/scoped_post.model.dart';
 
 void main() async {
   await initQueryBuilder();
@@ -129,6 +130,39 @@ void main() async {
       expect(blog.isDirty(), isFalse);
     });
 
+    test('isDirty() with a list on a loaded model', () async {
+      Blog blog = await newBlog();
+      expect(blog.isDirty(<String>['title', 'body']), isFalse);
+      blog.title = 'b';
+      expect(blog.isDirty(<String>['slug', 'title']), isTrue);
+      expect(blog.isDirty(<String>['slug', 'body']), isFalse);
+      expect(blog.isClean(<String>['slug', 'body']), isTrue);
+      expect(blog.isDirty(<String>[]), isFalse);
+    });
+
+    test('update() with the same value is not a change', () async {
+      Blog blog = await newBlog();
+      await blog.update(<String, dynamic>{'title': 'a'});
+      expect(blog.wasChanged('title'), isFalse);
+      expect(blog.wasChanged('updated_at'), isTrue);
+    });
+
+    test('touch(), soft delete and restore() fill getChanges()', () async {
+      Blog blog = await newBlog();
+      await blog.touch();
+      expect(blog.getChanges().keys, <String>['updated_at']);
+      await blog.delete();
+      expect(
+        blog.getChanges().keys,
+        unorderedEquals(<String>['deleted_at', 'updated_at']),
+      );
+      expect(blog.isDirty(), isFalse);
+      await blog.restore();
+      expect(blog.wasChanged('deleted_at'), isTrue);
+      expect(blog.deletedAt, isNull);
+      expect(blog.isDirty(), isFalse);
+    });
+
     test('a wrong columns type throws', () async {
       Blog blog = await newBlog();
       expect(() => blog.isDirty(1), throwsArgumentError);
@@ -228,26 +262,25 @@ void main() async {
       expect(read.isDirty('info'), isTrue);
     });
 
-    test('a change in place of a json column is dirty', () async {
+    test('a json column is dirty only when a new value is set', () async {
       BlogInfo info = BlogInfo()
         ..info = <String, dynamic>{'a': 1}
         ..blogId = 1;
       await info.save();
-
-      /// after a save
-      info.info!['a'] = 2;
-      expect(info.isDirty('info'), isTrue);
-      expect(info.getOriginal('info'), <String, dynamic>{'a': 1});
-      await info.save();
-      expect(info.isDirty(), isFalse);
-      expect(info.wasChanged('info'), isTrue);
-
-      /// after a load
       BlogInfo read = (await BlogInfo().find(info.id))!;
-      expect(read.isDirty(), isFalse);
-      read.info!['a'] = 3;
+      expect(identical(read.originalMap['info'], read.info), isTrue);
+
+      read.info!['a'] = 2;
+      expect(read.isDirty('info'), isFalse);
+
+      /// a new map with the same values is clean, other values are dirty
+      read.info = <String, dynamic>{...read.info!};
+      expect(read.isDirty('info'), isFalse);
+      read.info = <String, dynamic>{'a': 3};
       expect(read.isDirty('info'), isTrue);
-      expect(read.getOriginal('info'), <String, dynamic>{'a': 2});
+      await read.save();
+      expect(read.isDirty(), isFalse);
+      expect(read.wasChanged('info'), isTrue);
     });
 
     test(
@@ -270,7 +303,6 @@ void main() async {
         read.data = Uint8List.fromList(<int>[1, 2, 4]);
         expect(read.isDirty('data'), isTrue);
 
-        /// a change in place of a blob is not seen: the model keeps no copy
         BlobRow again = (await BlobRow().first())!;
         again.data![0] = 9;
         expect(again.isDirty('data'), isFalse);
@@ -279,16 +311,6 @@ void main() async {
           ? false
           : 'the raw blob insert is written for SQLite',
     );
-
-    test('originalMap keeps the values as the driver gave them', () async {
-      BlobRow row = BlobRow()..info = <String, dynamic>{'a': 1};
-      await row.save();
-      BlobRow read = (await BlobRow().find(row.id))!;
-      expect(identical(read.originalMap['info'], read.info), isTrue);
-      read.info!['a'] = 2;
-      expect(read.isDirty('info'), isTrue);
-      expect(read.getOriginal('info'), <String, dynamic>{'a': 1});
-    });
 
     test('an unchanged json column is not in getChanges()', () async {
       BlogInfo info = BlogInfo()
@@ -496,6 +518,41 @@ void main() async {
       expect(row.title, 'b');
       expect(row.updatedAt!.isAtSameMomentAs(later), isTrue);
       expect(row.isDirty(), isFalse);
+    });
+  });
+
+  group('refresh() and fresh() with a global scope |', () {
+    setUp(() async {
+      await Schema().create('scoped_post', (Table table) {
+        table.id();
+        table.string('title');
+        table.boolean('published');
+        table.boolean('archived').nullable();
+        table.integer('views');
+      });
+    });
+
+    tearDown(() async {
+      await Schema().dropIfExists('scoped_post');
+    });
+
+    test('they find a row that the global scope leaves out', () async {
+      ScopedPost post = ScopedPost()
+        ..title = 'a'
+        ..published = true
+        ..archived = false
+        ..views = 1;
+      await post.save();
+      await QueryBuilder.table('scoped_post')
+          .where('id', post.id)
+          .update(<String, dynamic>{'archived': true, 'title': 'b'});
+      expect(await ScopedPost().find(post.id), isNull);
+
+      ScopedPost? now = await post.fresh();
+      expect(now?.title, 'b');
+      await post.refresh();
+      expect(post.title, 'b');
+      expect(post.archived, isTrue);
     });
   });
 
