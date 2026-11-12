@@ -190,6 +190,7 @@ class SqlQueryBuilder {
         values,
         connection,
         'Slow query (${time.inMilliseconds} ms, $name): ',
+        time.inMilliseconds,
       );
     }
     if (_listeners.isNotEmpty) {

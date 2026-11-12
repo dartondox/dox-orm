@@ -7,15 +7,24 @@ class Logger {
   /// named in `logRedact` of the default connection or of the named
   /// [connection] show as `***`. [prefix] goes before the query text,
   /// eg. the time of a slow query.
+  ///
+  /// a [PrettyQueryPrinter] gets one line with the values put into the
+  /// SQL instead, with [slowMs] (the time of a slow query) in its tag.
   void log(
     String query, [
     dynamic params,
     String? connection,
     String prefix = '',
+    int? slowMs,
   ]) {
     Map<String, dynamic> values =
         params as Map<String, dynamic>? ?? const <String, dynamic>{};
     List<String> redact = SqlQueryBuilder().logRedactOf(connection);
+    QueryPrinter printer = SqlQueryBuilder().printer;
+    if (printer is PrettyQueryPrinter) {
+      _logPretty(printer, query, values, connection, redact, slowMs);
+      return;
+    }
     List<String> list = <String>[];
     Set<String> used = <String>{};
     StringBuffer out = StringBuffer();
@@ -35,6 +44,41 @@ class Logger {
       if (!used.contains(e.key)) list.add(_show(e.key, e.value, redact));
     }
     SqlQueryBuilder().printer.log('$prefix$out', list);
+  }
+
+  /// [query] with each `@name` replaced by its value as a SQL literal,
+  /// like `toRawSql()`. A redacted value shows as `'***'`.
+  void _logPretty(
+    PrettyQueryPrinter printer,
+    String query,
+    Map<String, dynamic> values,
+    String? connection,
+    List<String> redact,
+    int? slowMs,
+  ) {
+    SqlQueryBuilder sql = SqlQueryBuilder();
+    SchemaGrammar grammar = SchemaGrammar.of(
+      sql.getDBDriver(connection).getName(),
+    );
+    StringBuffer out = StringBuffer();
+    int copied = 0;
+    for (SqlParam p in findSqlParams(query)) {
+      out.write(query.substring(copied, p.start));
+      copied = p.end;
+      if (!values.containsKey(p.name)) {
+        out.write(query.substring(p.start, p.end));
+      } else if (_hidden(p.name, redact)) {
+        out.write("'***'");
+      } else {
+        out.write(grammar.literal(values[p.name]));
+      }
+    }
+    out.write(query.substring(copied));
+    printer.logSql(
+      out.toString(),
+      connection: connection ?? sql.databaseConfig?.connection ?? 'default',
+      slowMs: slowMs,
+    );
   }
 
   /// a copy of [values] where each value named in `logRedact` of the

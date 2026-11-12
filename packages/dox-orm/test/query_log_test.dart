@@ -240,18 +240,116 @@ void main() {
     },
   );
 
-  test('PrettyQueryPrinter prints the query and the params', () {
-    String out = _prints(
-      () => PrettyQueryPrinter().log('SELECT ' * 20, <String>['p1']),
-    ).join('\n');
-    expect(out, contains('QUERY'));
-    expect(out, contains('PARAMS'));
-    expect(out, contains('p1'));
-    expect(
-      _prints(() => PrettyQueryPrinter().log('q', <String>[])).join(),
-      isNot(contains('PARAMS')),
-    );
+  group('PrettyQueryPrinter', () {
+    const String tag = '\x1B[2;36m▌ [db:main]\x1B[0m ';
+
+    setUp(() {
+      SqlQueryBuilder.initializeWithDatabaseConfig(
+        DatabaseConfig(
+          connection: 'main',
+          url: '',
+          connections: <String, ConnectionConfig>{
+            'main': ConnectionConfig(
+              driver: Driver.sqlite,
+              database: ':memory:',
+              debug: false,
+              logRedact: <String>['password'],
+            ),
+          },
+        ),
+      );
+      SqlQueryBuilder().printer = PrettyQueryPrinter();
+    });
+
+    tearDown(() async {
+      SqlQueryBuilder().slowQueryMs = null;
+      await SqlQueryBuilder.close();
+    });
+
+    test('puts each value into the SQL as a literal', () {
+      List<String> lines = _prints(
+        () => Logger().log(
+          'SELECT * FROM "t" WHERE a = @a AND b = @b AND c = @c '
+          'AND d = @d AND e = @e AND f = @f AND g = @g AND h = @missing',
+          <String, dynamic>{
+            'a': "it's",
+            'b': null,
+            'c': true,
+            'd': 42,
+            'e': DateTime.utc(2026, 1, 2),
+            'f': <String, dynamic>{'k': 1},
+            'g': <int>[1, 2],
+          },
+        ),
+      );
+      expect(lines, <String>[
+        '${tag}SELECT * FROM "t" WHERE a = \'it\'\'s\' AND b = NULL '
+            "AND c = TRUE AND d = 42 AND e = '2026-01-02T00:00:00.000Z' "
+            "AND f = '{\"k\":1}' AND g = '[1,2]' AND h = @missing;",
+      ]);
+    });
+
+    test('a redacted value shows as quoted ***', () {
+      List<String> lines = _prints(
+        () => Logger().log(
+          'UPDATE "users" SET "password" = @password_p1 WHERE "id" = @id_p2',
+          <String, dynamic>{'password_p1': 'secret', 'id_p2': 7},
+        ),
+      );
+      expect(lines, <String>[
+        '${tag}UPDATE "users" SET "password" = \'***\' WHERE "id" = 7;',
+      ]);
+    });
+
+    test('does not add a second ;', () {
+      List<String> lines = _prints(() => Logger().log('SELECT 1;'));
+      expect(lines, <String>['${tag}SELECT 1;']);
+    });
+
+    test('a slow query shows SLOW and the time in the tag', () async {
+      SqlQueryBuilder().slowQueryMs = 0;
+      List<String> lines = await _printsAsync(
+        () => QueryBuilder.query(
+          'SELECT 1 WHERE @id_p1 = @id_p1',
+          substitutionValues: <String, dynamic>{'id_p1': 5},
+        ),
+      );
+      expect(lines.length, 1);
+      expect(
+        lines.first,
+        matches(
+          RegExp(
+            r'^\x1B\[2;36m▌ \[db:main SLOW \d+ms\]\x1B\[0m '
+            r'SELECT 1 WHERE 5 = 5;$',
+          ),
+        ),
+      );
+    });
+
+    test('log() called directly prints one line with the params', () {
+      expect(
+        _prints(() => PrettyQueryPrinter().log('SELECT 1', <String>[])),
+        <String>['\x1B[2;36m▌ [db]\x1B[0m SELECT 1;'],
+      );
+      expect(
+        _prints(() => PrettyQueryPrinter().log('x = ?', <String>['p1'])),
+        <String>['\x1B[2;36m▌ [db]\x1B[0m x = ?; -- [p1]'],
+      );
+    });
   });
+}
+
+Future<List<String>> _printsAsync(Future<void> Function() body) async {
+  List<String> lines = <String>[];
+  await runZoned(
+    body,
+    zoneSpecification: ZoneSpecification(
+      print: (Zone self, ZoneDelegate parent, Zone zone, String line) {
+        lines.add(line);
+      },
+    ),
+  );
+  return lines;
 }
 
 List<String> _prints(void Function() body) {
