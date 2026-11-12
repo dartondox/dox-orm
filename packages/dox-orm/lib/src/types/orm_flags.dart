@@ -71,6 +71,22 @@ class OrmFlags {
   // NEXT MAJOR: make this the default, then remove the flag.
   final bool laravelPostgresTypes;
 
+  /// the query form of `update()` on a model, like
+  /// `User().where('id', 1).update({...})`, also sets `updated_at` when
+  /// the model has timestamps and the data has no value for it.
+  /// Off: it does not. `update()` on a model read from the table, and
+  /// `save()`, always set it.
+  // NEXT MAJOR: make this the default, then remove the flag.
+  final bool updateSetsUpdatedAt;
+
+  /// `increment()` and `decrement()` on a model read from the table fire
+  /// `saving`, `updating`, `updated` and `saved`, like `save()`, and set
+  /// `updated_at`. A hook can stop it with `CancelModelEvent`: then it
+  /// changes nothing and returns 0. Off: no events, and `updated_at`
+  /// stays as it is. The query form (with `where()`) does not change.
+  // NEXT MAJOR: make this the default, then remove the flag.
+  final bool incrementFiresEvents;
+
   const OrmFlags({
     this.skipCleanUpdateEvents = false,
     this.belongsToKeyFromRelation = false,
@@ -81,6 +97,8 @@ class OrmFlags {
     this.groupByAdds = false,
     this.lastPageAtLeastOne = false,
     this.laravelPostgresTypes = false,
+    this.updateSetsUpdatedAt = false,
+    this.incrementFiresEvents = false,
   });
 
   /// every flag on
@@ -93,5 +111,7 @@ class OrmFlags {
       selectRawAdds = true,
       groupByAdds = true,
       lastPageAtLeastOne = true,
-      laravelPostgresTypes = true;
+      laravelPostgresTypes = true,
+      updateSetsUpdatedAt = true,
+      incrementFiresEvents = true;
 }

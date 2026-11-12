@@ -491,7 +491,8 @@ class Model<T> extends QueryBuilder<T> {
   /// value, with [setColumnValue]. A later save() does not send the old
   /// value back. Keys of [extra] that [fillable] and [guarded] do not
   /// allow are dropped. It fires no model events and does not set
-  /// updated_at.
+  /// updated_at. With [OrmFlags.incrementFiresEvents] it fires saving,
+  /// updating, updated and saved like save(), and sets updated_at.
   ///
   /// ponytail: a model made by an old dox_builder has no
   /// [setColumnValue], so its field keeps the old value. Run build_runner
@@ -546,6 +547,36 @@ class Model<T> extends QueryBuilder<T> {
     Map<String, dynamic> extra,
     bool up,
   ) async {
+    bool flag = SqlQueryBuilder().flags.incrementFiresEvents;
+    bool events = flag && _eventsOn;
+    if (events) {
+      try {
+        await _fire(ModelEvent.saving);
+        await _fire(ModelEvent.updating);
+      } on CancelModelEvent {
+        return 0;
+      }
+    }
+    String? updatedAtColumn = timestampsColumn['updated_at'];
+    if (flag &&
+        updatedAtColumn != null &&
+        !extra.containsKey(updatedAtColumn)) {
+      extra = <String, dynamic>{...extra, updatedAtColumn: now()};
+    }
+    int count = await _stepRow(column, amount, extra, up);
+    if (events && count > 0) {
+      await _fire(ModelEvent.updated);
+      await _fire(ModelEvent.saved);
+    }
+    return count;
+  }
+
+  Future<int> _stepRow(
+    String column,
+    num amount,
+    Map<String, dynamic> extra,
+    bool up,
+  ) async {
     QueryBuilder<T> row = _thisRecord();
     int count = up
         ? await row.increment(column, amount, extra)
@@ -557,6 +588,18 @@ class Model<T> extends QueryBuilder<T> {
     if (old is num) {
       /// int + int stays an int, so an int field takes it
       values[column] = up ? old + amount : old - amount;
+    }
+
+    /// like update(): also for a custom column that setColumnValue does
+    /// not know
+    String? updatedAtColumn = timestampsColumn['updated_at'];
+    if (SqlQueryBuilder().flags.incrementFiresEvents &&
+        updatedAtColumn != null) {
+      dynamic given = values[updatedAtColumn];
+      DateTime? stamp = given is DateTime
+          ? given
+          : DateTime.tryParse('${given ?? ''}');
+      if (stamp != null) updatedAt = stamp;
     }
     _setSavedColumns(values);
     return count;
@@ -1314,6 +1357,12 @@ class Model<T> extends QueryBuilder<T> {
   /// await user!.update({'name': 'Ann'}); // only user 1
   /// ```
   ///
+  /// With a where() it does not set updated_at, unless
+  /// [OrmFlags.updateSetsUpdatedAt] is on.
+  ///
+  /// With a where() it does not set updated_at, unless
+  /// [OrmFlags.updateSetsUpdatedAt] is on.
+  ///
   /// With no primary key value and no where(), it throws a [StateError],
   /// so it can not change every row by mistake. To change every row on
   /// purpose, use `whereRaw('1 = 1')`.
@@ -1345,6 +1394,12 @@ class Model<T> extends QueryBuilder<T> {
     _needKeyOrWhere('update');
     data = _onlyFillable(data);
     if (data.isEmpty) return 0;
+    String? updatedAtColumn = timestampsColumn['updated_at'];
+    if (SqlQueryBuilder().flags.updateSetsUpdatedAt &&
+        updatedAtColumn != null &&
+        !data.containsKey(updatedAtColumn)) {
+      data = <String, dynamic>{...data, updatedAtColumn: now()};
+    }
     return await super.update(data);
   }
 
