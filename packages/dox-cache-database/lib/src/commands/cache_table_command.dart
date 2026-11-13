@@ -64,6 +64,9 @@ class CacheTableCommand extends Command {
   }
 
   /// the migration file. [table] is the table name, null for the default.
+  ///
+  /// `cacheTableMigration` in `CacheInstallCommand` (dox_cache, dox repo)
+  /// has a copy of this text for the default table. Keep the two the same.
   static String source([String? table]) {
     String args = table == null ? 'schema' : "schema, table: '$table'";
     return '''
