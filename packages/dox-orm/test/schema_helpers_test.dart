@@ -123,6 +123,24 @@ void main() async {
     await expectLater(orphan(), throwsA(anything));
   });
 
+  test('disable without enable: checks are on after the transaction', () async {
+    /// commit and rollback, on a pool with more than one connection
+    for (bool fail in <bool>[false, true]) {
+      Future<void> run() => QueryBuilder.transaction(() async {
+        await schema.disableForeignKeyConstraints();
+        if (fail) throw StateError('stop');
+      });
+      if (fail) {
+        await expectLater(run(), throwsStateError);
+      } else if (driver == Driver.mysql) {
+        await run();
+      }
+      for (int i = 0; i < 5; i++) {
+        await expectLater(orphan(), throwsA(anything));
+      }
+    }
+  }, skip: driver == Driver.mysql ? null : 'mysql only');
+
   test('sqlite: disable and enable outside a transaction', () async {
     await schema.disableForeignKeyConstraints();
     try {

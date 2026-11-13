@@ -277,6 +277,40 @@ void main() async {
       );
     });
 
+    test('an OR in the callback stays inside the relation', () async {
+      void orCallback(QueryBuilder<dynamic> q) {
+        q.where('title', 'a1').orWhere('title', 'b1');
+      }
+
+      /// cy has no article a1 or b1: it must not match
+      expect(await writers(Writer().whereHas('articles', orCallback)), <int>[
+        1,
+        2,
+      ]);
+      expect(
+        await writers(Writer().whereDoesntHave('articles', orCallback)),
+        <int>[3],
+      );
+      expect(
+        await writers(Writer().has('articles', '>=', 1, orCallback)),
+        <int>[1, 2],
+      );
+      expect(
+        await writers(
+          Writer().where('name', 'cy').orWhereHas('articles', orCallback),
+        ),
+        <int>[1, 2, 3],
+      );
+      List<Writer> list = await Writer()
+          .withCount('articles as hit_count', orCallback)
+          .orderBy('id')
+          .get();
+      expect(
+        <int?>[for (Writer w in list) w.aggregate('hit_count') as int?],
+        <int>[1, 1, 0],
+      );
+    });
+
     test('together with withCount', () async {
       List<Writer> list = await Writer()
           .withCount('articles as published_count', (QueryBuilder<dynamic> q) {

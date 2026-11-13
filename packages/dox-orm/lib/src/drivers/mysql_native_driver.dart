@@ -183,6 +183,27 @@ class MysqlNativeDriver extends DBDriver {
     return result.affectedRows;
   }
 
+  /// transactions that turned the foreign key checks off
+  final Set<int> _foreignKeysOff = <int>{};
+
+  @override
+  void trackForeignKeyChecks({required bool off}) {
+    int tx = _tx;
+    if (tx == 0) return;
+    off ? _foreignKeysOff.add(tx) : _foreignKeysOff.remove(tx);
+  }
+
+  /// turn the foreign key checks on again before the connection goes back
+  /// to the pool. a rollback does not undo `SET FOREIGN_KEY_CHECKS`.
+  Future<void> _restoreForeignKeys(int tx) async {
+    if (!_foreignKeysOff.remove(tx)) return;
+    try {
+      await pool.execute('SET FOREIGN_KEY_CHECKS = 1', transaction: tx);
+    } catch (_) {
+      // the connection is broken: the pool drops it
+    }
+  }
+
   /// one pooled connection runs the whole transaction.
   /// note: in mysql, schema changes (create/alter/drop table) commit the
   /// transaction right away, they can not be rolled back.
@@ -208,6 +229,7 @@ class MysqlNativeDriver extends DBDriver {
         },
       );
     } catch (_) {
+      await _restoreForeignKeys(tx);
       try {
         await pool.rollback(tx);
       } catch (_) {
@@ -215,6 +237,7 @@ class MysqlNativeDriver extends DBDriver {
       }
       rethrow;
     }
+    await _restoreForeignKeys(tx);
     await pool.commit(tx);
     await runAfterCommit(callbacks);
     return result;
