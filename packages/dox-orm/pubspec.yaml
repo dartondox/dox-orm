@@ -10,6 +10,8 @@ resolution: workspace
 
 dependencies:
   sqlite3: ^3.7.1
+  # Raise to the dox_annotation release that has install.dart before
+  # releasing this package.
   dox_annotation: ^3.1.0
   dox_validation: ^3.1.0
   dox_postgres_native: ^3.0.3
@@ -22,3 +24,7 @@ dev_dependencies:
   dox_builder: ^3.1.0
   # only for the tests that run the ORM in a Dox app
   dox_core: ^3.1.0
+
+# The `dox` CLI finds the commands of this package here (`dox orm:install`).
+dox:
+  commands: package:dox_orm/commands.dart

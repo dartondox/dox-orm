@@ -13,6 +13,16 @@ Do not invent methods. Copy the style of the models that are already in the app.
 
 The examples use the package name `my_app`. Use the `name:` of the app's `pubspec.yaml`.
 
+## Set up the ORM
+
+The app template already has the ORM. When `lib/config/database.dart` is missing, set it up with:
+
+```bash
+dox add orm --driver=sqlite   # or postgres, mysql
+```
+
+It adds `dox_orm` and `dox_migration`, the database config, the ORM provider, `bin/migrate.dart`, `db/migration/` and the `DB_*` keys. It never overwrites a file. Do not write these files by hand.
+
 ## Make a model
 
 Stop `dox s` first. It runs new migrations at start, before you add the columns.
