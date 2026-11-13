@@ -91,10 +91,69 @@ void main() {
     }
   });
 
-  test('an unknown driver stops with exit code 1', () async {
-    await install(<String>['--driver=oracle']);
-    expect(exitCode, 1);
-    expect(runner.calls, isEmpty);
-    exitCode = 0;
+  /// every file of the app and its text
+  Map<String, String> snapshot() {
+    Map<String, String> files = <String, String>{};
+    for (FileSystemEntity f in root.listSync(recursive: true)) {
+      if (f is File) files[f.path] = f.readAsStringSync();
+    }
+    return files;
+  }
+
+  test('a bad option stops with exit code 1 and writes nothing', () async {
+    for (List<String> args in <List<String>>[
+      <String>['--driver=oracle'],
+      <String>['--drive=postgres'],
+      <String>['--driver'],
+      <String>['--driver='],
+      <String>['postgres'],
+    ]) {
+      Map<String, String> before = snapshot();
+      await install(args);
+      expect(exitCode, 1, reason: '$args');
+      expect(runner.calls, isEmpty, reason: '$args');
+      expect(snapshot(), before, reason: '$args');
+      exitCode = 0;
+    }
   });
+
+  test('an existing hooks block is not touched', () async {
+    String pubspec =
+        'name: my_app\n\ndependencies:\n  dox_orm: ^3.1.0\n\n'
+        '# my hooks\nhooks:\n  user_defines:\n    sqlite3:\n'
+        '      source: system # keep\n';
+    File('${root.path}/pubspec.yaml').writeAsStringSync(pubspec);
+    await install(<String>[]);
+    expect(read('pubspec.yaml'), pubspec);
+  });
+
+  test('a pubspec with no final new line gets the hooks block', () async {
+    File('${root.path}/pubspec.yaml')
+        .writeAsStringSync('name: my_app\ndependencies:\n  dox_orm: ^3.1.0');
+    await install(<String>[]);
+    expect(
+      read('pubspec.yaml'),
+      startsWith('name: my_app\ndependencies:\n  dox_orm: ^3.1.0\n\n# Skip'),
+    );
+  });
+
+  test(
+    'without AppEnv it gives a hint, exit code 1, and changes nothing',
+    () async {
+      for (String? env in <String?>[null, 'class Other {\n}\n']) {
+        File file = File('${root.path}/lib/config/env.dart');
+        if (env == null) {
+          file.deleteSync();
+        } else {
+          file.writeAsStringSync(env);
+        }
+        Map<String, String> before = snapshot();
+        await install(<String>[]);
+        expect(exitCode, 1);
+        expect(runner.calls, isEmpty);
+        expect(snapshot(), before);
+        exitCode = 0;
+      }
+    },
+  );
 }

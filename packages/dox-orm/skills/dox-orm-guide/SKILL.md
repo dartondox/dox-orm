@@ -22,6 +22,7 @@ dox add orm --driver=sqlite   # or postgres, mysql
 ```
 
 It adds `dox_orm` and `dox_migration`, the database config, the ORM provider, `bin/migrate.dart`, `db/migration/` and the `DB_*` keys. It never overwrites a file. Do not write these files by hand.
+The first run can download or build the unused native drivers once. After it, `pubspec.yaml` skips them.
 
 ## Make a model
 

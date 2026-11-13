@@ -30,12 +30,28 @@ class OrmInstallCommand extends Command {
   Future<void> run(List<String> args) async {
     String? driver = _driver(args);
     if (driver == null) {
-      print('Use --driver=sqlite, --driver=postgres or --driver=mysql.');
+      print(
+        'Unknown option. Use --driver=sqlite, --driver=postgres or '
+        '--driver=mysql (sqlite when not given).',
+      );
       exitCode = 1;
       return;
     }
     Installer installer = Installer(root: root, runner: runner);
     String app = installer.appName;
+
+    /// first, so an app without the AppEnv class gets the hint and
+    /// nothing else is changed
+    for (String getter in envGetters(driver)) {
+      installer.addEnvGetter(getter);
+    }
+    if (!installer.ok) {
+      installer.printSummary(<String>[
+        'lib/config/env.dart has no `abstract class AppEnv`. Run '
+            '`dox env:generate` to make it, then run this again.',
+      ]);
+      return;
+    }
 
     await installer.addDependency('dox_orm');
     await installer.addDependency('dox_migration');
@@ -48,9 +64,6 @@ class OrmInstallCommand extends Command {
     installer.writeFile('bin/migrate.dart', migrateEntry);
     installer.writeFile('db/migration/migrations.dart', migrationList);
 
-    for (String getter in envGetters(driver)) {
-      installer.addEnvGetter(getter);
-    }
     Map<String, String> keys = envKeys(driver);
     for (String key in keys.keys) {
       installer.addEnv(key, keys[key]!);
@@ -72,7 +85,7 @@ class OrmInstallCommand extends Command {
   }
 
   /// the value of `--driver=x` or `--driver x`, sqlite when not given.
-  /// Null when the value is not a known driver.
+  /// Null for an unknown option, a missing value or an unknown driver.
   String? _driver(List<String> args) {
     String driver = 'sqlite';
     for (int i = 0; i < args.length; i++) {
@@ -80,6 +93,8 @@ class OrmInstallCommand extends Command {
         driver = args[i].substring('--driver='.length);
       } else if (args[i] == '--driver' && i + 1 < args.length) {
         driver = args[++i];
+      } else {
+        return null;
       }
     }
     return drivers.contains(driver) ? driver : null;
@@ -92,7 +107,7 @@ class OrmInstallCommand extends Command {
     File pubspec = File('${installer.root.path}/pubspec.yaml');
     String text = pubspec.readAsStringSync();
     if (RegExp(r'^hooks:', multiLine: true).hasMatch(text)) {
-      installer.lines.add('skipped  pubspec.yaml hooks (already there)');
+      installer.note('skipped  pubspec.yaml hooks (already there)');
       return;
     }
     StringBuffer block = StringBuffer(
@@ -107,7 +122,7 @@ class OrmInstallCommand extends Command {
     }
     if (!text.endsWith('\n')) text = '$text\n';
     pubspec.writeAsStringSync('$text$block');
-    installer.lines.add('added    hooks to pubspec.yaml');
+    installer.note('added    hooks to pubspec.yaml');
   }
 
   /// the getters of `AppEnv` that `lib/config/database.dart` reads
