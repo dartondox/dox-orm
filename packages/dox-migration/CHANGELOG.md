@@ -1,4 +1,4 @@
-## Unreleased
+## 3.2.0
 
 - Fix: on SQLite, the foreign key check after a migration now fails only for rows that this migration broke. Before, an old broken row made every later migration and `reset()` fail.
 - Ships an AI agent skill (dox-migration-guide). Install it in your app with `dart run skills@ get`.
