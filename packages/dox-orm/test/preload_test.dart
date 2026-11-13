@@ -154,6 +154,29 @@ void main() async {
       expect(list[0].toJson()['articles'], hasLength(1));
     });
 
+    test('an OR in the preload callback is in one bracket', () async {
+      List<String> sqls = <String>[];
+      void onQuery(QueryEvent e) => sqls.add(e.sql);
+      SqlQueryBuilder().listen(onQuery);
+      List<Writer> list;
+      try {
+        list = await Writer()
+            .preload('articles', (QueryBuilder<dynamic> q) {
+              q.where('title', 'a1').orWhere('title', 'b1');
+            })
+            .orderBy('id')
+            .get();
+      } finally {
+        SqlQueryBuilder().removeListener(onQuery);
+      }
+      expect(list[0].articles.map((Article a) => a.title), <String>['a1']);
+      expect(list[1].articles.map((Article a) => a.title), <String>['b1']);
+
+      /// the key match is outside the bracket with the OR
+      String sql = sqls.firstWhere((String s) => s.contains(' OR '));
+      expect(sql, matches(RegExp(r'AND \(.*\bOR\b.*\)')));
+    });
+
     test('a where on a dot path is for the last relation', () async {
       Writer? w = await Writer()
           .preload('articles.remarks', (QueryBuilder<dynamic> q) {

@@ -110,6 +110,17 @@ void main() async {
       expect(titles(list), <String>['m1']);
     });
 
+    test('an OR in a whereHas callback stays inside the relation', () async {
+      void cb(QueryBuilder<dynamic> q) {
+        q.where('letter.title', 'nothing').orWhere('letter.title', 'k1');
+      }
+
+      List<Country> list = await Country().whereHas('letters', cb).get();
+      expect(list.map((Country c) => c.name), <String?>['Japan']);
+      list = await Country().whereHas('latestLetter', cb).get();
+      expect(list.map((Country c) => c.name), <String?>['Japan']);
+    });
+
     test('lazy hasOneThrough picks the row with onQuery', () async {
       await myanmar.$getRelation('latestLetter');
       expect(myanmar.latestLetter?.title, 'm2');

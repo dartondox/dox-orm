@@ -8,6 +8,16 @@ import 'package:dox_orm/dox_orm.dart';
 /// zone key to find the open transaction of a pool
 const Symbol _txKey = #doxMysqlNativeTransaction;
 
+/// zone key to find the foreign key state of the open transaction. it is in
+/// the zone, not in the driver, so any driver or Schema object on the same
+/// pool finds it.
+const Symbol _fkKey = #doxMysqlNativeForeignKeys;
+
+/// true when the transaction turned the foreign key checks off
+class _ForeignKeyState {
+  bool off = false;
+}
+
 /// The Dox ORM driver for MySQL and MariaDB, on [MysqlNativePool]
 /// (dox_mysql_native). Errors are [MysqlException].
 class MysqlNativeDriver extends DBDriver {
@@ -183,20 +193,17 @@ class MysqlNativeDriver extends DBDriver {
     return result.affectedRows;
   }
 
-  /// transactions that turned the foreign key checks off
-  final Set<int> _foreignKeysOff = <int>{};
-
   @override
   void trackForeignKeyChecks({required bool off}) {
-    int tx = _tx;
-    if (tx == 0) return;
-    off ? _foreignKeysOff.add(tx) : _foreignKeysOff.remove(tx);
+    _ForeignKeyState? state = Zone.current[_fkKey] as _ForeignKeyState?;
+    state?.off = off;
   }
 
   /// turn the foreign key checks on again before the connection goes back
   /// to the pool. a rollback does not undo `SET FOREIGN_KEY_CHECKS`.
-  Future<void> _restoreForeignKeys(int tx) async {
-    if (!_foreignKeysOff.remove(tx)) return;
+  Future<void> _restoreForeignKeys(_ForeignKeyState state, int tx) async {
+    if (!state.off) return;
+    state.off = false;
     try {
       await pool.execute('SET FOREIGN_KEY_CHECKS = 1', transaction: tx);
     } catch (_) {
@@ -218,6 +225,7 @@ class MysqlNativeDriver extends DBDriver {
       return savepoint(callback);
     }
     int tx = await pool.begin();
+    _ForeignKeyState fk = _ForeignKeyState();
     AfterCommitCallbacks callbacks = AfterCommitCallbacks();
     R result;
     try {
@@ -225,11 +233,12 @@ class MysqlNativeDriver extends DBDriver {
         callback,
         zoneValues: <Symbol, dynamic>{
           _txKey: <MysqlNativePool, int>{...?open, pool: tx},
+          _fkKey: fk,
           ...afterCommitZone(callbacks),
         },
       );
     } catch (_) {
-      await _restoreForeignKeys(tx);
+      await _restoreForeignKeys(fk, tx);
       try {
         await pool.rollback(tx);
       } catch (_) {
@@ -237,7 +246,7 @@ class MysqlNativeDriver extends DBDriver {
       }
       rethrow;
     }
-    await _restoreForeignKeys(tx);
+    await _restoreForeignKeys(fk, tx);
     await pool.commit(tx);
     await runAfterCommit(callbacks);
     return result;
