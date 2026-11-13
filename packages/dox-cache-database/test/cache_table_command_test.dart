@@ -67,7 +67,7 @@ void main() {
     File('${app.path}/pubspec.yaml').writeAsStringSync('''
 name: migration_check
 environment:
-  sdk: ^3.14.0
+  sdk: ^3.13.0
 dependencies:
   dox_cache_database: any
   dox_migration: any
