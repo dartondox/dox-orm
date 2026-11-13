@@ -221,6 +221,13 @@ abstract class DBDriver {
   /// always gives false.
   bool get hasOpenTransaction => _afterCommitLevel != null;
 
+  /// [Schema] tells the driver that the foreign key checks of the open
+  /// transaction are off ([off] true) or on again. a driver with a
+  /// connection setting for it (MySQL) turns them on again when the
+  /// transaction ends, also after a rollback, so a pooled connection never
+  /// goes back with the checks off. it does nothing by default.
+  void trackForeignKeyChecks({required bool off}) {}
+
   /// run [callback] after the outermost transaction of this driver
   /// commits. outside a transaction it runs at once.
   ///

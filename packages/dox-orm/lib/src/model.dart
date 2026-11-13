@@ -1616,7 +1616,10 @@ class Model<T> extends QueryBuilder<T> {
     for ((String, _PreloadWhere?) p in _preloadPaths!) {
       String path = p.$1;
       if (path == name) {
+        /// one bracket, so an OR can not skip the key match
+        int from = q.whereCount;
         p.$2?.call(q);
+        q.groupWheres(from);
       } else if (path.startsWith(prefix)) {
         String rest = path.substring(prefix.length);
         if (_otherMorphTypeHas(q as Model<dynamic>, rest)) continue;

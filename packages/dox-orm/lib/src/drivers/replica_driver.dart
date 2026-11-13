@@ -208,6 +208,10 @@ class ReplicaDriver extends DBDriver {
   bool get hasOpenTransaction => writer.hasOpenTransaction;
 
   @override
+  void trackForeignKeyChecks({required bool off}) =>
+      writer.trackForeignKeyChecks(off: off);
+
+  @override
   Future<void> afterCommit(AfterCommitCallback callback) =>
       writer.afterCommit(callback);
 

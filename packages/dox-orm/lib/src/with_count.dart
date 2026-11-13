@@ -165,7 +165,9 @@ mixin WithCount<T> implements SharedMixin<T> {
         'dox_agg${i}_',
         aggregate: true,
       );
+      int whereFrom = q.whereCount;
       a.where?.call(q);
+      q.groupWheres(whereFrom);
       String column = a.column == '*'
           ? '*'
           : q.helper.wrap(
@@ -338,7 +340,9 @@ mixin WithCount<T> implements SharedMixin<T> {
       '${helper.keyPrefix}dox_has${_hasCount++}_',
     );
     if (dot < 0) {
+      int from = q.whereCount;
       where?.call(q);
+      q.groupWheres(from);
     } else {
       String rest = relation.substring(dot + 1);
       if (notExists) {

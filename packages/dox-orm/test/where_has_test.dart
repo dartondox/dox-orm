@@ -277,6 +277,87 @@ void main() async {
       );
     });
 
+    test('an OR in the callback stays inside the relation', () async {
+      void orCallback(QueryBuilder<dynamic> q) {
+        q.where('title', 'a1').orWhere('title', 'b1');
+      }
+
+      /// cy has no article a1 or b1: it must not match
+      expect(await writers(Writer().whereHas('articles', orCallback)), <int>[
+        1,
+        2,
+      ]);
+      expect(
+        await writers(Writer().whereDoesntHave('articles', orCallback)),
+        <int>[3],
+      );
+      expect(
+        await writers(Writer().has('articles', '>=', 1, orCallback)),
+        <int>[1, 2],
+      );
+      expect(
+        await writers(
+          Writer().where('name', 'cy').orWhereHas('articles', orCallback),
+        ),
+        <int>[1, 2, 3],
+      );
+      List<Writer> list = await Writer()
+          .withCount('articles as hit_count', orCallback)
+          .orderBy('id')
+          .get();
+      expect(
+        <int?>[for (Writer w in list) w.aggregate('hit_count') as int?],
+        <int>[1, 1, 0],
+      );
+    });
+
+    test('an OR in the callback: nested path, many to many, withSum', () async {
+      /// remark 3 (article 3, writer 2) is the only match
+      expect(
+        await writers(
+          Writer().whereHas('articles.remarks', (QueryBuilder<dynamic> q) {
+            q.where('body', 'nothing').orWhere('article_id', 3);
+          }),
+        ),
+        <int>[2],
+      );
+
+      /// many to many: only writer 3 has the topic sql
+      expect(
+        await writers(
+          Writer().whereHas('topics', (QueryBuilder<dynamic> q) {
+            q.where('name', 'nothing').orWhere('name', 'sql');
+          }),
+        ),
+        <int>[3],
+      );
+
+      List<Writer> list = await Writer()
+          .withSum('articles', 'id', (QueryBuilder<dynamic> q) {
+            q.where('title', 'a1').orWhere('title', 'b1');
+          })
+          .orderBy('id')
+          .get();
+      expect(
+        <Object?>[for (Writer w in list) w.aggregate('articles_sum_id')],
+        <Object?>[1, 3, null],
+      );
+    });
+
+    test('an empty callback changes nothing', () async {
+      expect(
+        await writers(
+          Writer().whereHas('articles', (QueryBuilder<dynamic> q) {}),
+        ),
+        <int>[1, 2],
+      );
+      List<Writer> list = await Writer()
+          .preload('articles', (QueryBuilder<dynamic> q) {})
+          .orderBy('id')
+          .get();
+      expect(list[0].articles, hasLength(2));
+    });
+
     test('together with withCount', () async {
       List<Writer> list = await Writer()
           .withCount('articles as published_count', (QueryBuilder<dynamic> q) {
