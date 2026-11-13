@@ -502,6 +502,53 @@ DROP TABLE IF EXISTS mig_tag
           },
         );
 
+        test(
+          'a second broken row in a WITHOUT ROWID table still fails',
+          () async {
+            writeMigration('2023_01_01_000000_create_user', '''
+-- up
+CREATE TABLE mig_user (id INTEGER PRIMARY KEY)
+
+-- down
+DROP TABLE IF EXISTS mig_user
+''');
+            writeMigration('2023_01_02_000000_create_post', '''
+-- up
+CREATE TABLE mig_post (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER,
+  FOREIGN KEY (user_id) REFERENCES mig_user (id)
+) WITHOUT ROWID
+
+-- down
+DROP TABLE IF EXISTS mig_post
+''');
+            await Migrator().migrate();
+            await db.execute('PRAGMA foreign_keys = OFF');
+            await db.execute(
+              'INSERT INTO mig_post (id, user_id) VALUES (1, 99)',
+            );
+            await db.execute('PRAGMA foreign_keys = ON');
+            writeMigration('2023_01_03_000000_break_fk', '''
+-- up
+INSERT INTO mig_post (id, user_id) VALUES (2, 98)
+
+-- down
+DELETE FROM mig_post WHERE id = 2
+''');
+            await expectLater(
+              Migrator().migrate(),
+              throwsA(
+                isA<MigrationException>().having(
+                  (MigrationException e) => e.toString(),
+                  'message',
+                  contains('foreign key check failed'),
+                ),
+              ),
+            );
+          },
+        );
+
         test('a migration that breaks a foreign key still fails', () async {
           writeUserPost();
           await Migrator().migrate();

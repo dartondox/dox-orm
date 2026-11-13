@@ -325,7 +325,7 @@ class Migrator {
         (await d.execute('PRAGMA foreign_keys')).first.values.first == 1;
 
     /// broken keys that were there before this migration. they are not its fault.
-    Set<String> oldBroken = <String>{};
+    Map<String, int> oldBroken = <String, int>{};
 
     Future<void> body() async {
       if (sqliteFk) oldBroken = await _sqliteBrokenKeys(d);
@@ -400,31 +400,36 @@ class Migrator {
     }
   }
 
-  /// the broken foreign keys of the whole database, as a set of keys
-  Future<Set<String>> _sqliteBrokenKeys(DbConnection d) async {
-    List<Map<String, dynamic>> rows = await d.execute(
+  /// how many broken rows each foreign key has, for the whole database
+  Future<Map<String, int>> _sqliteBrokenKeys(DbConnection d) async {
+    Map<String, int> counts = <String, int>{};
+    for (Map<String, dynamic> r in await d.execute(
       'PRAGMA foreign_key_check',
-    );
-    return rows.map(_fkKey).toSet();
+    )) {
+      counts.update(_fkKey(r), (int n) => n + 1, ifAbsent: () => 1);
+    }
+    return counts;
   }
 
   String _fkKey(Map<String, dynamic> r) =>
       '${r['table']}|${r['rowid']}|${r['parent']}|${r['fkid']}';
 
-  /// throws only for broken keys that are not in [oldBroken]
+  /// throws when a key has more broken rows than before the migration.
+  /// WITHOUT ROWID tables have a null rowid, so we count per key.
+  /// known limit: deleting an old broken row and adding a new one with the
+  /// same rowid and parent is not caught.
   Future<void> _checkSqliteForeignKeys(
     DbConnection d,
-    Set<String> oldBroken,
+    Map<String, int> oldBroken,
   ) async {
-    List<Map<String, dynamic>> broken =
-        (await d.execute('PRAGMA foreign_key_check'))
-            .where((Map<String, dynamic> r) => !oldBroken.contains(_fkKey(r)))
-            .toList();
-    if (broken.isNotEmpty) {
-      throw StateError(
-        'foreign key check failed: ${broken.first['table']} '
-        'points to a missing ${broken.first['parent']} row',
-      );
+    Map<String, int> now = await _sqliteBrokenKeys(d);
+    for (MapEntry<String, int> e in now.entries) {
+      if (e.value > (oldBroken[e.key] ?? 0)) {
+        List<String> k = e.key.split('|');
+        throw StateError(
+          'foreign key check failed: ${k[0]} points to a missing ${k[2]} row',
+        );
+      }
     }
   }
 }
