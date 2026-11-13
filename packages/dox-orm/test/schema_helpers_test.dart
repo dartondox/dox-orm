@@ -141,6 +141,45 @@ void main() async {
     }
   }, skip: driver == Driver.mysql ? null : 'mysql only');
 
+  Future<void> rawOrphan(DBDriver d) =>
+      d.execute('INSERT INTO sh_post (user_id) VALUES (99)');
+
+  test('mysql: a savepoint and disable, restored at the outer end', () async {
+    DBDriver a = SqlQueryBuilder().dbDriver;
+    await a.transaction(() async {
+      await a.transaction(() async {
+        await schema.disableForeignKeyConstraints();
+        await rawOrphan(a);
+      });
+      await a.execute('DELETE FROM sh_post');
+    });
+    for (int i = 0; i < 5; i++) {
+      await expectLater(rawOrphan(a), throwsA(anything));
+    }
+  }, skip: driver == Driver.mysql ? null : 'mysql only');
+
+  test('mysql: a transaction of another pool nested inside', () async {
+    DBDriver a = SqlQueryBuilder().dbDriver;
+    DBDriver b = MysqlNativeDriver.fromConfig(
+      databaseConfig.connections['mysql']!,
+    );
+    try {
+      /// schema (pool a) disables inside a transaction of pool b
+      await a.transaction(() async {
+        await b.transaction(() async {
+          await schema.disableForeignKeyConstraints();
+          await rawOrphan(a);
+        });
+        await a.execute('DELETE FROM sh_post');
+      });
+      for (int i = 0; i < 5; i++) {
+        await expectLater(rawOrphan(a), throwsA(anything));
+      }
+    } finally {
+      await b.close();
+    }
+  }, skip: driver == Driver.mysql ? null : 'mysql only');
+
   test('sqlite: disable and enable outside a transaction', () async {
     await schema.disableForeignKeyConstraints();
     try {

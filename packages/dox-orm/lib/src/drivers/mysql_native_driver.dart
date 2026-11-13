@@ -8,7 +8,7 @@ import 'package:dox_orm/dox_orm.dart';
 /// zone key to find the open transaction of a pool
 const Symbol _txKey = #doxMysqlNativeTransaction;
 
-/// zone key to find the foreign key state of the open transaction. it is in
+/// zone key to find the foreign key state of the open transaction of each pool. it is in
 /// the zone, not in the driver, so any driver or Schema object on the same
 /// pool finds it.
 const Symbol _fkKey = #doxMysqlNativeForeignKeys;
@@ -195,8 +195,9 @@ class MysqlNativeDriver extends DBDriver {
 
   @override
   void trackForeignKeyChecks({required bool off}) {
-    _ForeignKeyState? state = Zone.current[_fkKey] as _ForeignKeyState?;
-    state?.off = off;
+    Map<MysqlNativePool, _ForeignKeyState>? states =
+        Zone.current[_fkKey] as Map<MysqlNativePool, _ForeignKeyState>?;
+    states?[pool]?.off = off;
   }
 
   /// turn the foreign key checks on again before the connection goes back
@@ -219,6 +220,8 @@ class MysqlNativeDriver extends DBDriver {
     _checkOpen();
     Map<MysqlNativePool, int>? open =
         Zone.current[_txKey] as Map<MysqlNativePool, int>?;
+    Map<MysqlNativePool, _ForeignKeyState>? openStates =
+        Zone.current[_fkKey] as Map<MysqlNativePool, _ForeignKeyState>?;
 
     /// a nested transaction uses a savepoint on the same connection
     if (open?[pool] != null) {
@@ -233,7 +236,7 @@ class MysqlNativeDriver extends DBDriver {
         callback,
         zoneValues: <Symbol, dynamic>{
           _txKey: <MysqlNativePool, int>{...?open, pool: tx},
-          _fkKey: fk,
+          _fkKey: <MysqlNativePool, _ForeignKeyState>{...?openStates, pool: fk},
           ...afterCommitZone(callbacks),
         },
       );

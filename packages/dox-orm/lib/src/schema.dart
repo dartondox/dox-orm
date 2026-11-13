@@ -145,7 +145,9 @@ class Schema {
   ///   of one pool connection, so it must run inside a transaction (a
   ///   migration runs in one), else a [StateError] is thrown. turn it on
   ///   again before the transaction ends. if you forget, Dox turns them on
-  ///   when the transaction ends (also after a rollback).
+  ///   when the transaction ends (also after a rollback). this is for the
+  ///   Schema helpers only: a raw `SET FOREIGN_KEY_CHECKS = 0` is not
+  ///   tracked.
   /// - postgres: `SET CONSTRAINTS ALL DEFERRED`. only keys
   ///   made `DEFERRABLE` (with raw sql) wait, and only until the commit.
   ///   it must run inside a transaction, else a [StateError] is thrown.
