@@ -10,5 +10,6 @@ environment:
 # Dart pub workspace: one `dart pub get` at the root links all packages
 # and writes one pubspec.lock.
 workspace:
+  - packages/dox-cache-database
   - packages/dox-migration
   - packages/dox-orm
