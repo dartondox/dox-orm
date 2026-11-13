@@ -449,6 +449,83 @@ DROP TABLE IF EXISTS mig_tag
         expect(await tableExists('mig_user'), false);
       });
 
+      if (driver == 'sqlite') {
+        void writeUserPost() {
+          writeMigration('2023_01_01_000000_create_user', '''
+-- up
+CREATE TABLE mig_user (id INTEGER PRIMARY KEY)
+
+-- down
+DROP TABLE IF EXISTS mig_user
+''');
+          writeMigration('2023_01_02_000000_create_post', '''
+-- up
+CREATE TABLE mig_post (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER,
+  FOREIGN KEY (user_id) REFERENCES mig_user (id)
+)
+
+-- down
+DROP TABLE IF EXISTS mig_post
+''');
+        }
+
+        test(
+          'old broken foreign key does not block other migrations',
+          () async {
+            writeUserPost();
+            await Migrator().migrate();
+            // a post that points to a user that does not exist
+            await db.execute('PRAGMA foreign_keys = OFF');
+            await db.execute(
+              'INSERT INTO mig_post (id, user_id) VALUES (1, 99)',
+            );
+            await db.execute('PRAGMA foreign_keys = ON');
+
+            writeMigration('2023_01_03_000000_create_tag', '''
+-- up
+CREATE TABLE mig_tag (id INTEGER PRIMARY KEY)
+
+-- down
+DROP TABLE IF EXISTS mig_tag
+''');
+            await Migrator().migrate();
+            expect(await tableExists('mig_tag'), true);
+
+            await Migrator().rollback(step: 1);
+            expect(await tableExists('mig_tag'), false);
+            await Migrator().migrate();
+            await Migrator().reset();
+            expect(await migrations(), isEmpty);
+            expect(await tableExists('mig_post'), false);
+          },
+        );
+
+        test('a migration that breaks a foreign key still fails', () async {
+          writeUserPost();
+          await Migrator().migrate();
+          writeMigration('2023_01_03_000000_break_fk', '''
+-- up
+INSERT INTO mig_post (id, user_id) VALUES (1, 99)
+
+-- down
+DELETE FROM mig_post
+''');
+          await expectLater(
+            Migrator().migrate(),
+            throwsA(
+              isA<MigrationException>().having(
+                (MigrationException e) => e.toString(),
+                'message',
+                contains('foreign key check failed'),
+              ),
+            ),
+          );
+          expect(await db.execute('SELECT * FROM mig_post'), isEmpty);
+        });
+      }
+
       test('change columns of tables with foreign keys', () async {
         List<MigrationEntry> list = <MigrationEntry>[
           ...dartMigrations,

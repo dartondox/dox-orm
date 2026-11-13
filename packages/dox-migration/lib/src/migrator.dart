@@ -324,14 +324,18 @@ class Migrator {
         d.isSqlite &&
         (await d.execute('PRAGMA foreign_keys')).first.values.first == 1;
 
+    /// broken keys that were there before this migration. they are not its fault.
+    Set<String> oldBroken = <String>{};
+
     Future<void> body() async {
+      if (sqliteFk) oldBroken = await _sqliteBrokenKeys(d);
       if (migration is Migration) {
         Schema schema = Schema(d.driver, flags);
         up ? await migration.up(schema) : await migration.down(schema);
       } else {
         await SqlExtMigration(migration as File).run(d, type);
       }
-      if (sqliteFk) await _checkSqliteForeignKeys(d);
+      if (sqliteFk) await _checkSqliteForeignKeys(d, oldBroken);
       await saveMigratedRecord(d, name, batch, type);
     }
 
@@ -396,10 +400,26 @@ class Migrator {
     }
   }
 
-  Future<void> _checkSqliteForeignKeys(DbConnection d) async {
-    List<Map<String, dynamic>> broken = await d.execute(
+  /// the broken foreign keys of the whole database, as a set of keys
+  Future<Set<String>> _sqliteBrokenKeys(DbConnection d) async {
+    List<Map<String, dynamic>> rows = await d.execute(
       'PRAGMA foreign_key_check',
     );
+    return rows.map(_fkKey).toSet();
+  }
+
+  String _fkKey(Map<String, dynamic> r) =>
+      '${r['table']}|${r['rowid']}|${r['parent']}|${r['fkid']}';
+
+  /// throws only for broken keys that are not in [oldBroken]
+  Future<void> _checkSqliteForeignKeys(
+    DbConnection d,
+    Set<String> oldBroken,
+  ) async {
+    List<Map<String, dynamic>> broken =
+        (await d.execute('PRAGMA foreign_key_check'))
+            .where((Map<String, dynamic> r) => !oldBroken.contains(_fkKey(r)))
+            .toList();
     if (broken.isNotEmpty) {
       throw StateError(
         'foreign key check failed: ${broken.first['table']} '
