@@ -41,6 +41,8 @@ jobs:
   # sqlite3 uses the SQLite of the runner (ci/system-sqlite.sh), so it
   # downloads nothing.
   # The migration tests run on postgres, mysql and sqlite in one run.
+  # The dox_cache_database tests run on SQLite, Postgres, MariaDB and
+  # MySQL 8.4 in one run.
   test:
     runs-on: ubuntu-latest
     steps:
