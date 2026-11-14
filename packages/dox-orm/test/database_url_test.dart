@@ -1,6 +1,48 @@
 import 'package:dox_orm/dox_orm.dart';
 import 'package:test/test.dart';
 
+/// secret is the password (or a part of it) in each url below
+const String secret = 'S3cretPw';
+
+/// bad urls with a secret in each part: user info, path, query, fragment
+const List<String> leakyUrls = <String>[
+  // bad port
+  'postgres://app:$secret@db.example.com:54x2/blog',
+  'mysql://app:$secret@db.example.com:port/blog',
+  // wrong scheme, or no scheme
+  'redis://app:$secret@db.example.com/0',
+  'postgres//app:$secret@db.example.com/blog',
+  'app:$secret@db.example.com/blog',
+  // a password with `/`, `@`, `#` or `?`
+  'postgres://app:$secret/x@db.example.com/blog',
+  'postgres://app:$secret@x@db.example.com:5x/blog',
+  'mysql://app:$secret#x@db.example.com/blog',
+  'mysql://app:$secret?x@db.example.com/blog',
+  // a secret in the query or the fragment
+  'postgres://h:x/d?password=$secret',
+  'postgres://u@h:x/d?sslpassword=$secret',
+  'postgres://u@h:x/d#$secret',
+  // no `//`: no host, the rest would be the database name
+  'postgres:user:$secret@host/db',
+  'mysql:user:$secret@host/db',
+];
+
+/// [run] throws a FormatException that names DATABASE_URL and has no
+/// part of the url after the scheme
+void expectSafeError(void Function() run, String url) {
+  Object? error;
+  try {
+    run();
+  } catch (e) {
+    error = e;
+  }
+  expect(error, isA<FormatException>(), reason: url);
+  String text = error.toString();
+  expect(text, contains('DATABASE_URL'), reason: url);
+  expect(text, isNot(contains(secret)), reason: url);
+  expect(text, isNot(contains('db.example.com')), reason: url);
+}
+
 void main() {
   group('ConnectionConfig.fromUrl', () {
     test('postgres with decoded user and password', () {
@@ -162,6 +204,56 @@ void main() {
         () => ConnectionConfig.fromUrl('redis://h'),
         throwsA(isA<FormatException>()),
       );
+    });
+
+    test('a bad url never shows a secret in the error', () {
+      for (String url in leakyUrls) {
+        expectSafeError(() => ConnectionConfig.fromUrl(url), url);
+      }
+    });
+
+    test('a server url with no // is an error, sqlite forms still work', () {
+      for (String url in <String>[
+        'postgres:db.example.com/blog',
+        'mysql:blog',
+        'mariadb:',
+      ]) {
+        expectSafeError(() => ConnectionConfig.fromUrl(url), url);
+      }
+      expect(ConnectionConfig.fromUrl('sqlite::memory:').database, ':memory:');
+      expect(ConnectionConfig.fromUrl('file:db/a.db').database, 'db/a.db');
+    });
+
+    test('the wrong scheme error does not echo a user name token', () {
+      for (String url in <String>[
+        'tok3nSecret:@host/db',
+        'tok3nSecret:pw@host/db',
+      ]) {
+        expectSafeError(() => ConnectionConfig.fromUrl(url), url);
+        Object? error;
+        try {
+          ConnectionConfig.fromUrl(url);
+        } catch (e) {
+          error = e;
+        }
+        // the scheme is lower case in the code, so check without case
+        expect(
+          error.toString().toLowerCase(),
+          isNot(contains('tok3nsecret')),
+          reason: url,
+        );
+      }
+    });
+
+    test('DatabaseConfig.getConnectionConfig gives the same safe error', () {
+      for (String url in leakyUrls) {
+        DatabaseConfig config = DatabaseConfig(
+          connection: 'postgres',
+          connections: <String, ConnectionConfig>{},
+          url: url,
+        );
+        expectSafeError(config.getConnectionConfig, url);
+      }
     });
   });
 

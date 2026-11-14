@@ -201,15 +201,55 @@ class ConnectionConfig {
       );
     }
 
+    // The url can hold a secret anywhere (user info, path, query,
+    // fragment), so no error shows any part of it after the scheme.
     Driver driver = switch (scheme) {
       'postgres' || 'postgresql' => Driver.postgres,
       'mysql' || 'mariadb' => Driver.mysql,
       _ => throw FormatException(
-        'database url must start with postgres://, postgresql://, mysql://, '
+        'DATABASE_URL must start with postgres://, postgresql://, mysql://, '
         'mariadb://, sqlite: or file:',
-        scheme,
       ),
     };
+    if (!url.startsWith('//', colon + 1)) {
+      // without `//` there is no host, and the rest would be the
+      // database name
+      throw FormatException(
+        'DATABASE_URL has no host. Use $scheme://user:password@host/database',
+      );
+    }
+    try {
+      return _fromServerUrl(
+        url,
+        driver,
+        debug: debug,
+        printer: printer,
+        extra: extra,
+        logRedact: logRedact,
+        slowQueryMs: slowQueryMs,
+      );
+    } on FormatException catch (e) {
+      // the error of Uri holds the whole url: only a fixed text here
+      throw FormatException(
+        e.message.toLowerCase().contains('port')
+            ? 'DATABASE_URL has a bad port'
+            : 'DATABASE_URL is not a valid url',
+      );
+    } on ArgumentError {
+      // eg. a bad `%` in the user or password
+      throw FormatException('DATABASE_URL is not a valid url');
+    }
+  }
+
+  static ConnectionConfig _fromServerUrl(
+    String url,
+    Driver driver, {
+    required bool debug,
+    required QueryPrinter? printer,
+    required Map<String, dynamic> extra,
+    required List<String> logRedact,
+    required int? slowQueryMs,
+  }) {
     Uri uri = Uri.parse(url);
     Map<String, dynamic> options = <String, dynamic>{...extra};
     String host = Uri.decodeComponent(uri.host);

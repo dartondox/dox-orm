@@ -18,7 +18,9 @@ class DatabaseConfig {
   /// read hosts with `sticky` (see [ConnectionConfig.read]): the url is
   /// the write host then. Other named connections do not change.
   ///
-  /// When not given, it is the `DATABASE_URL` environment variable.
+  /// When not given, it is the `DATABASE_URL` environment variable only,
+  /// not the `.env` file. An app passes `url: env.databaseUrl`, so it
+  /// also reads `.env`, the same as `dox migrate`.
   /// An empty text means no url.
   String? url;
 

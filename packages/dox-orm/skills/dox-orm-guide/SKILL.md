@@ -418,6 +418,8 @@ The tests use the database of `.env`. Put test values in `.env.testing`, like `D
 The connections are in `lib/config/database.dart`. `DB_CONNECTION` in `.env` picks one:
 `sqlite`, `postgres` or `mysql` (also MariaDB). The other keys are `DB_HOST`, `DB_PORT`,
 `DB_USERNAME`, `DB_PASSWORD` and `DB_NAME` (for SQLite: the file path).
+`DATABASE_URL` wins over the `DB_*` keys when it is set. Pass it with `url: env.databaseUrl` in
+`DatabaseConfig`, so the app reads it from `.env` too, the same as `dox migrate`.
 `lib/providers/orm_provider.dart` starts the ORM in every isolate with
 `SqlQueryBuilder.initializeWithDatabaseConfig(databaseConfig)`.
 
