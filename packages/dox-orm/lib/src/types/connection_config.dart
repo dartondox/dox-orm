@@ -208,7 +208,7 @@ class ConnectionConfig {
       'mysql' || 'mariadb' => Driver.mysql,
       _ => throw FormatException(
         'DATABASE_URL must start with postgres://, postgresql://, mysql://, '
-        'mariadb://, sqlite: or file:${_schemeHint(scheme)}',
+        'mariadb://, sqlite: or file:',
       ),
     };
     if (!url.startsWith('//', colon + 1)) {
@@ -240,14 +240,6 @@ class ConnectionConfig {
       throw FormatException('DATABASE_URL is not a valid url');
     }
   }
-
-  /// ` (it starts with x:)` when [scheme] is a plain scheme name, else
-  /// nothing: text before the first `:` with other characters can be a
-  /// part of the user info
-  static String _schemeHint(String scheme) =>
-      RegExp(r'^[a-z][a-z0-9+.-]{0,19}$').hasMatch(scheme)
-      ? ' (it starts with $scheme:)'
-      : '';
 
   static ConnectionConfig _fromServerUrl(
     String url,

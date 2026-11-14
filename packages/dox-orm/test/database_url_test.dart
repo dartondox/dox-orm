@@ -224,6 +224,27 @@ void main() {
       expect(ConnectionConfig.fromUrl('file:db/a.db').database, 'db/a.db');
     });
 
+    test('the wrong scheme error does not echo a user name token', () {
+      for (String url in <String>[
+        'tok3nSecret:@host/db',
+        'tok3nSecret:pw@host/db',
+      ]) {
+        expectSafeError(() => ConnectionConfig.fromUrl(url), url);
+        Object? error;
+        try {
+          ConnectionConfig.fromUrl(url);
+        } catch (e) {
+          error = e;
+        }
+        // the scheme is lower case in the code, so check without case
+        expect(
+          error.toString().toLowerCase(),
+          isNot(contains('tok3nsecret')),
+          reason: url,
+        );
+      }
+    });
+
     test('DatabaseConfig.getConnectionConfig gives the same safe error', () {
       for (String url in leakyUrls) {
         DatabaseConfig config = DatabaseConfig(
