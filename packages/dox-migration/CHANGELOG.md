@@ -1,4 +1,4 @@
-## Unreleased
+## 3.2.1
 
 - Fix: `loadEnv` (the `.env` reader of the Migrator and the `dox` CLI) read some values wrong. `APP_ENV=production # live` gave `production # live`, so the CLI did not see production and did not ask before `migrate:fresh`. `export KEY=value` was not read. Every quote in a value was removed, so `it's"q` became `itsq`. Now it reads a value like the app does: `export ` is allowed, a `#` after a space or tab starts a comment, `KEY=#fff` keeps the `#`, and only one pair of quotes around the value is removed. Comment lines, `\r\n` line ends and a BOM are fine. A real environment variable still wins over `.env`.
 - Fix: a bad `DATABASE_URL` no longer shows its password in the error (see dox_orm).
