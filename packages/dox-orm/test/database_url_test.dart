@@ -163,6 +163,33 @@ void main() {
         throwsA(isA<FormatException>()),
       );
     });
+
+    test('a bad url never shows the password in the error', () {
+      const String secret = 'S3cretPw';
+      for (String url in <String>[
+        // bad port
+        'postgres://app:$secret@db.example.com:54x2/blog',
+        'mysql://app:$secret@db.example.com:port/blog',
+        // wrong scheme
+        'redis://app:$secret@db.example.com/0',
+        'postgres//app:$secret@db.example.com/blog',
+        // a password with `/`, `@`, `#` or `?`
+        'postgres://app:$secret/x@db.example.com/blog',
+        'postgres://app:$secret@x@db.example.com:5x/blog',
+        'mysql://app:$secret#x@db.example.com/blog',
+        'mysql://app:$secret?x@db.example.com/blog',
+      ]) {
+        Object? error;
+        try {
+          ConnectionConfig.fromUrl(url);
+        } catch (e) {
+          error = e;
+        }
+        expect(error, isNotNull, reason: url);
+        expect(error, isA<FormatException>(), reason: url);
+        expect(error.toString(), isNot(contains(secret)), reason: url);
+      }
+    });
   });
 
   group('DatabaseConfig url', () {

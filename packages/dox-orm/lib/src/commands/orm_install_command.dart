@@ -128,6 +128,11 @@ class OrmInstallCommand extends Command {
   /// the getters of `AppEnv` that `lib/config/database.dart` reads
   static List<String> envGetters(String driver) {
     return <String>[
+      '/// development, staging or production. Not set: production.\n'
+          "  String get appEnv => 'production';",
+      '/// a database url, eg. `postgres://user:pass@host:5432/db`.\n'
+          '  /// When set, it wins over the DB_* keys (see DatabaseConfig.url).\n'
+          '  String? get databaseUrl;',
       '/// sqlite, postgres or mysql\n'
           "  String get dbConnection => '$driver';",
       '/// the database name. For SQLite: the file path.\n'
@@ -174,9 +179,17 @@ import 'package:$app/config/env.dart';
 
 /// Print every SQL query only in development.
 /// Printing each query costs time, so it is off in production.
-bool _debug = env.isDevelopment;
+/// Not `appConfig`: config/app.dart imports this file through the
+/// generated container, so reading it here makes an import cycle.
+bool _debug = env.appEnv == 'development';
 
 DatabaseConfig databaseConfig = DatabaseConfig(
+  /// Database url
+  /// -------------------------------
+  /// `DATABASE_URL` from `.env` or the environment, the same one that
+  /// `dox migrate` reads. When it is set, it wins over the DB_* keys.
+  url: env.databaseUrl,
+
   /// Connection
   /// -------------------------------
   /// The connection to use. It is one key of `connections` below.

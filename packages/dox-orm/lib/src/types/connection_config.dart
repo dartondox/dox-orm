@@ -206,10 +206,49 @@ class ConnectionConfig {
       'mysql' || 'mariadb' => Driver.mysql,
       _ => throw FormatException(
         'database url must start with postgres://, postgresql://, mysql://, '
-        'mariadb://, sqlite: or file:',
-        scheme,
+        'mariadb://, sqlite: or file: (${_masked(url)})',
       ),
     };
+    try {
+      return _fromServerUrl(
+        url,
+        driver,
+        debug: debug,
+        printer: printer,
+        extra: extra,
+        logRedact: logRedact,
+        slowQueryMs: slowQueryMs,
+      );
+    } on FormatException catch (e) {
+      // the error of Uri holds the whole url, password too. Show only a
+      // copy without the user and password.
+      throw FormatException(
+        'Invalid database url: ${e.message}: ${_masked(url)}',
+      );
+    } on ArgumentError {
+      // eg. a bad `%` in the password
+      throw FormatException('Invalid database url: ${_masked(url)}');
+    }
+  }
+
+  /// [url] with the part before the last `@` (user and password) as `***`
+  static String _masked(String url) {
+    int at = url.lastIndexOf('@');
+    if (at < 0) return url;
+    int start = url.indexOf('://');
+    start = start < 0 || start > at ? 0 : start + 3;
+    return '${url.substring(0, start)}***${url.substring(at)}';
+  }
+
+  static ConnectionConfig _fromServerUrl(
+    String url,
+    Driver driver, {
+    required bool debug,
+    required QueryPrinter? printer,
+    required Map<String, dynamic> extra,
+    required List<String> logRedact,
+    required int? slowQueryMs,
+  }) {
     Uri uri = Uri.parse(url);
     Map<String, dynamic> options = <String, dynamic>{...extra};
     String host = Uri.decodeComponent(uri.host);
