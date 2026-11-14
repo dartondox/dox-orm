@@ -1,4 +1,4 @@
-## Unreleased
+## 3.2.1
 
 - Fix: a bad database url (eg. a bad port, or a `/`, `@`, `#` or `?` in the password) threw a `FormatException` with the whole url in it, password too. So the password could end up in the logs. The error now has a fixed text that names `DATABASE_URL` and the problem (bad url, bad port, wrong scheme). It shows no part of the url, not even the scheme: the text before the first `:` can be a user name or a token.
 - Fix: a Postgres or MySQL url with no `//`, like `postgres:user:pass@host/db`, was read with the whole rest as the database name, so a later server error could show the password. It is now an error: `DATABASE_URL has no host`. The `sqlite:` and `file:` forms without `//` still work.

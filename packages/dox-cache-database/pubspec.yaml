@@ -1,6 +1,6 @@
 name: dox_cache_database
 description: A database cache store for dox_cache. Shares cache, locks and sessions between servers on SQLite, Postgres or MySQL, with no Redis.
-version: 3.2.0
+version: 3.2.1
 repository: https://github.com/dartondox/dox-orm
 homepage: https://dartondox.dev
 
@@ -12,7 +12,7 @@ dependencies:
   dox_annotation: ^3.2.0
   dox_cache: ^3.2.0
   # In this workspace. bin/update_versions.sh sets it to the shared version.
-  dox_orm: ^3.2.0
+  dox_orm: ^3.2.1
 
 dev_dependencies:
   lints: ^6.1.0

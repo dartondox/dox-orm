@@ -1,3 +1,7 @@
+## 3.2.1
+
+No changes.
+
 ## 3.2.0
 
 - First version. `DatabaseCacheDriver` is a dox_cache store that keeps cache items, locks and sessions in a database table, on SQLite, Postgres, MySQL and MariaDB. Register it with `Dox().cache.extend('database', DatabaseCacheDriverFactory(encrypter))`. Store options: `table`, `connection`, `prefix`, `encrypt`. `prune()` deletes expired rows.
