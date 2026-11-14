@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'dart:convert';
 import 'dart:io';
 
@@ -6,6 +7,13 @@ import 'package:dox_orm/dox_orm.dart' as orm;
 import 'package:test/test.dart';
 
 import 'dtos/member.dto.dart';
+
+/// A new key for each run. A fixed key in a public repo is a public key,
+/// and dox_core refuses public sample keys outside development and tests.
+final String _testKey = List<String>.generate(
+  32,
+  (int i) => Random.secure().nextInt(36).toRadixString(36),
+).join();
 
 /// `@Unique` and `@Exists` on a DTO, in a real Dox app: the body of a
 /// request is checked against the database. SQLite in memory.
@@ -88,7 +96,7 @@ void main() {
     }
     Dox().initialize(
       AppConfig(
-        appKey: '4HyiSrq4N5Nfg6bOadIhbFEI8zbUkpxt',
+        appKey: _testKey,
         // the OS picks a free port, so test files can run in parallel
         serverPort: 0,
         totalIsolate: 1,
