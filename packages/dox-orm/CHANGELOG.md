@@ -1,6 +1,7 @@
 ## Unreleased
 
-- Fix: a bad database url (eg. a bad port, or a `/`, `@`, `#` or `?` in the password) threw a `FormatException` with the whole url in it, password too. So the password could end up in the logs. The error now shows the url with `***` in place of the user and password.
+- Fix: a bad database url (eg. a bad port, or a `/`, `@`, `#` or `?` in the password) threw a `FormatException` with the whole url in it, password too. So the password could end up in the logs. The error now has a fixed text that names `DATABASE_URL` and the problem (bad url, bad port, wrong scheme), and no part of the url after the scheme.
+- Fix: a Postgres or MySQL url with no `//`, like `postgres:user:pass@host/db`, was read with the whole rest as the database name, so a later server error could show the password. It is now an error: `DATABASE_URL has no host`. The `sqlite:` and `file:` forms without `//` still work.
 - Fix: `dox orm:install` wrote `bool _debug = env.isDevelopment;` in `lib/config/database.dart`, but it did not add that getter, so an app without it did not compile. It now writes `appConfig.isDevelopment` and imports `config/app.dart`, the same as the app template. It never adds an `isDevelopment` getter to `AppEnv`. Needs the next dox_core release (`AppConfig.isDevelopment`).
 - Fix: the app read `DATABASE_URL` only from the real environment, but `dox migrate` also reads it from `.env`. With `DATABASE_URL` only in `.env`, the migrations ran on one database and the app on another. `dox orm:install` now writes `url: env.databaseUrl` and adds `String? get databaseUrl;` to `AppEnv`. An app made before this adds the same two lines by hand.
 

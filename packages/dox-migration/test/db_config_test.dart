@@ -4,6 +4,27 @@ import 'package:test/test.dart';
 
 void main() {
   group('DbConnection.config', () {
+    test('a bad DATABASE_URL never shows its secret in the error', () {
+      const String secret = 'S3cretPw';
+      for (String url in <String>[
+        'postgres://app:$secret@db.example.com:54x2/blog',
+        'postgres://h:x/d?password=$secret',
+        'postgres://u@h:x/d#$secret',
+        'postgres:user:$secret@host/db',
+        'redis://app:$secret@db.example.com/0',
+      ]) {
+        Object? error;
+        try {
+          DbConnection.config(<String, String>{'DATABASE_URL': url});
+        } catch (e) {
+          error = e;
+        }
+        expect(error, isA<FormatException>(), reason: url);
+        expect(error.toString(), contains('DATABASE_URL'), reason: url);
+        expect(error.toString(), isNot(contains(secret)), reason: url);
+      }
+    });
+
     test('DATABASE_URL wins over DB_* keys', () {
       ConnectionConfig c = DbConnection.config(<String, String>{
         'DB_CONNECTION': 'mysql',

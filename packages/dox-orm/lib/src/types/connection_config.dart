@@ -201,14 +201,23 @@ class ConnectionConfig {
       );
     }
 
+    // The url can hold a secret anywhere (user info, path, query,
+    // fragment), so no error shows any part of it after the scheme.
     Driver driver = switch (scheme) {
       'postgres' || 'postgresql' => Driver.postgres,
       'mysql' || 'mariadb' => Driver.mysql,
       _ => throw FormatException(
-        'database url must start with postgres://, postgresql://, mysql://, '
-        'mariadb://, sqlite: or file: (${_masked(url)})',
+        'DATABASE_URL must start with postgres://, postgresql://, mysql://, '
+        'mariadb://, sqlite: or file:${_schemeHint(scheme)}',
       ),
     };
+    if (!url.startsWith('//', colon + 1)) {
+      // without `//` there is no host, and the rest would be the
+      // database name
+      throw FormatException(
+        'DATABASE_URL has no host. Use $scheme://user:password@host/database',
+      );
+    }
     try {
       return _fromServerUrl(
         url,
@@ -220,25 +229,25 @@ class ConnectionConfig {
         slowQueryMs: slowQueryMs,
       );
     } on FormatException catch (e) {
-      // the error of Uri holds the whole url, password too. Show only a
-      // copy without the user and password.
+      // the error of Uri holds the whole url: only a fixed text here
       throw FormatException(
-        'Invalid database url: ${e.message}: ${_masked(url)}',
+        e.message.toLowerCase().contains('port')
+            ? 'DATABASE_URL has a bad port'
+            : 'DATABASE_URL is not a valid url',
       );
     } on ArgumentError {
-      // eg. a bad `%` in the password
-      throw FormatException('Invalid database url: ${_masked(url)}');
+      // eg. a bad `%` in the user or password
+      throw FormatException('DATABASE_URL is not a valid url');
     }
   }
 
-  /// [url] with the part before the last `@` (user and password) as `***`
-  static String _masked(String url) {
-    int at = url.lastIndexOf('@');
-    if (at < 0) return url;
-    int start = url.indexOf('://');
-    start = start < 0 || start > at ? 0 : start + 3;
-    return '${url.substring(0, start)}***${url.substring(at)}';
-  }
+  /// ` (it starts with x:)` when [scheme] is a plain scheme name, else
+  /// nothing: text before the first `:` with other characters can be a
+  /// part of the user info
+  static String _schemeHint(String scheme) =>
+      RegExp(r'^[a-z][a-z0-9+.-]{0,19}$').hasMatch(scheme)
+      ? ' (it starts with $scheme:)'
+      : '';
 
   static ConnectionConfig _fromServerUrl(
     String url,
