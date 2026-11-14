@@ -1,7 +1,7 @@
 ## Unreleased
 
 - Fix: a bad database url (eg. a bad port, or a `/`, `@`, `#` or `?` in the password) threw a `FormatException` with the whole url in it, password too. So the password could end up in the logs. The error now shows the url with `***` in place of the user and password.
-- Fix: `dox orm:install` wrote `bool _debug = env.isDevelopment;` in `lib/config/database.dart`, but it did not add that getter, so an app without it did not compile. It now writes `env.appEnv == 'development'` and adds the `appEnv` getter to `AppEnv` when it is missing. It does not read `appConfig`: `config/app.dart` imports `config/database.dart` through the generated container, so that is an import cycle.
+- Fix: `dox orm:install` wrote `bool _debug = env.isDevelopment;` in `lib/config/database.dart`, but it did not add that getter, so an app without it did not compile. It now writes `appConfig.isDevelopment` and imports `config/app.dart`, the same as the app template. It never adds an `isDevelopment` getter to `AppEnv`. Needs the next dox_core release (`AppConfig.isDevelopment`).
 - Fix: the app read `DATABASE_URL` only from the real environment, but `dox migrate` also reads it from `.env`. With `DATABASE_URL` only in `.env`, the migrations ran on one database and the app on another. `dox orm:install` now writes `url: env.databaseUrl` and adds `String? get databaseUrl;` to `AppEnv`. An app made before this adds the same two lines by hand.
 
 ## 3.2.0

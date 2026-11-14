@@ -128,8 +128,6 @@ class OrmInstallCommand extends Command {
   /// the getters of `AppEnv` that `lib/config/database.dart` reads
   static List<String> envGetters(String driver) {
     return <String>[
-      '/// development, staging or production. Not set: production.\n'
-          "  String get appEnv => 'production';",
       '/// a database url, eg. `postgres://user:pass@host:5432/db`.\n'
           '  /// When set, it wins over the DB_* keys (see DatabaseConfig.url).\n'
           '  String? get databaseUrl;',
@@ -174,14 +172,13 @@ class OrmInstallCommand extends Command {
   /// `lib/config/database.dart`, the same as the app template
   static String databaseConfig(String app) {
     return '''
-import 'package:dox_orm/dox_orm.dart';
+import 'package:$app/config/app.dart';
 import 'package:$app/config/env.dart';
+import 'package:dox_orm/dox_orm.dart';
 
 /// Print every SQL query only in development.
 /// Printing each query costs time, so it is off in production.
-/// Not `appConfig`: config/app.dart imports this file through the
-/// generated container, so reading it here makes an import cycle.
-bool _debug = env.appEnv == 'development';
+bool _debug = appConfig.isDevelopment;
 
 DatabaseConfig databaseConfig = DatabaseConfig(
   /// Database url

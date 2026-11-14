@@ -70,17 +70,15 @@ void main() {
     expect(read('pubspec.yaml'), contains('dox_mysql_native:\n'));
   });
 
-  test('debug and DATABASE_URL come from the env keys of AppEnv', () async {
+  test('debug comes from appConfig, DATABASE_URL from AppEnv', () async {
     await install(<String>[]);
     String database = read('lib/config/database.dart');
     String env = read('lib/config/env.dart');
-    // config/app.dart reaches config/database.dart through the generated
-    // container, so database.dart does not read appConfig
-    expect(database, contains("bool _debug = env.appEnv == 'development';"));
-    expect(database, isNot(contains('isDevelopment')));
-    expect(database, isNot(contains('package:my_app/config/app.dart')));
+    // computed values come from config, the same as the app template
+    expect(database, contains("import 'package:my_app/config/app.dart';"));
+    expect(database, contains('bool _debug = appConfig.isDevelopment;'));
+    expect(database, isNot(contains('env.isDevelopment')));
     expect(env, isNot(contains('isDevelopment')));
-    expect(env, contains("String get appEnv => 'production';"));
     // the app reads DATABASE_URL from .env too, like `dox migrate`
     expect(database, contains('url: env.databaseUrl,'));
     expect(env, contains('String? get databaseUrl;'));
@@ -96,7 +94,6 @@ void main() {
     File('${root.path}/lib/config/env.dart').writeAsStringSync(mine);
     await install(<String>[]);
     String env = read('lib/config/env.dart');
-    expect(RegExp(r'get appEnv\b').allMatches(env), hasLength(1));
     expect(RegExp(r'get databaseUrl\b').allMatches(env), hasLength(1));
     expect(env, contains("bool get isDevelopment => appEnv == 'development';"));
   });
