@@ -54,15 +54,18 @@ class LetterGenerator extends Model<Letter> with SoftDeletes<Letter> {
     ..title = m['title'] as String?
     ..citizenId = m['citizen_id'] as int?
     ..writerRef = m['writer_ref'] as String?
-    ..deletedAt = m['deleted_at'] is DateTime?
-        ? m['deleted_at'] as DateTime?
-        : DateTime.parse(m['deleted_at'] as String)
-    ..createdAt = m['created_at'] is DateTime?
-        ? m['created_at'] as DateTime?
-        : DateTime.parse(m['created_at'] as String)
-    ..updatedAt = m['updated_at'] is DateTime?
-        ? m['updated_at'] as DateTime?
-        : DateTime.parse(m['updated_at'] as String);
+    ..deletedAt = switch (m['deleted_at']) {
+      DateTime? v => v,
+      Object? v => DateTime.parse(v as String),
+    }
+    ..createdAt = switch (m['created_at']) {
+      DateTime? v => v,
+      Object? v => DateTime.parse(v as String),
+    }
+    ..updatedAt = switch (m['updated_at']) {
+      DateTime? v => v,
+      Object? v => DateTime.parse(v as String),
+    };
   @override
   Map<String, dynamic> columnsToMap() {
     Letter instance = this as Letter;
@@ -77,6 +80,28 @@ class LetterGenerator extends Model<Letter> with SoftDeletes<Letter> {
     };
 
     return map;
+  }
+
+  @override
+  dynamic $columnValue(String column) {
+    Letter instance = this as Letter;
+    switch (column) {
+      case 'id':
+        return instance.id;
+      case 'title':
+        return instance.title;
+      case 'citizen_id':
+        return instance.citizenId;
+      case 'writer_ref':
+        return instance.writerRef;
+      case 'deleted_at':
+        return instance.deletedAt?.toIso8601String();
+      case 'created_at':
+        return instance.createdAt?.toIso8601String();
+      case 'updated_at':
+        return instance.updatedAt?.toIso8601String();
+    }
+    return super.$columnValue(column);
   }
 
   @override

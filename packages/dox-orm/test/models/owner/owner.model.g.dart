@@ -99,6 +99,18 @@ class OwnerGenerator extends Model<Owner> {
   }
 
   @override
+  dynamic $columnValue(String column) {
+    Owner instance = this as Owner;
+    switch (column) {
+      case 'id':
+        return instance.id;
+      case 'name':
+        return instance.name;
+    }
+    return super.$columnValue(column);
+  }
+
+  @override
   Map<String, dynamic> convertToMap(dynamic i) {
     Owner instance = i as Owner;
     Map<String, dynamic> map = instance.columnsToMap();
@@ -212,6 +224,20 @@ class PetGenerator extends Model<Pet> {
   }
 
   @override
+  dynamic $columnValue(String column) {
+    Pet instance = this as Pet;
+    switch (column) {
+      case 'id':
+        return instance.id;
+      case 'name':
+        return instance.name;
+      case 'owner_id':
+        return instance.ownerId;
+    }
+    return super.$columnValue(column);
+  }
+
+  @override
   Map<String, dynamic> convertToMap(dynamic i) {
     Pet instance = i as Pet;
     Map<String, dynamic> map = instance.columnsToMap();
@@ -305,6 +331,18 @@ class ClubGenerator extends Model<Club> {
     };
 
     return map;
+  }
+
+  @override
+  dynamic $columnValue(String column) {
+    Club instance = this as Club;
+    switch (column) {
+      case 'id':
+        return instance.id;
+      case 'name':
+        return instance.name;
+    }
+    return super.$columnValue(column);
   }
 
   @override

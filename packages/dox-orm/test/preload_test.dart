@@ -311,5 +311,99 @@ void main() async {
       expect(list[0].remarkedArticles.single.remarks, hasLength(2));
       expect(list[1].remarkedArticles.single.remarks.single.body, 'z');
     });
+
+    test(
+      'rows share the preload lists, a later preload() copies them',
+      () async {
+        Writer q = Writer()
+          ..preload('articles')
+          ..preload('articles.remarks');
+        List<Writer> list = await q.orderBy('id').get();
+        expect(list, hasLength(2));
+
+        /// the rows read the same list, no copy for each row
+        expect(identical(list[0].getPreload(), list[1].getPreload()), isTrue);
+        expect(list[0].getPreload(), <String>['articles']);
+
+        /// a preload() on one row does not change the other row or the query
+        list[0].preload('topics');
+        expect(list[0].getPreload(), <String>['articles', 'topics']);
+        expect(list[1].getPreload(), <String>['articles']);
+        expect(q.getPreload(), <String>['articles']);
+
+        /// a preload() on the query does not change the rows
+        q.preload('firstArticle');
+        expect(q.getPreload(), <String>['articles', 'firstArticle']);
+        expect(list[1].getPreload(), <String>['articles']);
+        expect(list[1].toJson().containsKey('first_article'), isFalse);
+
+        /// toJson() of each row has the relations of its own preload()
+        await list[0].reload();
+        Map<String, dynamic> json = list[0].toJson();
+        expect(json.keys, containsAll(<String>['articles', 'topics']));
+        expect(
+          (json['articles'] as List<dynamic>).first['remarks'],
+          isNotEmpty,
+        );
+        expect(list[1].toJson().containsKey('topics'), isFalse);
+
+        /// the query still runs with its own preloads
+        List<Writer> again = await q.orderBy('id').get();
+        expect(again[0].toJson().keys, containsAll(<String>['first_article']));
+        expect(again[0].toJson().containsKey('topics'), isFalse);
+      },
+    );
+
+    test('a key column of a relation reads like columnsToMap()', () async {
+      Article a = (await Article().preload('writer').find(1))!;
+      for (String column in a.tableColumns) {
+        expect(
+          a.$columnValue(column),
+          a.columnsToMap()[column],
+          reason: column,
+        );
+      }
+      expect(a.$columnValue('unknown'), isNull);
+      expect(a.writer?.name, 'ada');
+
+      /// a date column gives the same string as columnsToMap()
+      a.deletedAt = DateTime.utc(2024, 1, 2);
+      expect(a.$columnValue('deleted_at'), '2024-01-02T00:00:00.000Z');
+    });
+
+    test(r'a model with no $columnValue switch uses columnsToMap()', () {
+      _OldKeyRow row = _OldKeyRow()..title = 't';
+      expect(row.$columnValue('title'), 't');
+      expect(row.$columnValue('id'), isNull);
+    });
   });
+}
+
+/// a hand-written model like one from an old dox_builder: it has no
+/// `$columnValue` switch, so the default of Model reads columnsToMap()
+class _OldKeyRow extends Model<_OldKeyRow> {
+  String? title;
+
+  @override
+  Map<String, dynamic> get timestampsColumn => const <String, dynamic>{
+    'created_at': null,
+    'updated_at': null,
+  };
+
+  @override
+  List<String> get tableColumns => const <String>['id', 'title'];
+
+  @override
+  _OldKeyRow fromMap(Map<String, dynamic> m) =>
+      _OldKeyRow()..title = m['title'] as String?;
+
+  @override
+  Map<String, dynamic> columnsToMap() => <String, dynamic>{
+    'id': tempIdValue,
+    'title': title,
+  };
+
+  @override
+  Map<String, dynamic> convertToMap(dynamic i) =>
+      (i as _OldKeyRow).columnsToMap();
 }

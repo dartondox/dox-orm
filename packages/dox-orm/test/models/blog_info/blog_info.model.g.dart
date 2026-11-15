@@ -70,12 +70,14 @@ class BlogInfoGenerator extends Model<BlogInfo> {
     ..id = m['id'] as int?
     ..info = m['info'] as Map<String, dynamic>?
     ..blogId = m['blog_id'] as int?
-    ..createdAt = m['created_at'] is DateTime?
-        ? m['created_at'] as DateTime?
-        : DateTime.parse(m['created_at'] as String)
-    ..updatedAt = m['updated_at'] is DateTime?
-        ? m['updated_at'] as DateTime?
-        : DateTime.parse(m['updated_at'] as String);
+    ..createdAt = switch (m['created_at']) {
+      DateTime? v => v,
+      Object? v => DateTime.parse(v as String),
+    }
+    ..updatedAt = switch (m['updated_at']) {
+      DateTime? v => v,
+      Object? v => DateTime.parse(v as String),
+    };
   @override
   Map<String, dynamic> columnsToMap() {
     BlogInfo instance = this as BlogInfo;
@@ -88,6 +90,24 @@ class BlogInfoGenerator extends Model<BlogInfo> {
     };
 
     return map;
+  }
+
+  @override
+  dynamic $columnValue(String column) {
+    BlogInfo instance = this as BlogInfo;
+    switch (column) {
+      case 'id':
+        return instance.id;
+      case 'info':
+        return instance.info;
+      case 'blog_id':
+        return instance.blogId;
+      case 'created_at':
+        return instance.createdAt?.toIso8601String();
+      case 'updated_at':
+        return instance.updatedAt?.toIso8601String();
+    }
+    return super.$columnValue(column);
   }
 
   @override

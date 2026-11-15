@@ -56,6 +56,18 @@ class SettingGenerator extends Model<Setting> {
   }
 
   @override
+  dynamic $columnValue(String column) {
+    Setting instance = this as Setting;
+    switch (column) {
+      case 'id':
+        return instance.id;
+      case 'name':
+        return instance.name;
+    }
+    return super.$columnValue(column);
+  }
+
+  @override
   Map<String, dynamic> convertToMap(dynamic i) {
     Setting instance = i as Setting;
     Map<String, dynamic> map = instance.columnsToMap();

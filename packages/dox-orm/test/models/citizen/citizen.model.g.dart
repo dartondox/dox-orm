@@ -80,15 +80,18 @@ class CitizenGenerator extends Model<Citizen> with SoftDeletes<Citizen> {
     ..homeCode = m['home_code'] as String?
     ..ref = m['ref'] as String?
     ..managerId = m['manager_id'] as int?
-    ..deletedAt = m['deleted_at'] is DateTime?
-        ? m['deleted_at'] as DateTime?
-        : DateTime.parse(m['deleted_at'] as String)
-    ..createdAt = m['created_at'] is DateTime?
-        ? m['created_at'] as DateTime?
-        : DateTime.parse(m['created_at'] as String)
-    ..updatedAt = m['updated_at'] is DateTime?
-        ? m['updated_at'] as DateTime?
-        : DateTime.parse(m['updated_at'] as String);
+    ..deletedAt = switch (m['deleted_at']) {
+      DateTime? v => v,
+      Object? v => DateTime.parse(v as String),
+    }
+    ..createdAt = switch (m['created_at']) {
+      DateTime? v => v,
+      Object? v => DateTime.parse(v as String),
+    }
+    ..updatedAt = switch (m['updated_at']) {
+      DateTime? v => v,
+      Object? v => DateTime.parse(v as String),
+    };
   @override
   Map<String, dynamic> columnsToMap() {
     Citizen instance = this as Citizen;
@@ -105,6 +108,32 @@ class CitizenGenerator extends Model<Citizen> with SoftDeletes<Citizen> {
     };
 
     return map;
+  }
+
+  @override
+  dynamic $columnValue(String column) {
+    Citizen instance = this as Citizen;
+    switch (column) {
+      case 'id':
+        return instance.id;
+      case 'name':
+        return instance.name;
+      case 'country_id':
+        return instance.countryId;
+      case 'home_code':
+        return instance.homeCode;
+      case 'ref':
+        return instance.ref;
+      case 'manager_id':
+        return instance.managerId;
+      case 'deleted_at':
+        return instance.deletedAt?.toIso8601String();
+      case 'created_at':
+        return instance.createdAt?.toIso8601String();
+      case 'updated_at':
+        return instance.updatedAt?.toIso8601String();
+    }
+    return super.$columnValue(column);
   }
 
   @override
