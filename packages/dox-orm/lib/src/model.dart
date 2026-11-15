@@ -710,7 +710,7 @@ class Model<T> extends QueryBuilder<T> {
     if (count == 0) return count;
 
     Map<String, dynamic> values = <String, dynamic>{...extra};
-    dynamic old = columnsToMap()[column];
+    dynamic old = $columnValue(column);
     if (old is num) {
       /// int + int stays an int, so an int field takes it
       values[column] = up ? old + amount : old - amount;
@@ -1372,8 +1372,13 @@ class Model<T> extends QueryBuilder<T> {
   /// relation) keeps that value in the key: the pivot values are then
   /// only in [ManyToManyWrites.pivot].
   Map<String, dynamic> toJson() {
-    Map<String, dynamic> data = toMap(removeHiddenField: true);
-    if (manyToManyRow[this] != null && !data.containsKey('pivot')) {
+    /// the hidden fields are removed once, at the end. A hidden `pivot`
+    /// column stays in the map until then, so the pivot values are not
+    /// added in its place, and the end result is the same.
+    Map<String, dynamic> data = toMap();
+    if (manyToManyRowMade &&
+        manyToManyRow[this] != null &&
+        !data.containsKey('pivot')) {
       data['pivot'] = <String, dynamic>{
         for (MapEntry<String, dynamic> e in pivot.entries)
           e.key: e.value is DateTime
@@ -1382,8 +1387,7 @@ class Model<T> extends QueryBuilder<T> {
       };
     }
 
-    /// again after pivot, and for a toMap() override that did not
-    /// remove the hidden fields
+    /// after pivot, so a hidden `pivot` is removed too
     _removeHidden(data);
     return data;
   }
@@ -1414,6 +1418,11 @@ class Model<T> extends QueryBuilder<T> {
     if (removeHiddenField) _removeHidden(data);
     return data;
   }
+
+  /// the value of [column] as in [columnsToMap], without making the
+  /// map. Relation loads read the keys of each row with it. The
+  /// generator overrides it with a switch on the column name.
+  dynamic $columnValue(String column) => columnsToMap()[column];
 
   /// the columns of this model, without relations.
   /// the generator overrides it with a map of the columns only.
@@ -1486,21 +1495,58 @@ class Model<T> extends QueryBuilder<T> {
   /// made on the first preload(), most models never call it
   List<String>? _preloads;
 
+  /// [getPreload] of a model with [_preloads], made once. It is set to
+  /// null when [_preloads] changes.
+  List<String>? _mergedPreloads;
+
+  /// true when [_preloads] and [_preloadPaths] are the lists of a query
+  /// and its rows together. A change copies them first, see
+  /// [_ownPreloads].
+  bool _sharedPreloads = false;
+
   /// the dot paths of preload(), like `posts.comments`, and the names
   /// with a where, each with its where. null when there is none, so a
   /// plain preload() does no more work.
   List<(String, _PreloadWhere?)>? _preloadPaths;
 
-  /// copies the preload() names and paths of [query] to this row, so
+  /// gives the preload() names and paths of [query] to this row, so
   /// toJson() and reload() of the row know them. get() calls it for each
   /// row of a query with preload().
+  ///
+  /// The row and the query share the lists, so no copy is made for each
+  /// row. Both are marked as shared: the first preload() on either one
+  /// copies the lists first, so it does not change the others.
   void $copyPreloads(Model<dynamic> query) {
     List<String>? names = query._preloads;
-    if (names != null) _preloads = List<String>.of(names);
+    if (names != null) _preloads = names;
     List<(String, _PreloadWhere?)>? paths = query._preloadPaths;
-    if (paths != null) {
-      _preloadPaths = List<(String, _PreloadWhere?)>.of(paths);
+    if (paths != null) _preloadPaths = paths;
+    if (names == null && paths == null) return;
+    _sharedPreloads = true;
+    query._sharedPreloads = true;
+
+    /// rows of the same class have the same preloadList, so they can
+    /// share the merged list of the query too
+    if (names != null && runtimeType == query.runtimeType) {
+      _mergedPreloads = query.getPreload();
     }
+  }
+
+  /// the preload() names of this model, to change. A shared list is
+  /// copied first (with the paths), so the query and the other rows keep
+  /// theirs.
+  List<String> _ownPreloads() {
+    _mergedPreloads = null;
+    if (_sharedPreloads) {
+      _sharedPreloads = false;
+      List<String>? names = _preloads;
+      if (names != null) _preloads = List<String>.of(names);
+      List<(String, _PreloadWhere?)>? paths = _preloadPaths;
+      if (paths != null) {
+        _preloadPaths = List<(String, _PreloadWhere?)>.of(paths);
+      }
+    }
+    return _preloads ??= <String>[];
   }
 
   /// the generator overrides these with the relations of the model
@@ -1543,7 +1589,7 @@ class Model<T> extends QueryBuilder<T> {
     String key, [
     void Function(QueryBuilder<dynamic> query)? where,
   ]) {
-    List<String> names = _preloads ??= <String>[];
+    List<String> names = _ownPreloads();
     int dot = key.indexOf('.');
     if (dot < 0 && where == null) {
       names.add(key);
@@ -1568,8 +1614,7 @@ class Model<T> extends QueryBuilder<T> {
     M? result = await _getRelation(<Model<T>>[this], name) as M;
     if (SqlQueryBuilder().flags.toJsonLoadedRelations &&
         relationsResultMatcher[name] != null) {
-      List<String> names = _preloads ??= <String>[];
-      if (!names.contains(name)) names.add(name);
+      if (_preloads?.contains(name) != true) _ownPreloads().add(name);
     }
     return result;
   }
@@ -1646,10 +1691,11 @@ class Model<T> extends QueryBuilder<T> {
 
   @override
   List<String> getPreload() {
-    List<String> list = preloadList;
     List<String>? custom = _preloads;
-    if (custom == null) return list;
-    return <String>{...list, ...custom}.toList();
+    if (custom == null) return preloadList;
+
+    /// made once, toJson() of each row reads it
+    return _mergedPreloads ??= <String>{...preloadList, ...custom}.toList();
   }
 
   @override

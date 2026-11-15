@@ -49,12 +49,14 @@ class DeviceGenerator extends Model<Device> {
   Device fromMap(Map<String, dynamic> m) => Device()
     ..uuid = m['uuid'] as String?
     ..name = m['name'] as String?
-    ..createdAt = m['created_at'] is DateTime?
-        ? m['created_at'] as DateTime?
-        : DateTime.parse(m['created_at'] as String)
-    ..updatedAt = m['updated_at'] is DateTime?
-        ? m['updated_at'] as DateTime?
-        : DateTime.parse(m['updated_at'] as String);
+    ..createdAt = switch (m['created_at']) {
+      DateTime? v => v,
+      Object? v => DateTime.parse(v as String),
+    }
+    ..updatedAt = switch (m['updated_at']) {
+      DateTime? v => v,
+      Object? v => DateTime.parse(v as String),
+    };
   @override
   Map<String, dynamic> columnsToMap() {
     Device instance = this as Device;
@@ -66,6 +68,22 @@ class DeviceGenerator extends Model<Device> {
     };
 
     return map;
+  }
+
+  @override
+  dynamic $columnValue(String column) {
+    Device instance = this as Device;
+    switch (column) {
+      case 'uuid':
+        return instance.uuid;
+      case 'name':
+        return instance.name;
+      case 'created_at':
+        return instance.createdAt?.toIso8601String();
+      case 'updated_at':
+        return instance.updatedAt?.toIso8601String();
+    }
+    return super.$columnValue(column);
   }
 
   @override

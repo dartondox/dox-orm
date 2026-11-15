@@ -75,6 +75,24 @@ class ScopedPostGenerator extends Model<ScopedPost> {
   }
 
   @override
+  dynamic $columnValue(String column) {
+    ScopedPost instance = this as ScopedPost;
+    switch (column) {
+      case 'id':
+        return instance.id;
+      case 'title':
+        return instance.title;
+      case 'published':
+        return _publishedCast.set(instance.published);
+      case 'archived':
+        return _archivedCast.set(instance.archived);
+      case 'views':
+        return instance.views;
+    }
+    return super.$columnValue(column);
+  }
+
+  @override
   Map<String, dynamic> convertToMap(dynamic i) {
     ScopedPost instance = i as ScopedPost;
     Map<String, dynamic> map = instance.columnsToMap();

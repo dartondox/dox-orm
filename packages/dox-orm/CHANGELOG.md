@@ -1,3 +1,11 @@
+## Unreleased
+
+- Faster: a relation load read the key of each row with `columnsToMap()[key]`. That made a map of all columns (with date strings and casts) for each row, only to read one value. Now `relationKey()` calls the new `$columnValue(column)` on the model. The next dox_builder makes a switch for it that reads only that one column. A model made by an older dox_builder uses the default, which still reads `columnsToMap()[key]`, so it works as before. The key value is the same, so the rows match the same way.
+- Faster: `toJson()` removed the hidden fields twice for each row. Now it calls `toMap()` without `removeHiddenField` and removes them once at the end. The JSON is the same. A `toMap()` override now gets `removeHiddenField: false` from `toJson()`; `toJson()` still removes the hidden fields after it.
+- Faster: `toJson()` looked up the pivot settings of each row, also in an app with no many to many relation. Now it skips the lookup until a many to many query has read a row.
+- Faster: with `preload()`, `getPreload()` made a new merged list each time, so `toJson()` made one for each row. Now the merged list is made once and kept. It is made again when `preload()` changes the names.
+- Faster: `get()` with `preload()` copied the preload names and paths into each row. Now the rows share the lists of the query. A later `preload()` (or `$getRelation()` with `OrmFlags.toJsonLoadedRelations`) on a row or on the query copies the lists first, so it never changes the other rows or the query.
+
 ## 3.2.1
 
 - Fix: a bad database url (eg. a bad port, or a `/`, `@`, `#` or `?` in the password) threw a `FormatException` with the whole url in it, password too. So the password could end up in the logs. The error now has a fixed text that names `DATABASE_URL` and the problem (bad url, bad port, wrong scheme). It shows no part of the url, not even the scheme: the text before the first `:` can be a user name or a token.

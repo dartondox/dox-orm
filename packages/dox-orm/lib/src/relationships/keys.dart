@@ -3,9 +3,7 @@ import 'package:dox_orm/dox_orm.dart';
 /// the value of [key] in [model]. the primary key is read without
 /// making a map.
 dynamic relationKey(Model<dynamic> model, String key) {
-  return key == model.primaryKey
-      ? model.tempIdValue
-      : model.columnsToMap()[key];
+  return key == model.primaryKey ? model.tempIdValue : model.$columnValue(key);
 }
 
 /// the values of [key] in [list], each once and without null
@@ -103,6 +101,11 @@ final Expando<Object> manyToManyQuery = Expando<Object>();
 /// too. It is a second Expando because a row is also a query: a new
 /// query made from a row must not give its rows the settings.
 final Expando<Object> manyToManyRow = Expando<Object>();
+
+/// true once a row got [manyToManyRow] settings. Until then toJson()
+/// skips the [manyToManyRow] lookup, so an app with no many to many
+/// rows does not pay for it.
+bool manyToManyRowMade = false;
 
 /// the keys of a hasOne, hasMany or belongsTo relation, for the
 /// relation writes like `createRelated()`. [extra] has the columns a

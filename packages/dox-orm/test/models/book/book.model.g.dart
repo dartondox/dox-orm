@@ -51,12 +51,14 @@ class BookGenerator extends Model<Book> {
     ..id = m['id'] as int?
     ..title = m['title'] as String?
     ..authorCode = m['author_code'] as String?
-    ..createdAt = m['created_at'] is DateTime?
-        ? m['created_at'] as DateTime?
-        : DateTime.parse(m['created_at'] as String)
-    ..updatedAt = m['updated_at'] is DateTime?
-        ? m['updated_at'] as DateTime?
-        : DateTime.parse(m['updated_at'] as String);
+    ..createdAt = switch (m['created_at']) {
+      DateTime? v => v,
+      Object? v => DateTime.parse(v as String),
+    }
+    ..updatedAt = switch (m['updated_at']) {
+      DateTime? v => v,
+      Object? v => DateTime.parse(v as String),
+    };
   @override
   Map<String, dynamic> columnsToMap() {
     Book instance = this as Book;
@@ -69,6 +71,24 @@ class BookGenerator extends Model<Book> {
     };
 
     return map;
+  }
+
+  @override
+  dynamic $columnValue(String column) {
+    Book instance = this as Book;
+    switch (column) {
+      case 'id':
+        return instance.id;
+      case 'title':
+        return instance.title;
+      case 'author_code':
+        return instance.authorCode;
+      case 'created_at':
+        return instance.createdAt?.toIso8601String();
+      case 'updated_at':
+        return instance.updatedAt?.toIso8601String();
+    }
+    return super.$columnValue(column);
   }
 
   @override

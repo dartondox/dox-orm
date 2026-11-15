@@ -51,12 +51,14 @@ class ArtistSongGenerator extends Model<ArtistSong> {
     ..id = m['id'] as int?
     ..songId = m['blog_id'] as int?
     ..artistId = m['artist_id'] as int?
-    ..createdAt = m['created_at'] is DateTime?
-        ? m['created_at'] as DateTime?
-        : DateTime.parse(m['created_at'] as String)
-    ..updatedAt = m['updated_at'] is DateTime?
-        ? m['updated_at'] as DateTime?
-        : DateTime.parse(m['updated_at'] as String);
+    ..createdAt = switch (m['created_at']) {
+      DateTime? v => v,
+      Object? v => DateTime.parse(v as String),
+    }
+    ..updatedAt = switch (m['updated_at']) {
+      DateTime? v => v,
+      Object? v => DateTime.parse(v as String),
+    };
   @override
   Map<String, dynamic> columnsToMap() {
     ArtistSong instance = this as ArtistSong;
@@ -69,6 +71,24 @@ class ArtistSongGenerator extends Model<ArtistSong> {
     };
 
     return map;
+  }
+
+  @override
+  dynamic $columnValue(String column) {
+    ArtistSong instance = this as ArtistSong;
+    switch (column) {
+      case 'id':
+        return instance.id;
+      case 'blog_id':
+        return instance.songId;
+      case 'artist_id':
+        return instance.artistId;
+      case 'created_at':
+        return instance.createdAt?.toIso8601String();
+      case 'updated_at':
+        return instance.updatedAt?.toIso8601String();
+    }
+    return super.$columnValue(column);
   }
 
   @override

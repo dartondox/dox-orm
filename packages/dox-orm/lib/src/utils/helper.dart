@@ -254,7 +254,10 @@ class QueryBuilderHelper<T> {
     for (Map<String, dynamic> e in result) {
       Model<dynamic> res = self.fromMap(e);
       res.originalMap = e;
-      if (pivot != null) manyToManyRow[res] = pivot;
+      if (pivot != null) {
+        manyToManyRow[res] = pivot;
+        manyToManyRowMade = true;
+      }
 
       /// so save() and delete() on this model use the same connection
       res.connection = queryBuilder.connection;

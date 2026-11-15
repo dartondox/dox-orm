@@ -58,12 +58,14 @@ class NoteGenerator extends Model<Note> {
     ..slug = m['slug'] as String?
     ..title = m['title'] as String?
     ..pinned = _pinnedCast.get(m['pinned'])
-    ..createdAt = m['created_at'] is DateTime?
-        ? m['created_at'] as DateTime?
-        : DateTime.parse(m['created_at'] as String)
-    ..updatedAt = m['updated_at'] is DateTime?
-        ? m['updated_at'] as DateTime?
-        : DateTime.parse(m['updated_at'] as String);
+    ..createdAt = switch (m['created_at']) {
+      DateTime? v => v,
+      Object? v => DateTime.parse(v as String),
+    }
+    ..updatedAt = switch (m['updated_at']) {
+      DateTime? v => v,
+      Object? v => DateTime.parse(v as String),
+    };
   @override
   Map<String, dynamic> columnsToMap() {
     Note instance = this as Note;
@@ -78,6 +80,24 @@ class NoteGenerator extends Model<Note> {
     map['slug'] = Note.slugOf(map);
 
     return map;
+  }
+
+  @override
+  dynamic $columnValue(String column) {
+    Note instance = this as Note;
+    switch (column) {
+      case 'id':
+        return instance.id;
+      case 'title':
+        return instance.title;
+      case 'pinned':
+        return _pinnedCast.set(instance.pinned);
+      case 'created_at':
+        return instance.createdAt?.toIso8601String();
+      case 'updated_at':
+        return instance.updatedAt?.toIso8601String();
+    }
+    return super.$columnValue(column);
   }
 
   @override

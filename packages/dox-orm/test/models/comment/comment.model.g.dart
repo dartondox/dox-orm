@@ -70,12 +70,14 @@ class CommentGenerator extends Model<Comment> {
     ..body = m['body'] as String?
     ..commentableId = m['commentable_id'] as int?
     ..commentableType = m['commentable_type'] as String?
-    ..createdAt = m['created_at'] is DateTime?
-        ? m['created_at'] as DateTime?
-        : DateTime.parse(m['created_at'] as String)
-    ..updatedAt = m['updated_at'] is DateTime?
-        ? m['updated_at'] as DateTime?
-        : DateTime.parse(m['updated_at'] as String);
+    ..createdAt = switch (m['created_at']) {
+      DateTime? v => v,
+      Object? v => DateTime.parse(v as String),
+    }
+    ..updatedAt = switch (m['updated_at']) {
+      DateTime? v => v,
+      Object? v => DateTime.parse(v as String),
+    };
   @override
   Map<String, dynamic> columnsToMap() {
     Comment instance = this as Comment;
@@ -89,6 +91,26 @@ class CommentGenerator extends Model<Comment> {
     };
 
     return map;
+  }
+
+  @override
+  dynamic $columnValue(String column) {
+    Comment instance = this as Comment;
+    switch (column) {
+      case 'id':
+        return instance.id;
+      case 'body':
+        return instance.body;
+      case 'commentable_id':
+        return instance.commentableId;
+      case 'commentable_type':
+        return instance.commentableType;
+      case 'created_at':
+        return instance.createdAt?.toIso8601String();
+      case 'updated_at':
+        return instance.updatedAt?.toIso8601String();
+    }
+    return super.$columnValue(column);
   }
 
   @override

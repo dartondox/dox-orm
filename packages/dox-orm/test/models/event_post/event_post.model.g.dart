@@ -53,15 +53,18 @@ class EventPostGenerator extends Model<EventPost> with SoftDeletes<EventPost> {
   EventPost fromMap(Map<String, dynamic> m) => EventPost()
     ..id = m['id'] as int?
     ..title = m['title'] as String?
-    ..deletedAt = m['deleted_at'] is DateTime?
-        ? m['deleted_at'] as DateTime?
-        : DateTime.parse(m['deleted_at'] as String)
-    ..createdAt = m['created_at'] is DateTime?
-        ? m['created_at'] as DateTime?
-        : DateTime.parse(m['created_at'] as String)
-    ..updatedAt = m['updated_at'] is DateTime?
-        ? m['updated_at'] as DateTime?
-        : DateTime.parse(m['updated_at'] as String);
+    ..deletedAt = switch (m['deleted_at']) {
+      DateTime? v => v,
+      Object? v => DateTime.parse(v as String),
+    }
+    ..createdAt = switch (m['created_at']) {
+      DateTime? v => v,
+      Object? v => DateTime.parse(v as String),
+    }
+    ..updatedAt = switch (m['updated_at']) {
+      DateTime? v => v,
+      Object? v => DateTime.parse(v as String),
+    };
   @override
   Map<String, dynamic> columnsToMap() {
     EventPost instance = this as EventPost;
@@ -74,6 +77,24 @@ class EventPostGenerator extends Model<EventPost> with SoftDeletes<EventPost> {
     };
 
     return map;
+  }
+
+  @override
+  dynamic $columnValue(String column) {
+    EventPost instance = this as EventPost;
+    switch (column) {
+      case 'id':
+        return instance.id;
+      case 'title':
+        return instance.title;
+      case 'deleted_at':
+        return instance.deletedAt?.toIso8601String();
+      case 'created_at':
+        return instance.createdAt?.toIso8601String();
+      case 'updated_at':
+        return instance.updatedAt?.toIso8601String();
+    }
+    return super.$columnValue(column);
   }
 
   @override

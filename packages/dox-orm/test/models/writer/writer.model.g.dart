@@ -130,9 +130,10 @@ class WriterGenerator extends Model<Writer> with SoftDeletes<Writer> {
   Writer fromMap(Map<String, dynamic> m) => Writer()
     ..id = m['id'] as int?
     ..name = m['name'] as String?
-    ..deletedAt = m['deleted_at'] is DateTime?
-        ? m['deleted_at'] as DateTime?
-        : DateTime.parse(m['deleted_at'] as String);
+    ..deletedAt = switch (m['deleted_at']) {
+      DateTime? v => v,
+      Object? v => DateTime.parse(v as String),
+    };
   @override
   Map<String, dynamic> columnsToMap() {
     Writer instance = this as Writer;
@@ -143,6 +144,20 @@ class WriterGenerator extends Model<Writer> with SoftDeletes<Writer> {
     };
 
     return map;
+  }
+
+  @override
+  dynamic $columnValue(String column) {
+    Writer instance = this as Writer;
+    switch (column) {
+      case 'id':
+        return instance.id;
+      case 'name':
+        return instance.name;
+      case 'deleted_at':
+        return instance.deletedAt?.toIso8601String();
+    }
+    return super.$columnValue(column);
   }
 
   @override
@@ -279,9 +294,10 @@ class ArticleGenerator extends Model<Article> with SoftDeletes<Article> {
     ..title = m['title'] as String?
     ..published = _publishedCast.get(m['published'])
     ..writerId = m['writer_id'] as int?
-    ..deletedAt = m['deleted_at'] is DateTime?
-        ? m['deleted_at'] as DateTime?
-        : DateTime.parse(m['deleted_at'] as String);
+    ..deletedAt = switch (m['deleted_at']) {
+      DateTime? v => v,
+      Object? v => DateTime.parse(v as String),
+    };
   @override
   Map<String, dynamic> columnsToMap() {
     Article instance = this as Article;
@@ -294,6 +310,24 @@ class ArticleGenerator extends Model<Article> with SoftDeletes<Article> {
     };
 
     return map;
+  }
+
+  @override
+  dynamic $columnValue(String column) {
+    Article instance = this as Article;
+    switch (column) {
+      case 'id':
+        return instance.id;
+      case 'title':
+        return instance.title;
+      case 'published':
+        return _publishedCast.set(instance.published);
+      case 'writer_id':
+        return instance.writerId;
+      case 'deleted_at':
+        return instance.deletedAt?.toIso8601String();
+    }
+    return super.$columnValue(column);
   }
 
   @override
@@ -394,9 +428,10 @@ class TopicGenerator extends Model<Topic> with SoftDeletes<Topic> {
   Topic fromMap(Map<String, dynamic> m) => Topic()
     ..id = m['id'] as int?
     ..name = m['name'] as String?
-    ..deletedAt = m['deleted_at'] is DateTime?
-        ? m['deleted_at'] as DateTime?
-        : DateTime.parse(m['deleted_at'] as String);
+    ..deletedAt = switch (m['deleted_at']) {
+      DateTime? v => v,
+      Object? v => DateTime.parse(v as String),
+    };
   @override
   Map<String, dynamic> columnsToMap() {
     Topic instance = this as Topic;
@@ -407,6 +442,20 @@ class TopicGenerator extends Model<Topic> with SoftDeletes<Topic> {
     };
 
     return map;
+  }
+
+  @override
+  dynamic $columnValue(String column) {
+    Topic instance = this as Topic;
+    switch (column) {
+      case 'id':
+        return instance.id;
+      case 'name':
+        return instance.name;
+      case 'deleted_at':
+        return instance.deletedAt?.toIso8601String();
+    }
+    return super.$columnValue(column);
   }
 
   @override
@@ -500,6 +549,20 @@ class RemarkGenerator extends Model<Remark> {
     };
 
     return map;
+  }
+
+  @override
+  dynamic $columnValue(String column) {
+    Remark instance = this as Remark;
+    switch (column) {
+      case 'id':
+        return instance.id;
+      case 'body':
+        return instance.body;
+      case 'article_id':
+        return instance.articleId;
+    }
+    return super.$columnValue(column);
   }
 
   @override
@@ -624,9 +687,10 @@ class SectionGenerator extends Model<Section> with SoftDeletes<Section> {
     ..id = m['id'] as int?
     ..name = m['name'] as String?
     ..parentId = m['parent_id'] as int?
-    ..deletedAt = m['deleted_at'] is DateTime?
-        ? m['deleted_at'] as DateTime?
-        : DateTime.parse(m['deleted_at'] as String);
+    ..deletedAt = switch (m['deleted_at']) {
+      DateTime? v => v,
+      Object? v => DateTime.parse(v as String),
+    };
   @override
   Map<String, dynamic> columnsToMap() {
     Section instance = this as Section;
@@ -638,6 +702,22 @@ class SectionGenerator extends Model<Section> with SoftDeletes<Section> {
     };
 
     return map;
+  }
+
+  @override
+  dynamic $columnValue(String column) {
+    Section instance = this as Section;
+    switch (column) {
+      case 'id':
+        return instance.id;
+      case 'name':
+        return instance.name;
+      case 'parent_id':
+        return instance.parentId;
+      case 'deleted_at':
+        return instance.deletedAt?.toIso8601String();
+    }
+    return super.$columnValue(column);
   }
 
   @override

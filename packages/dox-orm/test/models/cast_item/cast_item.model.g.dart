@@ -85,6 +85,30 @@ class CastItemGenerator extends Model<CastItem> {
   }
 
   @override
+  dynamic $columnValue(String column) {
+    CastItem instance = this as CastItem;
+    switch (column) {
+      case 'id':
+        return instance.id;
+      case 'meta':
+        return _metaCast.set(instance.meta);
+      case 'tags':
+        return _tagsCast.set(instance.tags);
+      case 'active':
+        return _activeCast.set(instance.active);
+      case 'done':
+        return _doneCast.set(instance.done);
+      case 'status':
+        return _statusCast.set(instance.status);
+      case 'level':
+        return _levelCast.set(instance.level);
+      case 'price':
+        return _priceCast.set(instance.price);
+    }
+    return super.$columnValue(column);
+  }
+
+  @override
   Map<String, dynamic> convertToMap(dynamic i) {
     CastItem instance = i as CastItem;
     Map<String, dynamic> map = instance.columnsToMap();
