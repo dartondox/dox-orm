@@ -1648,23 +1648,27 @@ class Model<T> extends QueryBuilder<T> {
     return this;
   }
 
-  /// Get relation result
+  /// Loads a relation into its field on this model. Read the field
+  /// after it. The future itself gives null.
   /// ```
   /// Blog blog = await Blog()find(1);
   /// await blog.$getRelation('comments');
   /// print(blog.comments);
-  /// `
+  /// ```
   ///
   /// With [OrmFlags.toJsonLoadedRelations], toJson() then has the
   /// relation too, like a name given to [preload].
   Future<M?> $getRelation<M>(String name) async {
     _strictLoad(name);
-    M? result = await _getRelation(<Model<T>>[this], name) as M;
+    await _getRelation(<Model<T>>[this], name);
     if (SqlQueryBuilder().flags.toJsonLoadedRelations &&
         relationsResultMatcher[name] != null) {
       if (_preloads?.contains(name) != true) _ownPreloads().add(name);
     }
-    return result;
+    // the relation is in its field now. A typed call, like
+    // `$getRelation<User>('user')`, threw here before: there is no
+    // value to cast.
+    return null;
   }
 
   /// Get relation query
