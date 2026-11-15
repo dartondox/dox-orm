@@ -191,7 +191,7 @@ class SqlQueryBuilder {
         query,
         values,
         connection,
-        'Slow query (${time.inMilliseconds} ms, $name): ',
+        '[db] Slow query (${time.inMilliseconds} ms, $name): ',
         time.inMilliseconds,
       );
     }

@@ -77,7 +77,7 @@ class FileQueryPrinter implements QueryPrinter {
       await file.writeAsString(text, mode: FileMode.append, flush: true);
     } catch (e) {
       // ponytail: a log write must not crash the app, so print the error
-      stderr.writeln('FileQueryPrinter: can not write ${file.path}: $e');
+      stderr.writeln('[db] FileQueryPrinter: can not write ${file.path}: $e');
     }
   }
 }

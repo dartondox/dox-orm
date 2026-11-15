@@ -4,14 +4,14 @@ import 'package:dox_orm/src/drivers/db_driver.dart'
 
 /// prints each query on one line, with the values put into the SQL:
 /// ```
-/// ▌ [db:default] SELECT * FROM "users" WHERE "id" = 7;
+/// [db:default] SELECT * FROM "users" WHERE "id" = 7;
 /// ```
-/// Only the `▌ [db:...]` tag has color, so a copy of the SQL is clean.
+/// The tag is dim and the SQL is cyan (yellow for a slow query).
 class PrettyQueryPrinter implements QueryPrinter {
   /// a query with `?` and its values. The ORM calls [logSql] instead.
   @override
   void log(String query, List<String> params) {
-    String line = '${_tag('db')} ${_end(query)}';
+    String line = _line('db', _end(query), 36);
     print(params.isEmpty ? line : '$line -- $params');
   }
 
@@ -26,11 +26,12 @@ class PrettyQueryPrinter implements QueryPrinter {
     String name = slowMs == null
         ? 'db:$connection'
         : 'db:$connection SLOW ${slowMs}ms';
-    print('${_tag(name)} ${_end(sql, mysql: mysql)}');
+    print(_line(name, _end(sql, mysql: mysql), slowMs == null ? 36 : 33));
   }
 
-  /// dim cyan
-  String _tag(String name) => '\x1B[2;36m▌ [$name]\x1B[0m';
+  /// dim `[tag]`, then the text in [color]
+  String _line(String tag, String text, int color) =>
+      '\x1B[2m[$tag]\x1B[0m \x1B[${color}m$text\x1B[0m';
 
   /// add `;` at the end. When the SQL ends inside a comment (`--`, or
   /// `#` for [mysql]), the `;` goes on a new line.
