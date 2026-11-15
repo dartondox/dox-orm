@@ -1,7 +1,7 @@
 ## Unreleased
 
 - Fix: `find('meta->n', 10)` (a json path with a number or a bool) failed the second time on Postgres and MySQL. find() keeps its sql, and the second call put the raw value in, not the json value that where() makes. Now a find on a json path does not use the kept sql.
-- Faster: on MySQL, SQLite (and Postgres with mixed types or nulls), `whereIn()` made a new sql text for each list size, so the drivers prepared a new statement each time. Now a list of up to 1,024 values is padded to the next power of two by repeating the last value, so 3 and 4 values share one statement. `IN (a, b, b)` matches the same rows as `IN (a, b)`, also for `NOT IN` and nulls. `toSql()` shows the extra params. A longer list is not padded, so it stays under the param limit of the driver.
+- Faster: on MySQL, SQLite (and Postgres with mixed types or nulls), `whereIn()` made a new sql text for each list size, so the drivers prepared a new statement each time. Now a list of up to 1,024 values is padded to the next power of two by repeating the last value, so 3 and 4 values share one statement. `IN (a, b, b)` matches the same rows as `IN (a, b)`, also for `NOT IN` and nulls. A longer list is not padded, so it stays under the param limit of the driver.
 - Faster: `where(column, value).first()` built its sql each time. Now, when that where is the only part of the query, it uses the sql that `find(column, value)` keeps. Any other part (another where, orderBy, select, join, lock, scopes...) builds the sql as before.
 - Faster: rows did one `MapEntry` per cell to turn dates into text. Now it reads by key, with no extra object.
 - Faster: `create()` made two copies of the data less (the default values and the date to text step now work on one map).

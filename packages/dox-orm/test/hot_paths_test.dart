@@ -1,4 +1,6 @@
 import 'package:dox_orm/dox_orm.dart';
+import 'package:dox_orm/src/drivers/sqlite_driver.dart';
+import 'package:sqlite3/sqlite3.dart' as sqlite;
 import 'package:test/test.dart';
 
 import 'connection.dart';
@@ -102,13 +104,113 @@ void main() async {
       expect((await names(people().whereNotIn('name', <String>[]))).length, 5);
     });
 
-    test('3 and 4 values give one sql text', () async {
-      await people().whereIn('id', <Object?>[1, null, 3]).get();
-      await people().whereIn('id', <Object?>[1, null, 3, 4]).get();
-      expect(sqls[0], sqls[1]);
+    test('toSql, toRawSql and query events show the list as it is', () async {
+      QueryBuilder<Map<String, dynamic>> q = people().whereIn('id', <Object>[
+        1,
+        '2',
+        3,
+      ]);
+      expect(q.toSql(), contains('IN (1,2,3)'));
+      expect(q.toRawSql(), contains("IN (1,'2',3)"));
+      expect(q.substitutionValues.length, 3);
+      await q.get();
+      expect(sqls.single, isNot(contains('1,2,3,')));
+      expect(RegExp('@').allMatches(sqls.single).length, 3);
     });
 
-    test('a long list is not padded', () async {
+    test('rows inside OR groups and subqueries', () async {
+      expect(
+        await names(
+          people().where('name', 'e').orWhereGroup((
+            QueryBuilder<Map<String, dynamic>> q,
+          ) {
+            q.whereIn('name', <String>['a', 'b', 'c']);
+          }),
+        ),
+        <String>['a', 'b', 'c', 'e'],
+      );
+      expect(
+        await names(
+          people().whereIn(
+            'id',
+            people().select('id').whereIn('name', <String>['b', 'c', 'd']),
+          ),
+        ),
+        <String>['b', 'c', 'd'],
+      );
+    });
+
+    test('the driver gets a padded list, a long one stays as it is', () {
+      Object? same(dynamic v) => v;
+      var (String sql, List<Object?> params) = toPositionalParams(
+        'SELECT 1 WHERE a IN (@a,@b,@c) AND b NOT IN (@d,@e,@f,@g,@h)',
+        <String, dynamic>{
+          'a': 1,
+          'b': 2,
+          'c': 3,
+          'd': 4,
+          'e': 5,
+          'f': 6,
+          'g': 7,
+          'h': 8,
+        },
+        same,
+      );
+      expect(
+        sql,
+        'SELECT 1 WHERE a IN (?,?,?,?) AND b NOT IN (?,?,?,?,?,?,?,?)',
+      );
+      expect(params, <Object?>[1, 2, 3, 3, 4, 5, 6, 7, 8, 8, 8, 8]);
+
+      /// 2 values, a power of two, a spaced list and a quoted text
+      var (String plain, _) = toPositionalParams(
+        "SELECT 'IN (@a,@b,@c)' WHERE a IN (@a,@b) AND b IN (@a, @b, @c)",
+        <String, dynamic>{'a': 1, 'b': 2, 'c': 3},
+        same,
+      );
+      expect(
+        plain,
+        "SELECT 'IN (@a,@b,@c)' WHERE a IN (?,?) AND b IN (?, ?, ?)",
+      );
+
+      Map<String, dynamic> many = <String, dynamic>{
+        for (int i = 0; i < 1025; i++) 'k$i': i,
+      };
+      var (String long, List<Object?> longParams) = toPositionalParams(
+        'x IN (${many.keys.map((String k) => '@$k').join(',')})',
+        many,
+        same,
+      );
+      expect(longParams.length, 1025);
+      expect(RegExp(r'\?').allMatches(long).length, 1025);
+    });
+
+    test('sqlite: list sizes 3 and 4 share one prepared statement', () async {
+      sqlite.Database db = sqlite.sqlite3.openInMemory();
+      SqliteDriver driver = SqliteDriver(conn: db);
+      await driver.execute('CREATE TABLE t (id int)');
+      for (List<int> ids in <List<int>>[
+        <int>[1, 2, 3],
+        <int>[1, 2, 3, 4],
+        <int>[4, 5, 6],
+      ]) {
+        String list = <String>[for (int i = 0; i < ids.length; i++) '@p$i']
+            .join(',');
+        await driver.query(
+          'SELECT * FROM t WHERE id IN ($list)',
+          substitutionValues: <String, dynamic>{
+            for (int i = 0; i < ids.length; i++) 'p$i': ids[i],
+          },
+        );
+      }
+      StatementCache<sqlite.PreparedStatement> c = driver.statementCacheOf(db)!;
+      expect(c.misses, 1);
+      expect(c.hits, 2);
+      driver.clearStatementCache();
+      db.close();
+    });
+
+    test('a long list gives one param for each value', () async {
       List<Object> ids = <Object>[for (int i = 0; i < 1025; i++) i, 'x'];
       QueryBuilder<Map<String, dynamic>> q = people().whereIn('id', ids);
       expect(q.substitutionValues.length, 1026);

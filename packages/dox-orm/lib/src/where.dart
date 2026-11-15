@@ -810,23 +810,11 @@ mixin Where<T> implements SharedMixin<T> {
       );
     }
 
-    /// the list is padded to a power of two by repeating the last value,
-    /// so a few list sizes share one sql text and the drivers reuse their
-    /// prepared statements. `x IN (a, b, b)` matches the same rows as
-    /// `x IN (a, b)`, also for NOT IN and nulls.
-    int length = values.length;
-    int size = length;
-    if (length <= _maxPaddedIn) {
-      size = 1;
-      while (size < length) {
-        size <<= 1;
-      }
-    }
     List<String> keys = <String>[];
-    for (int i = 0; i < size; i++) {
+    for (int i = 0; i < values.length; i++) {
       String columnKey = helper.parseColumnKey(column);
       keys.add(columnKey);
-      addSubstitutionValues(columnKey, values[i < length ? i : length - 1]);
+      addSubstitutionValues(columnKey, values[i]);
     }
     String operator = not ? 'NOT IN' : 'IN';
     return _rawQuery(
@@ -834,10 +822,6 @@ mixin Where<T> implements SharedMixin<T> {
       "${helper.wrap(column)} $operator (${keys.join(',')})",
     );
   }
-
-  /// a longer IN list is not padded: the extra params could pass the
-  /// param limit of the driver (SQLite 32766, MySQL 65535)
-  static const int _maxPaddedIn = 1024;
 
   /// true when every value is an int, or every value is a String.
   /// postgres reads these as an array of the column type. other lists

@@ -618,6 +618,27 @@ class _QuestionSql {
   static final Map<String, _QuestionSql> _cache = <String, _QuestionSql>{};
   static final Map<String, _QuestionSql> _mysqlCache = <String, _QuestionSql>{};
 
+  /// how many params to add to the `IN (...)` list at [start]..[end] that
+  /// has [count] params, so it has the next power of two. 0 when the text
+  /// is not an `IN (@a,@b,...)` list, or when it is long (a long list
+  /// could pass the param limit of the driver: SQLite 32766, MySQL 65535).
+  /// `x IN (a, b, b)` matches the same rows as `x IN (a, b)`, also for
+  /// NOT IN and nulls. The sql the user sees stays as it is. Only the
+  /// statement that goes to the driver is padded, so a few list sizes
+  /// share one prepared statement.
+  static int _padCount(String sql, int start, int end, int count) {
+    if (count < 3 || count > 1024 || start < 4 || end >= sql.length) return 0;
+    if (sql.codeUnitAt(end) != 0x29 /* ) */ ||
+        sql.substring(start - 4, start).toLowerCase() != 'in (') {
+      return 0;
+    }
+    int size = 1;
+    while (size < count) {
+      size <<= 1;
+    }
+    return size - count;
+  }
+
   static _QuestionSql of(String sql, bool mysql) {
     Map<String, _QuestionSql> cache = mysql ? _mysqlCache : _cache;
     _QuestionSql? q = cache[sql];
@@ -630,12 +651,28 @@ class _QuestionSql {
     List<String> names = <String>[];
     StringBuffer out = StringBuffer();
     int copied = 0;
-    for (SqlParam p in findSqlParams(sql, mysql: mysql)) {
-      names.add(p.name);
-      out
-        ..write(sql.substring(copied, p.start))
-        ..write('?');
-      copied = p.end;
+    List<SqlParam> found = findSqlParams(sql, mysql: mysql);
+    int i = 0;
+    while (i < found.length) {
+      /// the params of one `IN (@a,@b,@c)` list: i..j
+      int j = i;
+      while (j + 1 < found.length &&
+          sql.substring(found[j].end, found[j + 1].start) == ',') {
+        j++;
+      }
+      int pad = _padCount(sql, found[i].start, found[j].end, j - i + 1);
+      for (int k = i; k <= j; k++) {
+        out
+          ..write(sql.substring(copied, found[k].start))
+          ..write('?');
+        copied = found[k].end;
+        names.add(found[k].name);
+      }
+      for (int k = 0; k < pad; k++) {
+        out.write(',?');
+        names.add(found[j].name);
+      }
+      i = j + 1;
     }
     out.write(sql.substring(copied));
     return cache[sql] = _QuestionSql(out.toString(), names);
