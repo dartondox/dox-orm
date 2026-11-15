@@ -99,6 +99,11 @@ void main() async {
       await info2?.$getRelation('blog');
       expect(info2?.blog?.title, 'Awesome blog');
 
+      /// a typed call loads the field too, and does not throw
+      BlogInfo? typed = await BlogInfo().getFirst();
+      await typed?.$getRelation<Blog>('blog');
+      expect(typed?.blog?.title, 'Awesome blog');
+
       /// using related()
       BlogInfo? info3 = await BlogInfo().getFirst();
       Blog? b = await info3?.related<Blog>('blog')?.getFirst();

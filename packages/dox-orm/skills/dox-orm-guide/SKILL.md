@@ -340,19 +340,20 @@ Check new query code against these rules:
   ```dart
   // Wrong: one query per post
   for (Post post in posts) {
-    User? author = await post.$getRelation<User>('author');
+    await post.$getRelation('user');
+    User? author = post.user;
   }
 
   // Right: one extra query for all posts
-  List<Post> posts = await Post().preload('author').get();
+  List<Post> posts = await Post().preload('user').get();
   for (Post post in posts) {
-    User? author = post.author;
+    User? author = post.user;
   }
   ```
 
 - **Do not load a whole table.** `all()` and `get()` read every row into memory. Use `paginate()` for one page. Use `chunkById()`, `lazy()` or `cursor()` to work on all rows.
 - **Keep a transaction short.** It holds one connection until it ends. Call an outside API (payment, mail, HTTP) before or after the transaction, not inside it.
-- **Independent queries can run together:** `await (User().count(), Order().count()).wait`.
+- **Independent queries can run together,** outside a transaction: `await (User().count(), Order().count()).wait`.
 
 Strict mode warns about the first two in development. It is off by default and costs
 nothing when off. The app template turns it on in `lib/config/database.dart`:
