@@ -114,6 +114,9 @@ single `DELETE` that uses the `expires_at` index, so this is cheap.
 },
 ```
 
+It is off unless you set it. On a very big table the first delete can be
+slow, and on MySQL and MariaDB it can make writes wait for a short time.
+
 Or run `prune()` yourself from time to time, for example in a schedule:
 
 ```dart
@@ -145,6 +148,8 @@ it deletes every expired row of the table, also the rows of other stores.
 - `increment` runs one upsert that adds to the value and gives it back
   (`RETURNING`). On MySQL and MariaDB it is the upsert and a SELECT in one
   transaction.
+- An `increment` that goes past the 64-bit int limit is an error. The
+  stored value stays as it was.
 - `pull` runs one `DELETE ... RETURNING`. On MySQL and MariaDB it locks the
   row in a transaction.
 - `touch` runs one UPDATE. On MySQL and MariaDB it runs a SELECT too when

@@ -566,15 +566,47 @@ void tests(String name) {
     });
 
     test('increment of a value that is not an int throws', () async {
-      for (Object value in <Object>[
+      for (Object? value in <Object?>[
         '5',
+        '-5',
         1.5,
+        true,
+        null,
         <int>[1],
       ]) {
         await driver.put('v', value, null);
         await expectLater(driver.increment('v', 1), throwsStateError);
         expect(await driver.get('v'), value);
+        expect(await driver.has('v'), value != null);
       }
+    });
+
+    test('increment with an encrypter', () async {
+      DatabaseCacheDriver secret = DatabaseCacheDriver(
+        connection: connection,
+        clock: clock,
+        encrypter: const TestEncrypter(),
+      );
+      await secret.put('text', 'abc', null);
+      await expectLater(secret.increment('text', 1), throwsStateError);
+      expect(await secret.get('text'), 'abc');
+      await secret.put('hits', 7, Duration(seconds: 10));
+      expect(await secret.increment('hits', 1), 8);
+      expect(await secret.get('hits'), 8);
+    });
+
+    test('increment past the 64-bit limit throws, keeps the value', () async {
+      int max = 0x7FFFFFFFFFFFFFFF;
+      int min = -max - 1;
+      await driver.put('max', max, null);
+      await expectLater(driver.increment('max', 1), throwsA(anything));
+      expect(await driver.get('max'), max);
+      await driver.put('min', min, null);
+      await expectLater(driver.increment('min', -1), throwsA(anything));
+      expect(await driver.get('min'), min);
+      // up to the limit is fine
+      await driver.put('near', max - 1, null);
+      expect(await driver.increment('near', 1), max);
     });
 
     test('increment of an expired value that is not an int', () async {

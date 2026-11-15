@@ -320,21 +320,32 @@ class DatabaseCacheDriver extends CacheDriver {
     return next;
   }
 
-  Map<String, dynamic> _incrementValues(String fullKey, int by) {
-    return <String, dynamic>{
+  /// Postgres needs exactly the values its query uses.
+  Map<String, dynamic> _incrementValues(DBDriver db, String fullKey, int by) {
+    Map<String, dynamic> values = <String, dynamic>{
       'key': fullKey,
       'by': by,
       'start': '$by',
       'now': _clock.nowMs(),
-      'int': _intPattern,
     };
+    if (db.getName() == Driver.sqlite) {
+      // the old values that do not go past the 64-bit limit with [by]
+      values['low'] = by < 0 ? _minInt - by : _minInt;
+      values['high'] = by > 0 ? _maxInt - by : _maxInt;
+    } else {
+      values['int'] = _intPattern;
+    }
+    return values;
   }
+
+  static const int _maxInt = 0x7FFFFFFFFFFFFFFF;
+  static const int _minInt = -_maxInt - 1;
 
   /// Postgres and SQLite 3.35+. Null when the live value is not an int.
   Future<int?> _incrementReturning(DBDriver db, String fullKey, int by) async {
     List<Map<String, dynamic>> rows = await db.query(
       _sql(db).increment,
-      substitutionValues: _incrementValues(fullKey, by),
+      substitutionValues: _incrementValues(db, fullKey, by),
     );
     return rows.isEmpty
         ? null
@@ -349,7 +360,7 @@ class DatabaseCacheDriver extends CacheDriver {
     return db.transaction(() async {
       await db.execute(
         sql.increment,
-        substitutionValues: _incrementValues(fullKey, by),
+        substitutionValues: _incrementValues(db, fullKey, by),
       );
       List<Map<String, dynamic>> rows = await db.query(
         sql.valueOfKey,
@@ -375,10 +386,12 @@ class DatabaseCacheDriver extends CacheDriver {
     );
   }
 
+  /// The value is not an int, or the sum would go past the 64-bit
+  /// limit (SQLite only: Postgres and MySQL throw their own error).
   StateError _notInt(String fullKey) {
     return StateError(
       'Cache value of "${fullKey.substring(prefix.length)}" '
-      'is not an integer',
+      'is not an integer, or the increment goes past the 64-bit limit',
     );
   }
 
@@ -390,7 +403,11 @@ class DatabaseCacheDriver extends CacheDriver {
       if (row == null) return null;
       String? text = _plainText(row['value']);
       Object? current = text == null ? null : jsonDecode(text);
-      if (current is! int) throw _notInt(fullKey);
+      if (current is! int ||
+          (by > 0 && current > _maxInt - by) ||
+          (by < 0 && current < _minInt - by)) {
+        throw _notInt(fullKey);
+      }
       int value = current + by;
       await db.execute(
         _sql(db).setValue,
@@ -504,7 +521,13 @@ class DatabaseCacheDriver extends CacheDriver {
     int? last = _lastPrune;
     if (last != null && now - last < interval.inMilliseconds) return;
     _lastPrune = now;
-    Zone.root.run(prune).catchError(_ignorePruneError);
+    // a write never fails because of the prune, also not when it throws
+    // before its future starts
+    try {
+      Zone.root.run(prune).catchError(_ignorePruneError);
+    } on Object {
+      // the next interval tries again
+    }
   }
 
   static int _ignorePruneError(Object error) {
@@ -697,9 +720,12 @@ class _CacheSql {
           'WHERE $expired';
       // SQLite has no regex: an int is text that stays the same as an
       // INTEGER and back. A value that is not an int updates no row, so
-      // RETURNING gives none.
+      // RETURNING gives none. SQLite turns a sum past the 64-bit limit
+      // into a REAL, so it also updates no row when the sum would not fit
+      // (@low and @high). Postgres and MySQL throw an error for it.
       String isInt = sqlite
-          ? '$t.$v = CAST(CAST($t.$v AS INTEGER) AS TEXT)'
+          ? '$t.$v = CAST(CAST($t.$v AS INTEGER) AS TEXT) '
+                'AND CAST($t.$v AS INTEGER) BETWEEN @low AND @high'
           : '$t.$v ~ @int';
       String type = sqlite ? 'INTEGER' : 'bigint';
       increment =
