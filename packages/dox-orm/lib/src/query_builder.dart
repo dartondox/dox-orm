@@ -118,7 +118,12 @@ class QueryBuilder<T>
   @override
   bool get shouldDebug => _state?.debug ?? SqlQueryBuilder().debug;
   @override
-  set shouldDebug(bool value) => $state.debug = value;
+  set shouldDebug(bool value) {
+    // the same as the global setting and no state yet: nothing to keep.
+    // So `debug(owner.shouldDebug)` on a new model makes no query state.
+    if (_state == null && value == SqlQueryBuilder().debug) return;
+    $state.debug = value;
+  }
 
   @override
   Map<String, dynamic> get substitutionValues =>
