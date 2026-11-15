@@ -32,5 +32,8 @@ class CacheTables {
     t.longText('value').collation('utf8mb4_bin');
     // unix time in milliseconds, null means it never expires
     t.bigInteger('expires_at').nullable();
+    // prune deletes by `expires_at`: with this index it reads only the
+    // expired rows, not the whole table
+    t.index('expires_at');
   }
 }

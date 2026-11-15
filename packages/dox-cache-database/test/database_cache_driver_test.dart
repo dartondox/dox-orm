@@ -438,6 +438,28 @@ void tests(String name) {
           expect(pulled + left, 40 * 6);
         });
 
+        test(
+          'two connections increment an expired key: no lost update',
+          () async {
+            await driver.put('hits', 100, Duration(seconds: 1));
+            clock.advance(Duration(seconds: 2));
+            List<int> results = await Future.wait(<Future<int>>[
+              for (int i = 0; i < 20; i++)
+                (i.isEven ? driver : own).increment('hits', 1),
+            ]);
+            expect(results.toSet(), hasLength(20));
+            expect(await own.get('hits'), 20);
+          },
+        );
+
+        test('two connections pull: only one gets the value', () async {
+          await driver.put('once', 'v', null);
+          List<Object?> results = await Future.wait(<Future<Object?>>[
+            for (int i = 0; i < 10; i++) (i.isEven ? driver : own).pull('once'),
+          ]);
+          expect(results.whereType<String>(), hasLength(1));
+        });
+
         test('two connections increment: all count', () async {
           await Future.wait(<Future<int>>[
             for (int i = 0; i < 20; i++)
@@ -518,6 +540,182 @@ void tests(String name) {
       expect(await driver.increment('hits', 1), 1);
       clock.advance(Duration(days: 1));
       expect(await driver.get('hits'), 1);
+    });
+
+    test('increment of a live key keeps its ttl', () async {
+      await driver.put('hits', 5, Duration(seconds: 10));
+      expect(await driver.increment('hits', 2), 7);
+      expect(await driver.increment('hits', -9), -2);
+      clock.advance(Duration(seconds: 9));
+      expect(await driver.get('hits'), -2);
+      clock.advance(Duration(seconds: 2));
+      expect(await driver.get('hits'), isNull);
+    });
+
+    test('increment of a missing key starts at 0 with no ttl', () async {
+      expect(await driver.increment('hits', -3), -3);
+      clock.advance(Duration(days: 1));
+      expect(await driver.get('hits'), -3);
+    });
+
+    test('increment keeps big ints exact', () async {
+      int big = 9007199254740993; // 2^53 + 1, not exact as a double
+      await driver.put('big', big, null);
+      expect(await driver.increment('big', 1), big + 1);
+      expect(await driver.get('big'), big + 1);
+    });
+
+    test('increment of a value that is not an int throws', () async {
+      for (Object? value in <Object?>[
+        '5',
+        '-5',
+        1.5,
+        true,
+        null,
+        <int>[1],
+      ]) {
+        await driver.put('v', value, null);
+        await expectLater(driver.increment('v', 1), throwsStateError);
+        expect(await driver.get('v'), value);
+        expect(await driver.has('v'), value != null);
+      }
+    });
+
+    test('increment with an encrypter', () async {
+      DatabaseCacheDriver secret = DatabaseCacheDriver(
+        connection: connection,
+        clock: clock,
+        encrypter: const TestEncrypter(),
+      );
+      await secret.put('text', 'abc', null);
+      await expectLater(secret.increment('text', 1), throwsStateError);
+      expect(await secret.get('text'), 'abc');
+      await secret.put('hits', 7, Duration(seconds: 10));
+      expect(await secret.increment('hits', 1), 8);
+      expect(await secret.get('hits'), 8);
+    });
+
+    test('increment past the 64-bit limit throws, keeps the value', () async {
+      int max = 0x7FFFFFFFFFFFFFFF;
+      int min = -max - 1;
+      await driver.put('max', max, null);
+      await expectLater(driver.increment('max', 1), throwsA(anything));
+      expect(await driver.get('max'), max);
+      await driver.put('min', min, null);
+      await expectLater(driver.increment('min', -1), throwsA(anything));
+      expect(await driver.get('min'), min);
+      // up to the limit is fine
+      await driver.put('near', max - 1, null);
+      expect(await driver.increment('near', 1), max);
+    });
+
+    test('increment of an expired value that is not an int', () async {
+      await driver.put('v', 'text', Duration(seconds: 1));
+      clock.advance(Duration(seconds: 2));
+      expect(await driver.increment('v', 4), 4);
+      expect(await rowCount(), 1);
+    });
+
+    test('add does not touch a live row', () async {
+      await driver.put('a', 'old', Duration(seconds: 10));
+      expect(await driver.add('a', 'new', null), isFalse);
+      clock.advance(Duration(seconds: 11));
+      expect(await driver.get('a'), isNull);
+    });
+
+    test('pull of an expired row gives null and leaves it', () async {
+      await driver.put('a', 1, Duration(seconds: 1));
+      clock.advance(Duration(seconds: 2));
+      expect(await driver.pull('a'), isNull);
+      expect(await rowCount(), 1);
+      expect(await driver.pull('missing'), isNull);
+    });
+
+    test('touch of a missing or expired key is false', () async {
+      expect(await driver.touch('none', Duration(seconds: 5)), isFalse);
+      await driver.put('a', 1, Duration(seconds: 1));
+      clock.advance(Duration(seconds: 2));
+      expect(await driver.touch('a', Duration(seconds: 5)), isFalse);
+      expect(await driver.get('a'), isNull);
+    });
+
+    test('touch that sets the same expiry time is true', () async {
+      await driver.put('forever', 1, null);
+      expect(await driver.touch('forever', null), isTrue);
+      await driver.put('a', 1, Duration(seconds: 5));
+      expect(await driver.touch('a', Duration(seconds: 5)), isTrue);
+      expect(await driver.touch('a', null), isTrue);
+      clock.advance(Duration(days: 1));
+      expect(await driver.get('a'), 1);
+    });
+
+    test('lazy prune is off by default', () async {
+      await driver.put('old', 1, Duration(seconds: 1));
+      clock.advance(Duration(seconds: 2));
+      await driver.put('new', 2, null);
+      await Future<void>.delayed(Duration(milliseconds: 50));
+      expect(await rowCount(), 2);
+    });
+
+    test('lazy prune runs at most once per interval', () async {
+      DatabaseCacheDriver lazy = DatabaseCacheDriver(
+        connection: connection,
+        clock: clock,
+        pruneInterval: Duration(minutes: 1),
+      );
+      await driver.put('old', 1, Duration(seconds: 1));
+      clock.advance(Duration(seconds: 2));
+      // the first write prunes: the row of `old` expired
+      await lazy.put('a', 1, null);
+      await _waitForRows(1);
+      await driver.put('old2', 1, Duration(seconds: 1));
+      clock.advance(Duration(seconds: 2));
+      expect(await lazy.add('b', 1, null), isTrue);
+      await Future<void>.delayed(Duration(milliseconds: 50));
+      expect(await rowCount(), 3);
+      // a read never prunes
+      clock.advance(Duration(minutes: 1));
+      expect(await lazy.get('a'), 1);
+      await Future<void>.delayed(Duration(milliseconds: 50));
+      expect(await rowCount(), 3);
+      expect(await lazy.increment('c', 1), 1);
+      await _waitForRows(3);
+    });
+
+    test('lazy prune does not join an app transaction', () async {
+      DatabaseCacheDriver lazy = DatabaseCacheDriver(
+        connection: connection,
+        clock: clock,
+        pruneInterval: Duration(minutes: 1),
+      );
+      await driver.put('old', 1, Duration(seconds: 1));
+      clock.advance(Duration(seconds: 2));
+      DBDriver app = SqlQueryBuilder().getDBDriver(connection);
+      await expectLater(
+        app.transaction(() async {
+          await lazy.put('a', 1, null);
+          throw StateError('rollback');
+        }),
+        throwsStateError,
+      );
+      await _waitForRows(0);
+    });
+
+    test('the table has an index on expires_at', () async {
+      DBDriver db = SqlQueryBuilder().getDBDriver(connection);
+      String sql = switch (db.getName()) {
+        Driver.sqlite =>
+          "SELECT name FROM sqlite_master WHERE type = 'index' "
+              "AND tbl_name = 'cache' AND sql LIKE '%expires_at%'",
+        Driver.postgres =>
+          "SELECT indexname FROM pg_indexes WHERE tablename = 'cache' "
+              "AND indexdef LIKE '%expires_at%'",
+        Driver.mysql =>
+          'SELECT index_name FROM information_schema.statistics '
+              "WHERE table_schema = DATABASE() AND table_name = 'cache' "
+              "AND column_name = 'expires_at'",
+      };
+      expect(await db.query(sql), isNotEmpty);
     });
 
     test('flush deletes only rows of this prefix', () async {
@@ -602,6 +800,15 @@ void tests(String name) {
       expect(await manager.store().get('a'), 'b');
     });
   });
+}
+
+/// Wait until the lazy prune (not awaited) leaves [rows] rows.
+Future<void> _waitForRows(int rows) async {
+  for (int i = 0; i < 100; i++) {
+    if (await rowCount() == rows) return;
+    await Future<void>.delayed(Duration(milliseconds: 10));
+  }
+  expect(await rowCount(), rows);
 }
 
 bool _isTrue(bool value) {
