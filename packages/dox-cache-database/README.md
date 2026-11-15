@@ -69,7 +69,7 @@ transaction:
 
 - Their writes roll back with it.
 - A lock is not seen by other servers until the commit.
-- The row locks of `increment`, `pull` and `touch` stay until the end.
+- The row locks of the writes stay until the end.
 - On Postgres, a failed cache query also breaks the app transaction.
 
 To keep the cache out of app transactions, add a second connection with
@@ -98,12 +98,36 @@ session: SessionConfig(driver: 'cache', store: 'database'),
 ## Delete expired rows
 
 An expired row reads as a miss, but it stays in the table until the key is
-written again. Run `prune()` from time to time, for example in a schedule:
+written again. So the table grows. There are two ways to delete them.
+
+Let the store do it: set `prune_interval` (in seconds) in the store
+options. Then a write starts `prune()` at most once per that time. Reads
+never start it. Nobody waits for it, and it runs outside your app
+transactions. Each server (and each isolate) counts its own time, so with
+many servers the table gets that many prunes per interval. Each one is a
+single `DELETE` that uses the `expires_at` index, so this is cheap.
+
+```dart
+'database': <String, dynamic>{
+  'driver': 'database',
+  'prune_interval': 3600, // one hour
+},
+```
+
+Or run `prune()` yourself from time to time, for example in a schedule:
 
 ```dart
 DatabaseCacheDriver driver =
     Dox().cache.store('database').driver as DatabaseCacheDriver;
 int deleted = await driver.prune();
+```
+
+`CacheTables.up` makes an index on `expires_at`, so a prune reads only
+the expired rows. A table made before this index came has no index. Add
+it with a new migration:
+
+```dart
+await schema.table('cache', (Table t) => t.index('expires_at'));
 ```
 
 On Postgres with a collation other than `C`, `flush()` and `prune()` can
@@ -115,11 +139,18 @@ it deletes every expired row of the table, also the rows of other stores.
 
 ## How it stays safe across servers
 
-- `add` and taking a lock run two statements. The first deletes the row
-  of the key only when it is expired. The second inserts the row only when
-  the key is missing. This insert is the atomic step, so only one server
-  wins.
-- `increment`, `pull` and `touch` lock the row in a transaction.
+- `add` and taking a lock run one upsert. It inserts the row, or replaces
+  it only when it is expired. The database runs it as one atomic step, so
+  only one server wins.
+- `increment` runs one upsert that adds to the value and gives it back
+  (`RETURNING`). On MySQL and MariaDB it is the upsert and a SELECT in one
+  transaction.
+- `pull` runs one `DELETE ... RETURNING`. On MySQL and MariaDB it locks the
+  row in a transaction.
+- `touch` runs one UPDATE. On MySQL and MariaDB it runs a SELECT too when
+  the UPDATE changed nothing.
+- SQLite older than 3.35 has no `RETURNING`: there `increment` and `pull`
+  lock the row in a transaction.
 - A lock release deletes the row only when the owner matches.
 - A write that fails with a deadlock runs again after a short random
   wait, up to 5 runs in all. A lock wait timeout is not retried. Inside an app
