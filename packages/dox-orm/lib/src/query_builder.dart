@@ -8,6 +8,7 @@ import 'insert.dart';
 import 'join.dart';
 import 'limit.dart';
 import 'order_by.dart';
+import 'query_state.dart';
 import 'raw.dart';
 import 'select.dart';
 import 'truncate.dart';
@@ -35,16 +36,31 @@ class QueryBuilder<T>
         Count<T>,
         WithCount<T>,
         Union<T> {
-  /// made on the first use, a find() with a cached sql makes it once
-  Map<String, dynamic>? _substitutionValues;
+  /// the query parts (where, order, limit...), made by the first query
+  /// method. A model row from get() never makes it.
+  QueryState<T>? _state;
 
-  dynamic self;
+  /// the query state, made on the first use. Only for the query files of
+  /// this package.
+  @override
+  QueryState<T> get $state => _state ??= QueryState<T>();
+
+  /// the query state, or null when no query method made it yet. Only for
+  /// the query files of this package.
+  @override
+  QueryState<T>? get $stateOrNull => _state;
+
+  /// the model that the rows of this query become, null gives maps
+  dynamic get self => _state?.self;
+  set self(dynamic value) => $state.self = value;
 
   @override
   QueryBuilder<T> get queryBuilder => this;
 
   @override
-  String primaryKey = 'id';
+  String get primaryKey => _state?.primaryKey ?? 'id';
+  @override
+  set primaryKey(String value) => $state.primaryKey = value;
 
   @override
   String? connection;
@@ -58,7 +74,7 @@ class QueryBuilder<T>
     return driver;
   }
 
-  bool _onWrite = false;
+  bool get _onWrite => _state?.onWrite ?? false;
 
   /// run the queries of this query builder on the write database, also
   /// its reads. It matters only for a connection with `read` hosts (see
@@ -69,7 +85,7 @@ class QueryBuilder<T>
   /// User? user = await User().onWriteConnection().find(id);
   /// ```
   QueryBuilder<T> onWriteConnection() {
-    _onWrite = true;
+    $state.onWrite = true;
     return this;
   }
 
@@ -81,24 +97,37 @@ class QueryBuilder<T>
   /// [cancelWith] token.
   void useConnectionOf(QueryBuilder<dynamic> from) {
     connection ??= from.connection;
-    if (from._onWrite) _onWrite = true;
+    if (from._onWrite) $state.onWrite = true;
     cancelToken ??= from.cancelToken;
   }
 
   @override
-  late final QueryBuilderHelper<T> helper = QueryBuilderHelper<T>(this);
+  QueryBuilderHelper<T> get helper =>
+      $state.helper ??= QueryBuilderHelper<T>(this);
 
   // coverage:ignore-start
   @override
   Logger get logger => Logger();
   // coverage:ignore-end
 
+  /// true when the queries are logged. With no debug() call it is
+  /// [SqlQueryBuilder.debug] at the time of the query.
+  /// ponytail: read when the query runs, not kept when the model is
+  /// made, so a row does not read the global setting. A change of
+  /// [SqlQueryBuilder.debug] now also changes models made before it.
   @override
-  bool shouldDebug = SqlQueryBuilder().debug;
+  bool get shouldDebug => _state?.debug ?? SqlQueryBuilder().debug;
+  @override
+  set shouldDebug(bool value) {
+    // the same as the global setting and no state yet: nothing to keep.
+    // So `debug(owner.shouldDebug)` on a new model makes no query state.
+    if (_state == null && value == SqlQueryBuilder().debug) return;
+    $state.debug = value;
+  }
 
   @override
   Map<String, dynamic> get substitutionValues =>
-      _substitutionValues ??= <String, dynamic>{};
+      $state.substitutionValues ??= <String, dynamic>{};
 
   @override
   String get selectQueryString => getSelectQuery() + aggregateSelects();
@@ -106,22 +135,32 @@ class QueryBuilder<T>
   List<String> getPreload() => <String>[];
 
   @override
-  bool isSoftDeletes = false;
+  bool get isSoftDeletes => _state?.isSoftDeletes ?? false;
+  @override
+  set isSoftDeletes(bool value) => $state.isSoftDeletes = value;
 
   @override
-  bool withTrashed = false;
+  bool get withTrashed => _state?.withTrashed ?? false;
+  @override
+  set withTrashed(bool value) => $state.withTrashed = value;
 
   /// true after onlyTrashed()
   @override
-  bool trashedOnly = false;
+  bool get trashedOnly => _state?.trashedOnly ?? false;
+  @override
+  set trashedOnly(bool value) => $state.trashedOnly = value;
 
   @override
-  String tableName = '';
+  String get tableName => _state?.tableName ?? '';
+  @override
+  set tableName(String value) => $state.tableName = value;
 
   /// the name of the table in a whereHas() or withCount() subquery on
   /// the same table as the parent query, like a parent category
   @override
-  String? tableAlias;
+  String? get tableAlias => _state?.tableAlias;
+  @override
+  set tableAlias(String? value) => $state.tableAlias = value;
 
   @override
   void addSubstitutionValues(String key, dynamic value) {
@@ -131,7 +170,7 @@ class QueryBuilder<T>
 
   @override
   Map<String, dynamic> resetSubstitutionValues() {
-    return _substitutionValues = <String, dynamic>{};
+    return $state.substitutionValues = <String, dynamic>{};
   }
 
   /// set table and continue query
@@ -166,7 +205,12 @@ class QueryBuilder<T>
   }
 
   /// the token of [cancelWith], or null
-  QueryCancelToken? cancelToken;
+  QueryCancelToken? get cancelToken => _state?.cancelToken;
+  set cancelToken(QueryCancelToken? value) {
+    /// a null on a row with no query state: nothing to clear
+    if (value == null && _state == null) return;
+    $state.cancelToken = value;
+  }
 
   /// stop the queries of this query builder when [token] is cancelled.
   /// Postgres and MySQL only, SQLite runs a query to its end. See
@@ -189,11 +233,11 @@ class QueryBuilder<T>
   /// ```
   QueryBuilder<T> setPrimaryKey(String id) {
     primaryKey = id;
-    _keySet = true;
+    $state.keySet = true;
     return this;
   }
 
-  bool _keySet = false;
+  bool get _keySet => _state?.keySet ?? false;
 
   /// true when the table surely has the [primaryKey] column: a model, or
   /// a query with [setPrimaryKey]. a QueryBuilder.table() query may not.
@@ -249,23 +293,19 @@ class QueryBuilder<T>
   /// true when the model has global scopes
   bool get hasGlobalScopes => globalScopes.isNotEmpty;
 
-  bool _globalScopesDone = false;
-  bool _noGlobalScopes = false;
-  Set<String>? _skippedScopes;
-
   /// leave out the global scope [name] in this query
   ///
   /// ```
   /// await User().withoutGlobalScope('active').get();
   /// ```
   QueryBuilder<T> withoutGlobalScope(String name) {
-    (_skippedScopes ??= <String>{}).add(name);
+    ($state.skippedScopes ??= <String>{}).add(name);
     return this;
   }
 
   /// leave out every global scope in this query
   QueryBuilder<T> withoutGlobalScopes() {
-    _noGlobalScopes = true;
+    $state.noGlobalScopes = true;
     return this;
   }
 
@@ -273,15 +313,16 @@ class QueryBuilder<T>
   /// is made. the conditions so far go in brackets, and each scope too,
   /// so an OR in one part can not skip another part.
   void applyGlobalScopes() {
-    if (_globalScopesDone) return;
-    _globalScopesDone = true;
+    QueryState<T> state = $state;
+    if (state.globalScopesDone) return;
+    state.globalScopesDone = true;
     Map<String, QueryBuilder<T> Function(QueryBuilder<T>)> scopes =
         globalScopes;
-    if (_noGlobalScopes || scopes.isEmpty) return;
+    if (state.noGlobalScopes || scopes.isEmpty) return;
     groupWheres(0);
     for (MapEntry<String, QueryBuilder<T> Function(QueryBuilder<T>)> e
         in scopes.entries) {
-      if (_skippedScopes?.contains(e.key) == true) continue;
+      if (state.skippedScopes?.contains(e.key) == true) continue;
       int from = whereCount;
       e.value(this);
       groupWheres(from);

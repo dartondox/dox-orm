@@ -33,10 +33,12 @@ void dropLastWhere(QueryBuilder<dynamic> qb) {
 
 mixin Where<T> implements SharedMixin<T> {
   /// made on the first where, most rows never need it
-  List<String>? _wheres;
+  List<String>? get _wheres => $stateOrNull?.wheres;
+  set _wheres(List<String>? value) => $state.wheres = value;
 
   /// number of whereExists() subqueries so far, for their param keys
-  int _subqueryCount = 0;
+  int get _subqueryCount => $stateOrNull?.subqueryCount ?? 0;
+  set _subqueryCount(int value) => $state.subqueryCount = value;
 
   /// true when a where condition was added
   bool get hasWhere => _wheres != null;

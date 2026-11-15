@@ -80,7 +80,8 @@ class JoinClause {
 
 mixin Join<T> implements SharedMixin<T> {
   /// made on the first join, most rows never need it
-  List<String>? _joins;
+  List<String>? get _joins => $stateOrNull?.joins;
+  set _joins(List<String>? value) => $state.joins = value;
 
   String getJoinQuery() {
     List<String>? joins = _joins;

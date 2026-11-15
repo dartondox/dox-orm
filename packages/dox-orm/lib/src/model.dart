@@ -4,11 +4,31 @@ import 'dart:typed_data';
 
 import '../dox_orm.dart';
 import 'relationships/keys.dart';
+import 'utils/helper.dart' show snakeCase, tableNameOfType;
 import 'utils/plural.dart';
 import 'union.dart';
 
 /// the where of [Model.preload]
 typedef _PreloadWhere = void Function(QueryBuilder<dynamic> query);
+
+/// the rarely used state of a model: saved values, changes, preloads,
+/// aggregates and the others. A row from get() makes it only when it
+/// needs one of them, so each row stays small.
+class _RowState {
+  (Set<String>, Set<String>)? visibility;
+  List<String>? tableColumns;
+  Set<String> createNullKeys = const <String>{};
+  Map<String, dynamic>? savedValues;
+  Map<String, dynamic> lastChanges = const <String, dynamic>{};
+  bool wasRecentlyCreated = false;
+  Map<String, dynamic>? aggregates;
+  List<String>? preloads;
+  List<String>? mergedPreloads;
+  bool sharedPreloads = false;
+  List<(String, _PreloadWhere?)>? preloadPaths;
+  Map<String, Function>? resultMatcher;
+  Map<String, Function>? queryMatcher;
+}
 
 class Model<T> extends QueryBuilder<T> {
   static final Map<String, Model<dynamic> Function()> _morphModels =
@@ -60,6 +80,10 @@ class Model<T> extends QueryBuilder<T> {
     return make();
   }
 
+  /// made on the first use, see [_RowState]
+  _RowState? _row;
+  _RowState get _rowState => _row ??= _RowState();
+
   /// primary key value, it can be any type (int, uuid string...)
   dynamic tempIdValue;
   DateTime? createdAt;
@@ -68,6 +92,11 @@ class Model<T> extends QueryBuilder<T> {
   /// fields left out of toJson()
   List<String> get hidden => _hidden ??= <String>[];
   set hidden(List<String> value) => _hidden = value;
+
+  /// ponytail: a field, not in [_RowState]: toJson() reads [hidden] on
+  /// each row, and the getter makes a list. In [_RowState] that would
+  /// make the state on every toJson(). Move it when [hidden] stops
+  /// making a list.
   List<String>? _hidden;
 
   /// the only fields that toJson() keeps, the opposite of [hidden].
@@ -85,7 +114,9 @@ class Model<T> extends QueryBuilder<T> {
   /// the fields of [makeHidden] and [makeVisible] of this model:
   /// (hidden, shown). null when neither was called, so toJson() of a
   /// plain model reads one null field.
-  (Set<String>, Set<String>)? _visibility;
+  (Set<String>, Set<String>)? get _visibility => _row?.visibility;
+  set _visibility((Set<String>, Set<String>)? value) =>
+      _rowState.visibility = value;
 
   /// leaves [fields] out of toJson() of this model only, on top of
   /// [hidden]. It returns this model.
@@ -253,19 +284,23 @@ class Model<T> extends QueryBuilder<T> {
   /// the generator overrides it with the model columns
   List<String> get tableColumns => _tableColumns ??= <String>[];
   set tableColumns(List<String> value) => _tableColumns = value;
-  List<String>? _tableColumns;
-
-  bool _debug = SqlQueryBuilder().debug;
+  List<String>? get _tableColumns => _row?.tableColumns;
+  set _tableColumns(List<String>? value) => _rowState.tableColumns = value;
 
   /// keys that create() got as null, written as NULL on the insert.
   /// Only set with [OrmFlags.createWritesNull].
-  Set<String> _createNullKeys = const <String>{};
+  Set<String> get _createNullKeys => _row?.createNullKeys ?? const <String>{};
+  set _createNullKeys(Set<String> value) => _rowState.createNullKeys = value;
 
   /// values we last saved, so save() can tell when a field was set to null
-  Map<String, dynamic>? _savedValues;
+  Map<String, dynamic>? get _savedValues => _row?.savedValues;
+  set _savedValues(Map<String, dynamic>? value) =>
+      _rowState.savedValues = value;
 
   /// columns the last write of this model changed, see [getChanges]
-  Map<String, dynamic> _lastChanges = const <String, dynamic>{};
+  Map<String, dynamic> get _lastChanges =>
+      _row?.lastChanges ?? const <String, dynamic>{};
+  set _lastChanges(Map<String, dynamic> value) => _rowState.lastChanges = value;
 
   /// true after save() or create() inserted this model as a new row.
   /// A model read from the table gives false.
@@ -275,7 +310,8 @@ class Model<T> extends QueryBuilder<T> {
   /// if (user.wasRecentlyCreated) await sendWelcomeMail(user);
   /// ```
   bool get wasRecentlyCreated => _wasRecentlyCreated;
-  bool _wasRecentlyCreated = false;
+  bool get _wasRecentlyCreated => _row?.wasRecentlyCreated ?? false;
+  set _wasRecentlyCreated(bool value) => _rowState.wasRecentlyCreated = value;
 
   /// true when the row is in the table: the model was read from it, or
   /// saved. save() inserts when it is false, so a model with a key you
@@ -287,14 +323,14 @@ class Model<T> extends QueryBuilder<T> {
   /// `blog_posts`. `@DoxModel(table: ...)` sets a name of your own.
   @override
   String get tableName {
-    String name = helper.tableNameOf(runtimeType);
+    String name = tableNameOfType(runtimeType);
     return SqlQueryBuilder().flags.pluralTableNames ? pluralName(name) : name;
   }
 
   /// the default foreign key that points to this model: the class name
   /// in snake case and `_id`. `User` gives `user_id`, also
   /// when the table is `users`.
-  String get foreignKeyName => '${helper.tableNameOf(runtimeType)}_id';
+  String get foreignKeyName => '${tableNameOfType(runtimeType)}_id';
 
   @override
   dynamic get self => this;
@@ -308,7 +344,6 @@ class Model<T> extends QueryBuilder<T> {
 
   @override
   Model<T> debug([bool? debug]) {
-    _debug = debug ?? true;
     super.debug(debug);
     return this;
   }
@@ -852,7 +887,7 @@ class Model<T> extends QueryBuilder<T> {
       ..self = self
       ..primaryKey = primaryKey
       ..connection = connection;
-    return q.debug(_debug);
+    return q.debug(shouldDebug);
   }
 
   /// restore this soft deleted record. It fires restoring and restored.
@@ -990,7 +1025,7 @@ class Model<T> extends QueryBuilder<T> {
         );
       }
     }
-    model.debug(_debug);
+    model.debug(shouldDebug);
     model.connection = connection;
     return model as T;
   }
@@ -1457,7 +1492,8 @@ class Model<T> extends QueryBuilder<T> {
 
   /// values of withCount(), withSum(), withMax() and the other with...()
   /// aggregates, by result key
-  Map<String, dynamic>? _aggregates;
+  Map<String, dynamic>? get _aggregates => _row?.aggregates;
+  set _aggregates(Map<String, dynamic>? value) => _rowState.aggregates = value;
 
   /// sets a value of withCount(), withSum(), withMax() and the others.
   /// a number in a text (like a MySQL decimal) becomes a number.
@@ -1474,7 +1510,7 @@ class Model<T> extends QueryBuilder<T> {
   /// int posts = user!.countOf('posts');
   /// ```
   int countOf(String relation) {
-    dynamic value = _aggregates?['${helper.toSnakeCase(relation)}_count'];
+    dynamic value = _aggregates?['${snakeCase(relation)}_count'];
     return value is num ? value.toInt() : 0;
   }
 
@@ -1494,21 +1530,26 @@ class Model<T> extends QueryBuilder<T> {
       _preloads ?? const <String>[]; // coverage:ignore-line
 
   /// made on the first preload(), most models never call it
-  List<String>? _preloads;
+  List<String>? get _preloads => _row?.preloads;
+  set _preloads(List<String>? value) => _rowState.preloads = value;
 
   /// [getPreload] of a model with [_preloads], made once. It is set to
   /// null when [_preloads] changes.
-  List<String>? _mergedPreloads;
+  List<String>? get _mergedPreloads => _row?.mergedPreloads;
+  set _mergedPreloads(List<String>? value) => _rowState.mergedPreloads = value;
 
   /// true when [_preloads] and [_preloadPaths] are the lists of a query
   /// and its rows together. A change copies them first, see
   /// [_ownPreloads].
-  bool _sharedPreloads = false;
+  bool get _sharedPreloads => _row?.sharedPreloads ?? false;
+  set _sharedPreloads(bool value) => _rowState.sharedPreloads = value;
 
   /// the dot paths of preload(), like `posts.comments`, and the names
   /// with a where, each with its where. null when there is none, so a
   /// plain preload() does no more work.
-  List<(String, _PreloadWhere?)>? _preloadPaths;
+  List<(String, _PreloadWhere?)>? get _preloadPaths => _row?.preloadPaths;
+  set _preloadPaths(List<(String, _PreloadWhere?)>? value) =>
+      _rowState.preloadPaths = value;
 
   /// gives the preload() names and paths of [query] to this row, so
   /// toJson() and reload() of the row know them. get() calls it for each
@@ -1555,13 +1596,17 @@ class Model<T> extends QueryBuilder<T> {
       _resultMatcher ??= <String, Function>{};
   set relationsResultMatcher(Map<String, Function> value) =>
       _resultMatcher = value;
-  Map<String, Function>? _resultMatcher;
+  Map<String, Function>? get _resultMatcher => _row?.resultMatcher;
+  set _resultMatcher(Map<String, Function>? value) =>
+      _rowState.resultMatcher = value;
 
   Map<String, Function> get relationsQueryMatcher =>
       _queryMatcher ??= <String, Function>{};
   set relationsQueryMatcher(Map<String, Function> value) =>
       _queryMatcher = value;
-  Map<String, Function>? _queryMatcher;
+  Map<String, Function>? get _queryMatcher => _row?.queryMatcher;
+  set _queryMatcher(Map<String, Function>? value) =>
+      _rowState.queryMatcher = value;
 
   /// preload relationship
   /// ```
@@ -1783,7 +1828,7 @@ class Model<T> extends QueryBuilder<T> {
       data = <String, dynamic>{...columnsToMap()..remove(primaryKey), ...data};
     }
     Model<T> model = fromMap(_dateTimesToString(data)) as Model<T>;
-    model.debug(_debug);
+    model.debug(shouldDebug);
     model.connection = connection;
     return model;
   }

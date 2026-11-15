@@ -3,7 +3,7 @@ import 'shared_mixin.dart';
 
 mixin SoftDeletes<T> implements SharedMixin<T> {
   @override
-  bool isSoftDeletes = true;
+  bool get isSoftDeletes => $stateOrNull?.isSoftDeletes ?? true;
 
   /// true when this model is soft deleted: its `deleted_at` is set.
   ///

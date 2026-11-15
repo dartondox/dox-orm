@@ -5,10 +5,12 @@ import 'types/orm_flags.dart';
 import 'where.dart';
 
 mixin GroupBy<T> implements SharedMixin<T> {
-  String _groupBy = '';
+  String get _groupBy => $stateOrNull?.groupBy ?? '';
+  set _groupBy(String value) => $state.groupBy = value;
 
   /// made on the first having(), most queries never need it
-  List<String>? _havings;
+  List<String>? get _havings => $stateOrNull?.havings;
+  set _havings(List<String>? value) => $state.havings = value;
 
   /// the GROUP BY part, then the HAVING part
   String getGroupByQuery() {

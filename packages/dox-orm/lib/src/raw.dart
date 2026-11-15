@@ -2,7 +2,8 @@ import 'query_builder.dart';
 import 'shared_mixin.dart';
 
 mixin Raw<T> implements SharedMixin<T> {
-  String _rawQuery = '';
+  String get _rawQuery => $stateOrNull?.rawQuery ?? '';
+  set _rawQuery(String value) => $state.rawQuery = value;
 
   String getRawQuery() {
     return _rawQuery;
