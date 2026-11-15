@@ -5,6 +5,7 @@ import 'package:dox_orm/src/types/orm_strict.dart' show StrictWatch;
 import 'package:test/test.dart';
 
 import 'connection.dart';
+import 'models/artist/artist.model.dart';
 import 'models/writer/writer.model.dart';
 
 /// the strict mode warnings that [body] prints
@@ -28,7 +29,13 @@ void main() async {
   tearDown(() => SqlQueryBuilder().strict = const OrmStrict.off());
 
   setUpAll(() async {
-    for (String t in <String>['writers', 'articles', 'strict_rows']) {
+    for (String t in <String>[
+      'writers',
+      'articles',
+      'strict_rows',
+      'artist',
+      'artist_song',
+    ]) {
       await Schema().dropIfExists(t);
     }
     await Schema().create('writers', (Table table) {
@@ -46,6 +53,18 @@ void main() async {
     await Schema().create('strict_rows', (Table table) {
       table.id();
       table.integer('n');
+    });
+    await Schema().create('artist', (Table table) {
+      table.id();
+      table.string('name');
+      table.timestamps();
+    });
+    await Schema().create('artist_song', (Table table) {
+      table.id();
+      table.string('song_id');
+      table.integer('artist_id');
+      table.string('role').nullable();
+      table.timestamps();
     });
     await Writer().insertMultiple(<Map<String, dynamic>>[
       for (int i = 0; i < 20; i++) <String, dynamic>{'name': 'w$i'},
@@ -80,6 +99,24 @@ void main() async {
         }
       });
       expect(out, hasLength(1));
+    });
+
+    test('write helpers are not counted', () async {
+      SqlQueryBuilder().strict = const OrmStrict(nPlusOneCount: 3);
+      List<Writer> list = await Writer().limit(10).get();
+      Artist artist = await Artist().create(<String, dynamic>{'name': 'A'});
+      List<String> out = await warnings(() async {
+        for (Writer w in list) {
+          await w.createRelated<Article>('articles', <String, dynamic>{
+            'title': 't',
+            'published': true,
+          });
+        }
+        for (int i = 0; i < 10; i++) {
+          await artist.attach('songs', <dynamic>['s$i']);
+        }
+      });
+      expect(out, isEmpty);
     });
 
     test('no warning when off, under the count, or with preload', () async {
@@ -118,6 +155,37 @@ void main() async {
       expect(out[0], contains('table "strict_rows" read 30 rows'));
       expect(out[0], contains('paginate(), chunk(), lazy() or cursor()'));
       expect(out[1], contains('table "writers" read 20 rows'));
+    });
+
+    test('all() warns even with limit()', () async {
+      SqlQueryBuilder().strict = const OrmStrict(maxRows: 10);
+      List<String> out = await warnings(() async {
+        await Writer().limit(5).all();
+      });
+      expect(out, hasLength(1));
+    });
+
+    test('preload of many child rows does not warn', () async {
+      SqlQueryBuilder().strict = const OrmStrict(maxRows: 10);
+      List<Writer> list = await Writer().limit(5).get();
+      for (Writer w in list) {
+        await QueryBuilder.table('articles')
+            .insertMultiple(<Map<String, dynamic>>[
+              for (int i = 0; i < 4; i++)
+                <String, dynamic>{
+                  'title': 't',
+                  'published': true,
+                  'writer_id': w.id,
+                },
+            ]);
+      }
+      StrictWatch.reset();
+      List<String> out = await warnings(() async {
+        await Writer().preload('articles').whereIn('id', <dynamic>[
+          for (Writer w in list) w.id,
+        ]).get();
+      });
+      expect(out, isEmpty);
     });
 
     test('no warning when off or under the limit', () async {

@@ -135,12 +135,14 @@ mixin Get<T> implements SharedMixin<T> {
   /// strict mode: warn when a query with no limit() read too many rows.
   /// chunk(), lazy() and paginate() read pages with limit(), and
   /// cursor() does not call get(), so they never warn.
-  void _strictRows(List<Map<String, dynamic>> rows) {
+  void _strictRows(List<Map<String, dynamic>> rows, {bool isAll = false}) {
     OrmStrict strict = SqlQueryBuilder().strict;
     if (!strict.enabled) return;
+    if (queryBuilder.$stateOrNull?.strictSkip == true) return;
     // ponytail: a get() with any limit() is skipped, also limit(50000).
-    // The app asked for that many rows.
-    if (limitAndOffset(queryBuilder).$1 != null) return;
+    // The app asked for that many rows. all() ignores limit(), so it
+    // is never skipped.
+    if (!isAll && limitAndOffset(queryBuilder).$1 != null) return;
     StrictWatch.bigResult(queryBuilder.tableName, rows.length, strict);
   }
 
@@ -1104,7 +1106,7 @@ mixin Get<T> implements SharedMixin<T> {
         "SELECT $selectQueryString FROM ${queryBuilder.getFromQuery()}"
         "${queryBuilder.getWhereQuery()}${queryBuilder.getLockQuery()}";
     List<Map<String, dynamic>> rows = await helper.runQuery(query);
-    _strictRows(rows);
+    _strictRows(rows, isAll: true);
     return _typed(await helper.formatResult(rows));
   }
 }

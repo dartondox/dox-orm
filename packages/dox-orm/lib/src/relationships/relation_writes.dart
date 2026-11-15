@@ -1,5 +1,7 @@
 import 'package:dox_orm/dox_orm.dart';
 
+import '../types/orm_strict.dart' show StrictWatch;
+
 import 'keys.dart';
 
 /// writes through a relation that set the foreign key for you.
@@ -27,11 +29,14 @@ extension RelationWrites<T> on Model<T> {
   RelationKeys _relationKeys(String relation, List<String> kinds) {
     relationKeysFound = null;
     findRelationKeys = true;
+    // a write helper is not an N+1 read, so strict mode does not count it
+    StrictWatch.muted = true;
     try {
       /// makes the relation query, which sets relationKeysFound
       related<dynamic>(relation);
     } finally {
       findRelationKeys = false;
+      StrictWatch.muted = false;
     }
     RelationKeys? k = relationKeysFound;
     relationKeysFound = null;

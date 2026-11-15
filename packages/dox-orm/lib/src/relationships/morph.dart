@@ -215,6 +215,8 @@ Future<Map<String, M>> getMorphTo<T, M>(dynamic q, List<Model<T>> list) async {
   /// transaction too.
   Map<String, M> found = <String, M>{};
   for (MapEntry<String, Model<dynamic>> e in queries.entries) {
+    // eager load, not a user query: no big result warning
+    e.value.$state.strictSkip = true;
     for (dynamic r in await e.value.get()) {
       Model<dynamic> row = r as Model<dynamic>;
       dynamic key = relationKey(row, m.ownerKey ?? row.primaryKey);

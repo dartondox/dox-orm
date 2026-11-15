@@ -54,10 +54,14 @@ class StrictWatch {
 
   static final Stopwatch _clock = Stopwatch()..start();
   static int _windowStart = 0;
+
+  /// the ORM sets it for its own write helpers, so they are not counted
+  static bool muted = false;
   static final Map<(Type, String), int> _counts = <(Type, String), int>{};
 
   /// a relation [name] of [model] was loaded for one row
   static void relationLoad(Type model, String name, OrmStrict strict) {
+    if (muted) return;
     try {
       int now = _clock.elapsedMilliseconds;
       if (now - _windowStart > _windowMs) {
@@ -89,7 +93,7 @@ class StrictWatch {
     try {
       String name = table.isEmpty ? 'a raw query' : 'table "$table"';
       Logger.warn(
-        'Strict mode: one query on $name read $rows rows into memory '
+        'Strict mode: $name read $rows rows into memory '
         '(the limit is ${strict.maxRows}). '
         'Use paginate(), chunk(), lazy() or cursor() for big results.',
       );
@@ -99,5 +103,8 @@ class StrictWatch {
   }
 
   /// forget the counts. It is for tests.
-  static void reset() => _counts.clear();
+  static void reset() {
+    _counts.clear();
+    _windowStart = _clock.elapsedMilliseconds;
+  }
 }
