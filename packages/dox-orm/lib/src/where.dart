@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'drivers/db_driver.dart';
 import 'query_builder.dart';
+import 'query_state.dart';
 import 'shared_mixin.dart';
 
 /// the default of the optional where() args. It tells a missing arg
@@ -808,11 +809,24 @@ mixin Where<T> implements SharedMixin<T> {
         "${helper.wrap(column)} ${not ? '<> ALL' : '= ANY'}($columnKey)",
       );
     }
+
+    /// the list is padded to a power of two by repeating the last value,
+    /// so a few list sizes share one sql text and the drivers reuse their
+    /// prepared statements. `x IN (a, b, b)` matches the same rows as
+    /// `x IN (a, b)`, also for NOT IN and nulls.
+    int length = values.length;
+    int size = length;
+    if (length <= _maxPaddedIn) {
+      size = 1;
+      while (size < length) {
+        size <<= 1;
+      }
+    }
     List<String> keys = <String>[];
-    for (dynamic value in values) {
+    for (int i = 0; i < size; i++) {
       String columnKey = helper.parseColumnKey(column);
       keys.add(columnKey);
-      addSubstitutionValues(columnKey, value);
+      addSubstitutionValues(columnKey, values[i < length ? i : length - 1]);
     }
     String operator = not ? 'NOT IN' : 'IN';
     return _rawQuery(
@@ -820,6 +834,10 @@ mixin Where<T> implements SharedMixin<T> {
       "${helper.wrap(column)} $operator (${keys.join(',')})",
     );
   }
+
+  /// a longer IN list is not padded: the extra params could pass the
+  /// param limit of the driver (SQLite 32766, MySQL 65535)
+  static const int _maxPaddedIn = 1024;
 
   /// true when every value is an int, or every value is a String.
   /// postgres reads these as an array of the column type. other lists
@@ -872,7 +890,18 @@ mixin Where<T> implements SharedMixin<T> {
       }
     }
     addSubstitutionValues(columnKey, value);
-    return _rawQuery(type, "$left $condition $right");
+    bool first = _wheres == null;
+    _rawQuery(type, "$left $condition $right");
+
+    /// the first where is a plain `column = value`: first() can then use
+    /// the sql that find() keeps, see getFirst()
+    if (first && condition == '=' && !column.contains('->')) {
+      QueryState<T> state = $state;
+      state.firstWhere = state.wheres!.first;
+      state.firstWhereColumn = column;
+      state.firstWhereKey = columnKey.substring(1);
+    }
+    return queryBuilder;
   }
 
   /// `IS NULL` for `=` and `IS NOT NULL` for `!=` and `<>`

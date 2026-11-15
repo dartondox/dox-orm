@@ -216,11 +216,11 @@ class QueryBuilderHelper<T> {
   List<Map<String, dynamic>> getMapResult(
     List<Map<String, dynamic>> queryResult,
   ) {
+    /// keys and a lookup, not entries: no MapEntry for each cell
     for (Map<String, dynamic> data in queryResult) {
-      for (MapEntry<String, dynamic> e in data.entries) {
-        if (e.value is DateTime) {
-          data[e.key] = (e.value as DateTime).toIso8601String();
-        }
+      for (String key in data.keys) {
+        Object? value = data[key];
+        if (value is DateTime) data[key] = value.toIso8601String();
       }
     }
     return queryResult;

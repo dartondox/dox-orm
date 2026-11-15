@@ -47,6 +47,13 @@ class QueryState<T> {
   List<String>? wheres;
   int subqueryCount = 0;
 
+  /// the first where when it is a plain `column = value`, its column and
+  /// its param key. getFirst() uses it only while it is still the one
+  /// where of the query.
+  String? firstWhere;
+  String? firstWhereColumn;
+  String? firstWhereKey;
+
   // select.dart
   String select = '*';
   Map<String, dynamic>? selectValues;

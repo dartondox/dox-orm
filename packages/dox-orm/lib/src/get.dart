@@ -7,6 +7,7 @@ import 'package:dox_orm/dox_orm.dart';
 import 'count.dart';
 import 'limit.dart';
 import 'order_by.dart';
+import 'query_state.dart';
 import 'where.dart';
 import 'shared_mixin.dart';
 import 'types/orm_strict.dart' show StrictWatch;
@@ -63,7 +64,10 @@ mixin Get<T> implements SharedMixin<T> {
     String column = idOnly ? primaryKey : arg1;
     dynamic value = idOnly ? arg1 : arg2;
     QueryBuilder<T> qb = queryBuilder;
-    if (value == null || !_isPlain(qb)) {
+
+    /// a json path value can be changed by where() (eg. to json text on
+    /// Postgres), so it is never put in a kept sql as it is
+    if (value == null || column.contains('->') || !_isPlain(qb)) {
       qb.where(column, value).limit(1);
       return _first(_buildQuery());
     }
@@ -71,11 +75,7 @@ mixin Get<T> implements SharedMixin<T> {
     /// a plain find: the sql is the same every time, so build it once
     /// for each driver, table and column. a find with a lock is not
     /// plain, so it never uses or fills this cache.
-    bool soft = isSoftDeletes && !withTrashed;
-    Map<String, (String, String)> sqls =
-        ((soft ? _softFindSql : _findSql)[dbDriver] ??=
-                <String, Map<String, (String, String)>>{})[tableName] ??=
-            <String, (String, String)>{};
+    Map<String, (String, String)> sqls = _findSqls();
     (String, String)? hit = sqls[column];
     qb.limit(1);
     if (hit == null) {
@@ -95,6 +95,14 @@ mixin Get<T> implements SharedMixin<T> {
     return _first(hit.$1);
   }
 
+  /// the find sql of this driver and table, by column: (sql, param key)
+  Map<String, (String, String)> _findSqls() {
+    bool soft = isSoftDeletes && !withTrashed;
+    return ((soft ? _softFindSql : _findSql)[dbDriver] ??=
+            <String, Map<String, (String, String)>>{})[tableName] ??=
+        <String, (String, String)>{};
+  }
+
   /// find sql of each driver, then table, then column: (sql, param key)
   static final Expando<Map<String, Map<String, (String, String)>>> _findSql =
       Expando<Map<String, Map<String, (String, String)>>>();
@@ -105,9 +113,12 @@ mixin Get<T> implements SharedMixin<T> {
 
   /// true when nothing was added to the query yet
   static bool _isPlain(QueryBuilder<dynamic> qb) {
-    return !qb.hasWhere &&
-        qb.substitutionValues.isEmpty &&
-        qb.getRawQuery().isEmpty &&
+    return !qb.hasWhere && qb.substitutionValues.isEmpty && _noOtherParts(qb);
+  }
+
+  /// true when the query has no part other than where conditions
+  static bool _noOtherParts(QueryBuilder<dynamic> qb) {
+    return qb.getRawQuery().isEmpty &&
         qb.getJoinQuery().isEmpty &&
         qb.getGroupByQuery().isEmpty &&
         qb.getOrderByQuery().isEmpty &&
@@ -542,7 +553,39 @@ mixin Get<T> implements SharedMixin<T> {
   /// Blog? blog = await Blog().where('status', 'active').getFirst();
   /// ```
   Future<T?> getFirst() {
-    queryBuilder.limit(1);
+    QueryBuilder<T> qb = queryBuilder;
+    QueryState<T>? state = qb.$stateOrNull;
+    String? column = state?.firstWhereColumn;
+
+    /// `where(column, value).first()` gives the same sql as
+    /// `find(column, value)`, so it uses the sql that find() keeps.
+    /// only while that where is still the one and only part of the query.
+    if (column != null) {
+      List<String>? wheres = state!.wheres;
+      String key = state.firstWhereKey!;
+      if (wheres != null &&
+          wheres.length == 1 &&
+          identical(wheres.first, state.firstWhere) &&
+          qb.substitutionValues.length == 1 &&
+          qb.substitutionValues.containsKey(key) &&
+          _noOtherParts(qb)) {
+        Map<String, (String, String)> sqls = _findSqls();
+        (String, String)? hit = sqls[column];
+        qb.limit(1);
+        if (hit != null && hit.$2 == key) {
+          substitutionValues[Limit.limitKey] = 1;
+          return _first(hit.$1);
+        }
+        String sql = _buildQuery();
+        if (hit == null) {
+          /// ponytail: cleared when full, column names are a small set
+          if (sqls.length >= 100) sqls.clear();
+          sqls[column] = (sql, key);
+        }
+        return _first(sql);
+      }
+    }
+    qb.limit(1);
     return _first(_buildQuery());
   }
 
