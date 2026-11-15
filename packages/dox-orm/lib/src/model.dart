@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import '../dox_orm.dart';
 import 'relationships/keys.dart';
+import 'types/orm_strict.dart' show StrictWatch;
 import 'utils/helper.dart' show snakeCase, tableNameOfType;
 import 'utils/plural.dart';
 import 'union.dart';
@@ -1657,6 +1658,7 @@ class Model<T> extends QueryBuilder<T> {
   /// With [OrmFlags.toJsonLoadedRelations], toJson() then has the
   /// relation too, like a name given to [preload].
   Future<M?> $getRelation<M>(String name) async {
+    _strictLoad(name);
     M? result = await _getRelation(<Model<T>>[this], name) as M;
     if (SqlQueryBuilder().flags.toJsonLoadedRelations &&
         relationsResultMatcher[name] != null) {
@@ -1672,6 +1674,7 @@ class Model<T> extends QueryBuilder<T> {
   /// await comment.get();
   /// `
   M? related<M>(String name) {
+    _strictLoad(name);
     if (relationsQueryMatcher[name] != null) {
       Function funcName = relationsQueryMatcher[name]!;
       return Function.apply(funcName, <dynamic>[
@@ -1679,6 +1682,12 @@ class Model<T> extends QueryBuilder<T> {
       ]);
     }
     return null;
+  }
+
+  /// strict mode: count a relation load of one row, to find N+1 queries
+  void _strictLoad(String name) {
+    OrmStrict strict = SqlQueryBuilder().strict;
+    if (strict.enabled) StrictWatch.relationLoad(runtimeType, name, strict);
   }
 
   Future<void> _getRelation(List<Model<T>> i, String name) async {
