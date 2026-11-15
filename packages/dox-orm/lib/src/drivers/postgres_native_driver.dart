@@ -23,7 +23,7 @@ bool warnUnverifiedPostgresTls(String sslMode, {bool enabled = true}) {
   if (!enabled || sslMode != 'require' || _tlsWarned) return false;
   _tlsWarned = true;
   stderr.writeln(
-    'Dox ORM warning: Postgres TLS uses sslMode "require". The data is '
+    '[db] warning: Postgres TLS uses sslMode "require". The data is '
     'encrypted, but the server certificate is not checked. To check it, '
     "set extra['sslMode'] = 'verify-full' (or sslmode=verify-full in the "
     "database url). To hide this warning, set extra['sslWarning'] = false.",

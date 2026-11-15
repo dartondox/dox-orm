@@ -176,7 +176,7 @@ void main() {
 
   test('Logger.warn prints yellow', () {
     expect(_prints(() => Logger.warn('careful')), <String>[
-      '\x1B[33mcareful\x1B[0m',
+      '\x1B[2m[db]\x1B[0m \x1B[33mcareful\x1B[0m',
     ]);
   });
 
@@ -187,7 +187,11 @@ void main() {
         Logger.success('b');
         Logger.danger('c');
       }),
-      <String>['\x1B[36ma\x1B[0m', '\x1B[32mb\x1B[0m', '\x1B[31mc\x1B[0m'],
+      <String>[
+        '\x1B[2m[db]\x1B[0m \x1B[36ma\x1B[0m',
+        '\x1B[2m[db]\x1B[0m \x1B[32mb\x1B[0m',
+        '\x1B[2m[db]\x1B[0m \x1B[31mc\x1B[0m',
+      ],
     );
   });
 
@@ -242,7 +246,8 @@ void main() {
   );
 
   group('PrettyQueryPrinter', () {
-    const String tag = '\x1B[2;36m▌ [db:main]\x1B[0m ';
+    const String tag = '\x1B[2m[db:main]\x1B[0m \x1B[36m';
+    const String end = '\x1B[0m';
 
     setUp(() {
       SqlQueryBuilder.initializeWithDatabaseConfig(
@@ -300,7 +305,7 @@ void main() {
       expect(lines, <String>[
         '${tag}SELECT * FROM "t" WHERE a = \'it\'\'s\' AND b = NULL '
             "AND c = TRUE AND d = 42 AND e = '2026-01-02T00:00:00.000Z' "
-            "AND f = '{\"k\":1}' AND g = '[1,2]' AND h = @missing;",
+            "AND f = '{\"k\":1}' AND g = '[1,2]' AND h = @missing;$end",
       ]);
     });
 
@@ -312,13 +317,13 @@ void main() {
         ),
       );
       expect(lines, <String>[
-        '${tag}UPDATE "users" SET "password" = \'***\' WHERE "id" = 7;',
+        '${tag}UPDATE "users" SET "password" = \'***\' WHERE "id" = 7;$end',
       ]);
     });
 
     test('does not add a second ;', () {
       List<String> lines = _prints(() => Logger().log('SELECT 1;'));
-      expect(lines, <String>['${tag}SELECT 1;']);
+      expect(lines, <String>['${tag}SELECT 1;$end']);
     });
 
     test('a slow query shows SLOW and the time in the tag', () async {
@@ -334,8 +339,8 @@ void main() {
         lines.first,
         matches(
           RegExp(
-            r'^\x1B\[2;36m▌ \[db:main SLOW \d+ms\]\x1B\[0m '
-            r'SELECT 1 WHERE 5 = 5;$',
+            r'^\x1B\[2m\[db:main SLOW \d+ms\]\x1B\[0m '
+            r'\x1B\[33mSELECT 1 WHERE 5 = 5;\x1B\[0m$',
           ),
         ),
       );
@@ -355,8 +360,8 @@ void main() {
         ),
       );
       expect(lines, <String>[
-        "\x1B[2;36m▌ [db:other]\x1B[0m UPDATE t SET password = '***', "
-            "token = '***', name = 'c';",
+        "\x1B[2m[db:other]\x1B[0m \x1B[36mUPDATE t SET password = '***', "
+            "token = '***', name = 'c';\x1B[0m",
       ]);
     });
 
@@ -373,7 +378,7 @@ void main() {
         lines.first,
         matches(
           RegExp(
-            r"^\x1B\[2;36m▌ \[db:other SLOW \d+ms\]\x1B\[0m SELECT '\*\*\*';$",
+            r"^\x1B\[2m\[db:other SLOW \d+ms\]\x1B\[0m \x1B\[33mSELECT '\*\*\*';\x1B\[0m$",
           ),
         ),
       );
@@ -392,12 +397,14 @@ void main() {
       List<String> lines = _prints(
         () => Logger().log('x = @a', <String, dynamic>{'a': 1}, 'nope'),
       );
-      expect(lines, <String>['\x1B[2;36m▌ [db]\x1B[0m x = ?; -- [1]']);
+      expect(lines, <String>[
+        '\x1B[2m[db]\x1B[0m \x1B[36mx = ?;\x1B[0m -- [1]',
+      ]);
     });
 
     test('puts the ; on a new line after a -- comment', () {
       List<String> lines = _prints(() => Logger().log('SELECT 1 -- note'));
-      expect(lines, <String>['${tag}SELECT 1 -- note\n;']);
+      expect(lines, <String>['${tag}SELECT 1 -- note\n;$end']);
     });
 
     test('puts the ; on the same line when -- or # is not a comment', () {
@@ -406,7 +413,7 @@ void main() {
         "SELECT 'a--b'",
         "SELECT data #>> '{a,b}' FROM t",
       ]) {
-        expect(_prints(() => Logger().log(q)), <String>['$tag$q;']);
+        expect(_prints(() => Logger().log(q)), <String>['$tag$q;$end']);
       }
     });
 
@@ -419,7 +426,7 @@ void main() {
         ),
       );
       expect(lines, <String>[
-        '\x1B[2;36m▌ [db:my]\x1B[0m SELECT `a` FROM `t` WHERE `b` = 1 # note\n;',
+        '\x1B[2m[db:my]\x1B[0m \x1B[36mSELECT `a` FROM `t` WHERE `b` = 1 # note\n;\x1B[0m',
       ]);
     });
 
@@ -473,11 +480,11 @@ void main() {
     test('log() called directly prints one line with the params', () {
       expect(
         _prints(() => PrettyQueryPrinter().log('SELECT 1', <String>[])),
-        <String>['\x1B[2;36m▌ [db]\x1B[0m SELECT 1;'],
+        <String>['\x1B[2m[db]\x1B[0m \x1B[36mSELECT 1;\x1B[0m'],
       );
       expect(
         _prints(() => PrettyQueryPrinter().log('x = ?', <String>['p1'])),
-        <String>['\x1B[2;36m▌ [db]\x1B[0m x = ?; -- [p1]'],
+        <String>['\x1B[2m[db]\x1B[0m \x1B[36mx = ?;\x1B[0m -- [p1]'],
       );
     });
   });

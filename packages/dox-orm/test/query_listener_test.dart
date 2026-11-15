@@ -168,7 +168,7 @@ void main() {
         substitutionValues: <String, dynamic>{'password_p1': 'secret'},
       );
       expect(capture.queries.length, 1);
-      expect(capture.queries.first, startsWith('Slow query ('));
+      expect(capture.queries.first, startsWith('[db] Slow query ('));
       expect(capture.queries.first, contains('ms, main): SELECT 1'));
       expect(capture.params.first, <String>['***', '***']);
     });

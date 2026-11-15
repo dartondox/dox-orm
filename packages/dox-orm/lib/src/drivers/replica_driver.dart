@@ -122,7 +122,7 @@ class ReplicaDriver extends DBDriver {
     if (_scope() != null || !_wroteOutsideScope || _noScopeWarned) return;
     _noScopeWarned = true;
     stderr.writeln(
-      'Dox ORM warning: a connection has sticky: true, but this read '
+      '[db] warning: a connection has sticky: true, but this read '
       'goes to a replica outside ReplicaDriver.stickyScope(), after a '
       'write. So sticky does nothing here. In a Dox app each request gets '
       'a scope by itself. Outside a request (eg. a job or a script), wrap '

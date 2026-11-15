@@ -166,7 +166,7 @@ class Logger {
   /// Logger.info('using dox is fun');
   /// ```
   static void info(dynamic text) {
-    print('\x1B[36m$text\x1B[0m');
+    print('\x1B[2m[db]\x1B[0m \x1B[36m$text\x1B[0m');
   }
 
   /// log the text using warn color (yellow)
@@ -174,7 +174,7 @@ class Logger {
   /// Logger.warn('careful!');
   ///
   static void warn(dynamic text) {
-    print('\x1B[33m$text\x1B[0m');
+    print('\x1B[2m[db]\x1B[0m \x1B[33m$text\x1B[0m');
   }
 
   /// log the text using success color (green)
@@ -182,7 +182,7 @@ class Logger {
   /// Logger.success('success');
   ///
   static void success(dynamic text) {
-    print('\x1B[32m$text\x1B[0m');
+    print('\x1B[2m[db]\x1B[0m \x1B[32m$text\x1B[0m');
   }
 
   /// log the text using danger color (red)
@@ -190,6 +190,6 @@ class Logger {
   /// Logger.danger('failed');
   ///
   static void danger(dynamic text) {
-    print('\x1B[31m$text\x1B[0m');
+    print('\x1B[2m[db]\x1B[0m \x1B[31m$text\x1B[0m');
   }
 }
