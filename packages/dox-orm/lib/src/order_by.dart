@@ -21,13 +21,16 @@ void setOrderOf(QueryBuilder<dynamic> qb, List<(String, bool)> columns) {
 
 mixin OrderBy<T> implements SharedMixin<T> {
   /// made on the first orderBy(), most rows never need it
-  List<String>? _orderBy;
+  List<String>? get _orderBy => $stateOrNull?.orderBy;
+  set _orderBy(List<String>? value) => $state.orderBy = value;
 
   /// the orderBy() columns as (column, desc), for cursorPaginate()
-  List<(String, bool)>? _orderColumns;
+  List<(String, bool)>? get _orderColumns => $stateOrNull?.orderColumns;
+  set _orderColumns(List<(String, bool)>? value) => $state.orderColumns = value;
 
   /// true after orderByRaw()
-  bool _rawOrder = false;
+  bool get _rawOrder => $stateOrNull?.rawOrder ?? false;
+  set _rawOrder(bool value) => $state.rawOrder = value;
 
   String getOrderByQuery() {
     List<String>? orderBy = _orderBy;

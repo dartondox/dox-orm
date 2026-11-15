@@ -3,7 +3,8 @@ import 'shared_mixin.dart';
 
 mixin Union<T> implements SharedMixin<T> {
   /// made on the first union, most queries never need it
-  List<String>? _unions;
+  List<String>? get _unions => $stateOrNull?.unions;
+  set _unions(List<String>? value) => $state.unions = value;
 
   /// true when union() or unionAll() was called
   bool get hasUnion => _unions != null;

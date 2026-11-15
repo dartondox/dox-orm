@@ -318,20 +318,27 @@ class QueryBuilderHelper<T> {
   }
 
   /// snake case name of the model type, eg. `BlogInfo` is `blog_info`
-  String tableNameOf(Type type) {
-    return _snakeNames[type] ??= toSnakeCase(type.toString());
-  }
+  String tableNameOf(Type type) => tableNameOfType(type);
 
-  String toSnakeCase(String input) {
-    String snakeCase = '';
-    for (int i = 0; i < input.length; i++) {
-      String char = input[i];
-      // only letters have an upper case: digits and `_` stay as they are
-      if (char != char.toLowerCase() && i > 0) {
-        snakeCase += '_'; // Add an underscore if it's uppercase and not the first character
-      }
-      snakeCase += char.toLowerCase(); // Convert the character to lowercase and add it to the result
+  String toSnakeCase(String input) => snakeCase(input);
+}
+
+/// snake case name of the model type, eg. `BlogInfo` is `blog_info`. A
+/// function, so a model row does not need a [QueryBuilderHelper].
+String tableNameOfType(Type type) {
+  return _snakeNames[type] ??= snakeCase(type.toString());
+}
+
+/// [input] in snake case, eg. `BlogInfo` is `blog_info`
+String snakeCase(String input) {
+  String snakeCase = '';
+  for (int i = 0; i < input.length; i++) {
+    String char = input[i];
+    // only letters have an upper case: digits and `_` stay as they are
+    if (char != char.toLowerCase() && i > 0) {
+      snakeCase += '_'; // Add an underscore if it's uppercase and not the first character
     }
-    return snakeCase.replaceAll(RegExp(r'_+'), '_');
+    snakeCase += char.toLowerCase(); // Convert the character to lowercase and add it to the result
   }
+  return snakeCase.replaceAll(RegExp(r'_+'), '_');
 }

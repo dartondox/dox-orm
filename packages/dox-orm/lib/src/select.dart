@@ -17,22 +17,28 @@ void dropSelectValues(QueryBuilder<dynamic> qb) {
 }
 
 mixin Select<T> implements SharedMixin<T> {
-  String _select = '*';
+  String get _select => $stateOrNull?.select ?? '*';
+  set _select(String value) => $state.select = value;
 
   /// the values of selectRaw(). they are added when the select part is
   /// used, see [dropSelectValues].
-  Map<String, dynamic>? _selectValues;
+  Map<String, dynamic>? get _selectValues => $stateOrNull?.selectValues;
+  set _selectValues(Map<String, dynamic>? value) => $state.selectValues = value;
 
   /// true while the [_selectValues] are in the values of the query
-  bool _selectValuesAdded = false;
+  bool get _selectValuesAdded => $stateOrNull?.selectValuesAdded ?? false;
+  set _selectValuesAdded(bool value) => $state.selectValuesAdded = value;
 
   /// true after select() or selectRaw(), see [OrmFlags.selectRawAdds]
-  bool _selectSet = false;
+  bool get _selectSet => $stateOrNull?.selectSet ?? false;
+  set _selectSet(bool value) => $state.selectSet = value;
 
-  bool _distinct = false;
+  bool get _distinct => $stateOrNull?.distinct ?? false;
+  set _distinct(bool value) => $state.distinct = value;
 
   /// the sub query of fromSub(), with its alias
-  String? _fromSub;
+  String? get _fromSub => $stateOrNull?.fromSub;
+  set _fromSub(String? value) => $state.fromSub = value;
 
   /// true when fromSub() was called
   bool get hasFromSub => _fromSub != null;

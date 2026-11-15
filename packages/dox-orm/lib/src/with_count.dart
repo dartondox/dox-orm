@@ -22,7 +22,9 @@ class _Aggregate {
 }
 
 mixin WithCount<T> implements SharedMixin<T> {
-  List<_Aggregate>? _aggregates;
+  List<_Aggregate>? get _aggregates =>
+      $stateOrNull?.aggregates as List<_Aggregate>?;
+  set _aggregates(List<_Aggregate>? value) => $state.aggregates = value;
 
   /// true when the query has a withCount(), withSum(), withAvg(),
   /// withMin(), withMax() or withExists()
@@ -215,7 +217,8 @@ mixin WithCount<T> implements SharedMixin<T> {
 
   /// number of whereHas() subqueries so far, so each one gets its own
   /// param key prefix
-  int _hasCount = 0;
+  int get _hasCount => $stateOrNull?.hasCount ?? 0;
+  set _hasCount(int value) => $state.hasCount = value;
 
   /// compare operators allowed in has()
   static const Set<String> _countOperators = <String>{

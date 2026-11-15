@@ -1,5 +1,6 @@
 import 'package:dox_orm/dox_orm.dart';
 
+import '../utils/helper.dart' show tableNameOfType;
 import 'keys.dart';
 import 'pivot_ids.dart';
 
@@ -34,8 +35,8 @@ M? manyToMany<T, M>(
 
   /// the defaults use the model names:
   /// Artist and Song give artist_song, artist_id and song_id
-  String localName = local.helper.tableNameOf(local.runtimeType);
-  String relatedName = related.helper.tableNameOf(related.runtimeType);
+  String localName = tableNameOfType(local.runtimeType);
+  String relatedName = tableNameOfType(related.runtimeType);
   pivotTable = pivotTable ?? _sortTableByAlphabet(relatedName, localName);
 
   pivotForeignKey = pivotForeignKey ?? local.foreignKeyName;

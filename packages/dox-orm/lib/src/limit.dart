@@ -8,11 +8,14 @@ import 'shared_mixin.dart';
     (qb._limit, qb._offset);
 
 mixin Limit<T> implements SharedMixin<T> {
-  int? _limit;
-  int? _offset;
+  int? get _limit => $stateOrNull?.limit;
+  set _limit(int? value) => $state.limit = value;
+  int? get _offset => $stateOrNull?.offset;
+  set _offset(int? value) => $state.offset = value;
 
   /// the row lock of a select, see lockForUpdate() and sharedLock()
-  _Lock? _lock;
+  _Lock? get _lock => $stateOrNull?.lock as _Lock?;
+  set _lock(_Lock? value) => $state.lock = value;
 
   /// true when lockForUpdate() or sharedLock() was called
   bool get hasLock => _lock != null;

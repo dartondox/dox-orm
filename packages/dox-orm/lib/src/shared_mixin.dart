@@ -1,10 +1,13 @@
 import 'package:dox_orm/dox_orm.dart';
 
+import 'query_state.dart';
 import 'utils/helper.dart';
 import 'utils/logger.dart';
 
 abstract class SharedMixin<T> {
   QueryBuilder<T> get queryBuilder;
+  QueryState<T> get $state;
+  QueryState<T>? get $stateOrNull;
   QueryBuilderHelper<T> get helper;
   Logger get logger;
   DBDriver get dbDriver;
