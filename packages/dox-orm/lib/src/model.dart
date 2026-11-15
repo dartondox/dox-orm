@@ -1372,10 +1372,9 @@ class Model<T> extends QueryBuilder<T> {
   /// relation) keeps that value in the key: the pivot values are then
   /// only in [ManyToManyWrites.pivot].
   Map<String, dynamic> toJson() {
-    /// the hidden fields are removed once, at the end. A hidden `pivot`
-    /// column stays in the map until then, so the pivot values are not
-    /// added in its place, and the end result is the same.
-    Map<String, dynamic> data = toMap();
+    /// `removeHiddenField: true` as before, so a `toMap` override that
+    /// reads the flag sees the same value.
+    Map<String, dynamic> data = toMap(removeHiddenField: true);
     if (manyToManyRowMade &&
         manyToManyRow[this] != null &&
         !data.containsKey('pivot')) {
@@ -1387,7 +1386,9 @@ class Model<T> extends QueryBuilder<T> {
       };
     }
 
-    /// after pivot, so a hidden `pivot` is removed too
+    /// again after pivot, so a hidden `pivot` is removed too, and so are
+    /// hidden keys that a `toMap` override added. Cheap: the keys are
+    /// mostly gone already.
     _removeHidden(data);
     return data;
   }
@@ -1689,6 +1690,8 @@ class Model<T> extends QueryBuilder<T> {
     return false;
   }
 
+  /// The list is kept and shared by the rows of one query. Do not change
+  /// it: call `preload()` to add a name.
   @override
   List<String> getPreload() {
     List<String>? custom = _preloads;
