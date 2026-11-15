@@ -1,6 +1,6 @@
 ---
 name: dox-orm-guide
-description: How to use the Dox ORM (dox_orm) in a Dox app. Use it when you add or change a model, its columns, fillable or hidden fields, queries, relations (HasMany, BelongsTo, HasOne, ManyToMany, HasManyThrough, HasOneThrough), pagination, soft deletes, transactions, model factories, database tests, or when you switch the database from SQLite to Postgres or MySQL.
+description: How to use the Dox ORM (dox_orm) in a Dox app. Use it when you add or change a model, its columns, fillable or hidden fields, queries, relations (HasMany, BelongsTo, HasOne, ManyToMany, HasManyThrough, HasOneThrough), pagination, soft deletes, transactions, model factories, database tests, or when you switch the database from SQLite to Postgres or MySQL, or when you write a query in a loop, load many rows, or see a strict mode warning.
 ---
 
 # Dox ORM guide
@@ -330,6 +330,44 @@ int? id = await QueryBuilder.transaction(() async {
 
 It commits when the function ends, and rolls back when it throws.
 All queries inside the function use the transaction. You do not pass it around.
+
+## Performance
+
+Check new query code against these rules:
+
+- **No query inside a loop** (the N+1 problem). Load the relation for all rows with `preload()`, then read the model field:
+
+  ```dart
+  // Wrong: one query per post
+  for (Post post in posts) {
+    User? author = await post.$getRelation<User>('author');
+  }
+
+  // Right: one extra query for all posts
+  List<Post> posts = await Post().preload('author').get();
+  for (Post post in posts) {
+    User? author = post.author;
+  }
+  ```
+
+- **Do not load a whole table.** `all()` and `get()` read every row into memory. Use `paginate()` for one page. Use `chunkById()`, `lazy()` or `cursor()` to work on all rows.
+- **Keep a transaction short.** It holds one connection until it ends. Call an outside API (payment, mail, HTTP) before or after the transaction, not inside it.
+- **Independent queries can run together:** `await (User().count(), Order().count()).wait`.
+
+Strict mode warns about the first two in development. It is off by default and costs
+nothing when off. The app template turns it on in `lib/config/database.dart`:
+
+```dart
+DatabaseConfig databaseConfig = DatabaseConfig(
+  // ...
+  strict: OrmStrict(enabled: appConfig.isDevelopment),
+);
+```
+
+A `[db] Strict mode: possible N+1 query` warning means a relation was loaded row by row
+(`nPlusOneCount`, default 5). A `[db] Strict mode: table "x" read N rows into memory`
+warning means `get()` or `all()` read more than `maxRows` (default 1000). Fix the query.
+Do not turn strict mode off to hide it.
 
 ## Factories
 
