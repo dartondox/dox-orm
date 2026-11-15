@@ -75,6 +75,10 @@ class SqlQueryBuilder {
   /// and `initializeWithDatabaseConfig` set it.
   OrmFlags flags = const OrmFlags();
 
+  /// the strict mode of this isolate, see [OrmStrict]. Off by default.
+  /// `initialize` and `initializeWithDatabaseConfig` set it.
+  OrmStrict strict = const OrmStrict.off();
+
   final List<QueryListener> _listeners = <QueryListener>[];
 
   /// run [listener] after each query of every connection.
@@ -231,6 +235,7 @@ class SqlQueryBuilder {
     SqlQueryBuilder sql = SqlQueryBuilder();
     sql.databaseConfig = config;
     sql.flags = config.flags;
+    sql.strict = config.strict;
     ConnectionConfig connConfig = config.getConnectionConfig();
 
     sql.dbDriver = connConfig.createDriver();
@@ -300,15 +305,18 @@ class SqlQueryBuilder {
   /// );
   /// ```
   /// [flags] turns on opt-in ORM behaviors, see [OrmFlags].
+  /// [strict] turns on the strict mode warnings, see [OrmStrict].
   static void initialize({
     required dynamic database,
     bool debug = false,
     QueryPrinter? printer,
     Driver driver = Driver.postgres,
     OrmFlags flags = const OrmFlags(),
+    OrmStrict strict = const OrmStrict.off(),
   }) {
     SqlQueryBuilder sql = SqlQueryBuilder();
     sql.flags = flags;
+    sql.strict = strict;
 
     sql.dbDriver = getDatabaseDriver(driver, database);
     sql.debug = debug;

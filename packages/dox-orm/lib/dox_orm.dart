@@ -38,6 +38,7 @@ export 'src/soft_deletes.dart';
 export 'src/types/connection_config.dart';
 export 'src/types/database_config.dart';
 export 'src/types/orm_flags.dart';
+export 'src/types/orm_strict.dart' show OrmStrict;
 export 'src/types/pagination_result.dart';
 export 'src/utils/annotation.dart';
 export 'src/utils/functions.dart';

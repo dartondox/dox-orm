@@ -9,6 +9,7 @@ import 'limit.dart';
 import 'order_by.dart';
 import 'where.dart';
 import 'shared_mixin.dart';
+import 'types/orm_strict.dart' show StrictWatch;
 import 'union.dart';
 
 /// the select sql of [qb], as get() runs it. it is a function, not a
@@ -126,9 +127,23 @@ mixin Get<T> implements SharedMixin<T> {
   /// List<Blog> blogs = await Blog().where('status', 'active').get();
   /// ```
   Future<List<T>> get() async {
-    return _typed(
-      await helper.formatResult(await helper.runQuery(_buildQuery())),
-    );
+    List<Map<String, dynamic>> rows = await helper.runQuery(_buildQuery());
+    _strictRows(rows);
+    return _typed(await helper.formatResult(rows));
+  }
+
+  /// strict mode: warn when a query with no limit() read too many rows.
+  /// chunk(), lazy() and paginate() read pages with limit(), and
+  /// cursor() does not call get(), so they never warn.
+  void _strictRows(List<Map<String, dynamic>> rows, {bool isAll = false}) {
+    OrmStrict strict = SqlQueryBuilder().strict;
+    if (!strict.enabled) return;
+    if (queryBuilder.$stateOrNull?.strictSkip == true) return;
+    // ponytail: a get() with any limit() is skipped, also limit(50000).
+    // The app asked for that many rows. all() ignores limit(), so it
+    // is never skipped.
+    if (!isAll && limitAndOffset(queryBuilder).$1 != null) return;
+    StrictWatch.bigResult(queryBuilder.tableName, rows.length, strict);
   }
 
   /// a model query with groupBy() or rawQuery() gives plain rows (maps),
@@ -1090,6 +1105,8 @@ mixin Get<T> implements SharedMixin<T> {
     String query =
         "SELECT $selectQueryString FROM ${queryBuilder.getFromQuery()}"
         "${queryBuilder.getWhereQuery()}${queryBuilder.getLockQuery()}";
-    return _typed(await helper.formatResult(await helper.runQuery(query)));
+    List<Map<String, dynamic>> rows = await helper.runQuery(query);
+    _strictRows(rows, isAll: true);
+    return _typed(await helper.formatResult(rows));
   }
 }

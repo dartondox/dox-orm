@@ -27,11 +27,16 @@ class DatabaseConfig {
   /// opt-in ORM behaviors, all off by default. See [OrmFlags].
   OrmFlags flags;
 
+  /// warnings for N+1 queries and big results, off by default. See
+  /// [OrmStrict].
+  OrmStrict strict;
+
   DatabaseConfig({
     required this.connection,
     required this.connections,
     String? url,
     this.flags = const OrmFlags(),
+    this.strict = const OrmStrict.off(),
   }) : url = url ?? Platform.environment['DATABASE_URL'];
 
   ConnectionConfig? _fromUrl;

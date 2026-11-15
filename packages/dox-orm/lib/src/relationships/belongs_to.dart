@@ -72,6 +72,8 @@ Future<Map<String, M>> getBelongsTo<T, M>(
   List<Model<T>> list,
 ) async {
   if (q == null) return <String, M>{}; // coverage:ignore-line
+  // eager load, not a user query: no big result warning
+  q.$state.strictSkip = true;
   List<M> results = await q.get();
   var (List<dynamic> childKeys, String localKey) = _keys[q]!;
 

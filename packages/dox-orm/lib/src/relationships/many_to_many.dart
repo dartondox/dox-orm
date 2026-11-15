@@ -1,5 +1,7 @@
 import 'package:dox_orm/dox_orm.dart';
 
+import '../types/orm_strict.dart' show StrictWatch;
+
 import '../utils/helper.dart' show tableNameOfType;
 import 'keys.dart';
 import 'pivot_ids.dart';
@@ -108,6 +110,8 @@ Future<Map<String, List<M>>> getManyToMany<T, M>(
   List<Model<T>> list,
 ) async {
   if (q == null) return <String, List<M>>{}; // coverage:ignore-line
+  // eager load, not a user query: no big result warning
+  q.$state.strictSkip = true;
   List<M> results = await q.get();
 
   Map<String, List<M>> ret = <String, List<M>>{};
@@ -516,7 +520,14 @@ extension ManyToManyWrites<T> on Model<T> {
 
   _Pivot _pivotOf(String relation) {
     _Pivot? p;
-    dynamic q = related<dynamic>(relation);
+    // a write helper is not an N+1 read, so strict mode does not count it
+    StrictWatch.muted = true;
+    dynamic q;
+    try {
+      q = related<dynamic>(relation);
+    } finally {
+      StrictWatch.muted = false;
+    }
     if (q != null) p = manyToManyQuery[q as Object] as _Pivot?;
     if (p == null) {
       throw ArgumentError.value(

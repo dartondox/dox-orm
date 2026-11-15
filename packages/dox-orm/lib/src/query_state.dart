@@ -20,6 +20,10 @@ class QueryState<T> {
   bool? debug;
   bool onWrite = false;
 
+  /// strict mode: an eager load query of the ORM, it never warns about a
+  /// big result
+  bool strictSkip = false;
+
   /// null means the default of the class
   bool? isSoftDeletes;
   bool withTrashed = false;
