@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'drivers/db_driver.dart';
 import 'query_builder.dart';
+import 'query_state.dart';
 import 'shared_mixin.dart';
 
 /// the default of the optional where() args. It tells a missing arg
@@ -872,7 +873,18 @@ mixin Where<T> implements SharedMixin<T> {
       }
     }
     addSubstitutionValues(columnKey, value);
-    return _rawQuery(type, "$left $condition $right");
+    bool first = _wheres == null;
+    _rawQuery(type, "$left $condition $right");
+
+    /// the first where is a plain `column = value`: first() can then use
+    /// the sql that find() keeps, see getFirst()
+    if (first && condition == '=' && !column.contains('->')) {
+      QueryState<T> state = $state;
+      state.firstWhere = state.wheres!.first;
+      state.firstWhereColumn = column;
+      state.firstWhereKey = columnKey.substring(1);
+    }
+    return queryBuilder;
   }
 
   /// `IS NULL` for `=` and `IS NOT NULL` for `!=` and `<>`

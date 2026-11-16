@@ -522,6 +522,10 @@ class Model<T> extends QueryBuilder<T> {
   /// a map or a list is never the same, it can be changed in place.
   static bool _same(dynamic a, dynamic b) {
     if (a is Map || a is List || b is Map || b is List) return false;
+
+    /// two dates: the same moment and both UTC or both local, like their
+    /// iso texts, without making the texts
+    if (a is DateTime && b is DateTime) return a == b;
     if (a is DateTime) a = a.toIso8601String();
     if (b is DateTime) b = b.toIso8601String();
     return a == b;
@@ -1837,10 +1841,20 @@ class Model<T> extends QueryBuilder<T> {
     /// a column that is not in [data] takes the value of this new model,
     /// like `bool done = false`. fromMap() needs a value for a field
     /// that is not nullable.
+    Map<String, dynamic> row;
     if (!exists) {
-      data = <String, dynamic>{...columnsToMap()..remove(primaryKey), ...data};
+      /// a new map of our own, so the dates are changed in place
+      row = columnsToMap()
+        ..remove(primaryKey)
+        ..addAll(data);
+      for (String key in row.keys) {
+        Object? value = row[key];
+        if (value is DateTime) row[key] = value.toIso8601String();
+      }
+    } else {
+      row = _dateTimesToString(data);
     }
-    Model<T> model = fromMap(_dateTimesToString(data)) as Model<T>;
+    Model<T> model = fromMap(row) as Model<T>;
     model.debug(shouldDebug);
     model.connection = connection;
     return model;
