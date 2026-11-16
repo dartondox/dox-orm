@@ -1779,18 +1779,36 @@ class Model<T> extends QueryBuilder<T> {
     }
     if (list.isEmpty) return;
 
-    /// in a transaction the queries run one by one on one connection.
-    /// outside, they run together, so the native drivers can send them
-    /// in one batch.
-    if (pList.length < 2 || DBDriver.inTransaction) {
-      for (String key in pList) {
-        await _getRelation(list, key);
-      }
+    if (pList.length < 2) {
+      if (pList.isNotEmpty) await _getRelation(list, pList.first);
       return;
     }
-    await Future.wait(<Future<void>>[
-      for (String key in pList) _getRelation(list, key),
-    ]);
+
+    /// the queries run together, also in a transaction: the native
+    /// drivers send them in one batch on the one connection, and the
+    /// server runs them in order. sqlite runs them one by one.
+    try {
+      await <Future<void>>[for (String key in pList) _getRelation(list, key)]
+          .wait;
+    } on ParallelWaitError<List<void>, List<AsyncError?>> catch (e) {
+      AsyncError error = _realError(e.errors);
+      Error.throwWithStackTrace(error.error, error.stackTrace);
+    }
+  }
+
+  /// the first error that is not a Postgres 25P02. in a transaction,
+  /// one failed query aborts it, and the queries sent with it fail
+  /// with 25P02. the error that caused it is the useful one, the same
+  /// as when the queries run one by one.
+  static AsyncError _realError(List<AsyncError?> errors) {
+    AsyncError? first;
+    for (AsyncError? e in errors) {
+      if (e == null) continue;
+      Object error = e.error;
+      if (error is! PgServerException || error.code != '25P02') return e;
+      first ??= e;
+    }
+    return first!;
   }
 
   /// create a record
