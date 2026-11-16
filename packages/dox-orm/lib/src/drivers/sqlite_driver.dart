@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:isolate';
 
 import 'package:dox_orm/dox_orm.dart';
+import 'package:dox_orm/src/drivers/db_driver.dart' show maxCachedSql;
 import 'package:sqlite3/sqlite3.dart';
 
 /// zone key to find the databases that have an open transaction
@@ -42,7 +43,7 @@ class SqliteDriver extends DBDriver {
 
   static final Expando<Future<void>> _transactionDone = Expando<Future<void>>();
 
-  static final Expando<_Schema> _schemas = Expando<_Schema>();
+  static final Expando<SqliteSchema> _schemas = Expando<SqliteSchema>();
 
   /// RETURNING is in sqlite 3.35 and newer
   static final bool _hasReturning = sqlite3.version.versionNumber >= 3035000;
@@ -516,8 +517,8 @@ class SqliteDriver extends DBDriver {
     return value;
   }
 
-  _Schema _schemaOf(Database db) {
-    _Schema schema = _schemas[db] ??= _Schema();
+  SqliteSchema _schemaOf(Database db) {
+    SqliteSchema schema = _schemas[db] ??= SqliteSchema();
     schema.refresh(db);
     return schema;
   }
@@ -538,7 +539,7 @@ class SqliteDriver extends DBDriver {
 }
 
 /// declared column kinds of each table, read again when the schema changes
-class _Schema {
+class SqliteSchema {
   int _version = -1;
 
   /// table name => column name => kind
@@ -596,10 +597,7 @@ class _Schema {
     if (known != null) {
       return known;
     }
-    if (_bySql.length >= 2000) {
-      _bySql.clear();
-    }
-    Map<String, int> kinds = _bySql[sql] = <String, int>{};
+    Map<String, int> kinds = <String, int>{};
     for (MapEntry<String, Map<String, int>> table in _tables.entries) {
       if (sql.contains(table.key)) {
         for (MapEntry<String, int> col in table.value.entries) {
@@ -607,8 +605,18 @@ class _Schema {
         }
       }
     }
+    // a long sql is not kept: the cap counts entries, not bytes
+    if (sql.length <= maxCachedSql) {
+      if (_bySql.length >= 2000) {
+        _bySql.clear();
+      }
+      _bySql[sql] = kinds;
+    }
     return kinds;
   }
+
+  /// For tests only: true when [sql] is in the kinds cache.
+  bool debugCached(String sql) => _bySql.containsKey(sql);
 }
 
 /// SQLITE_BUSY: the database file is locked by another connection.

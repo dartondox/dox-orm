@@ -624,9 +624,6 @@ class _QuestionSql {
     if (q != null) {
       return q;
     }
-    if (cache.length >= 2000) {
-      cache.clear();
-    }
     List<String> names = <String>[];
     StringBuffer out = StringBuffer();
     int copied = 0;
@@ -638,9 +635,24 @@ class _QuestionSql {
       copied = p.end;
     }
     out.write(sql.substring(copied));
-    return cache[sql] = _QuestionSql(out.toString(), names);
+    q = _QuestionSql(out.toString(), names);
+    // a long sql is not kept: the cap counts entries, not bytes
+    if (sql.length <= maxCachedSql) {
+      if (cache.length >= 2000) {
+        cache.clear();
+      }
+      cache[sql] = q;
+    }
+    return q;
   }
 }
+
+/// longest sql text (in characters) that the sql caches keep
+const int maxCachedSql = 4096;
+
+/// For tests only: true when [sql] is in the `?` sql cache.
+bool debugQuestionSqlCached(String sql, bool mysql) =>
+    (mysql ? _QuestionSql._mysqlCache : _QuestionSql._cache).containsKey(sql);
 
 /// parse a date from mysql or sqlite. a date without time zone is read as
 /// UTC. return [value] as it is when it is not a date.
