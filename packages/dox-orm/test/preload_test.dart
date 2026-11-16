@@ -371,6 +371,78 @@ void main() async {
       expect(a.$columnValue('deleted_at'), '2024-01-02T00:00:00.000Z');
     });
 
+    test('in a transaction the relations load the same as outside', () async {
+      Future<List<Object?>> load() async {
+        List<Writer> writers = await Writer()
+            .preload('articles.remarks')
+            .preload('topics')
+            .orderBy('id')
+            .get();
+        Article? article = await Article()
+            .preload('writer.topics')
+            .preload('writer.articles.remarks')
+            .find(3);
+        return <Object?>[
+          for (Writer w in writers) w.toJson(),
+          article?.toJson(),
+        ];
+      }
+
+      queries.clear();
+      List<Object?> outside = await load();
+      int outsideCount = queries.length;
+      queries.clear();
+      List<Object?> inside = await QueryBuilder.transaction(() {
+        expect(DBDriver.inTransaction, isTrue);
+        return load();
+      });
+      expect(inside, outside);
+      expect(queries.length, outsideCount);
+    });
+
+    /// on Postgres the failed query aborts the transaction, so the
+    /// remarks query (sent after it) fails with 25P02. The caller must get
+    /// the error of the topics query.
+    test('in a transaction a failed relation gives its own error, and it '
+        'rolls back', () async {
+      Future<void> run(bool failFirst) {
+        return QueryBuilder.transaction(() async {
+          await QueryBuilder.table('writers')
+              .insert(<String, dynamic>{'name': 'tmp'});
+          Writer q = Writer();
+          // Raw and unquoted: some SQLite builds read an unknown "quoted" name as a
+          // string, so a quoted column would not fail there.
+          void bad(QueryBuilder<dynamic> b) => b.whereRaw('nope_column = 1');
+          if (failFirst) {
+            q.preload('topics', bad).preload('articles.remarks');
+          } else {
+            q.preload('articles.remarks').preload('topics', bad);
+          }
+          await q.find(1);
+        });
+      }
+
+      for (bool failFirst in <bool>[false, true]) {
+        Object? error;
+        try {
+          await run(failFirst);
+        } catch (e) {
+          error = e;
+        }
+        expect(error, isNot(isA<ParallelWaitError<Object?, Object?>>()));
+        expect('$error', contains('nope_column'));
+        if (error is PgServerException) expect(error.code, '42703');
+        expect(await Writer().where('name', 'tmp').count(), 0);
+      }
+
+      /// the connection works after the rollback
+      Writer? w = await QueryBuilder.transaction(
+        () => Writer().preload('articles.remarks').preload('topics').find(1),
+      );
+      expect(w!.articles, hasLength(2));
+      expect(w.topics.single.name, 'dart');
+    });
+
     test(r'a model with no $columnValue switch uses columnsToMap()', () {
       _OldKeyRow row = _OldKeyRow()..title = 't';
       expect(row.$columnValue('title'), 't');
