@@ -8,7 +8,8 @@ export 'package:dox_postgres_native/dox_postgres_native.dart'
 
 export 'src/casts.dart';
 export 'src/database_transaction.dart';
-export 'src/drivers/db_driver.dart' hide SqlParam, findSqlParams;
+export 'src/drivers/db_driver.dart'
+    hide SqlParam, findSqlParams, maxCachedSql, debugQuestionSqlCached;
 export 'src/drivers/mysql_native_driver.dart';
 export 'src/drivers/native_drivers.dart';
 export 'src/drivers/postgres_native_driver.dart';

@@ -1,4 +1,6 @@
 import 'package:dox_orm/dox_orm.dart';
+import 'package:dox_orm/src/drivers/db_driver.dart' show debugQuestionSqlCached;
+import 'package:dox_orm/src/drivers/sqlite_driver.dart' show SqliteSchema;
 import 'package:test/test.dart';
 
 Object? _same(dynamic v) => v;
@@ -72,6 +74,36 @@ void main() {
         'x = ? AND y = @@sql_mode AND z = @nope',
         1,
       ]);
+    });
+  });
+
+  group('sql caches skip long sql', () {
+    test('? sql cache', () {
+      String short = 'SELECT * FROM t WHERE a = @a';
+      String long = '$short /* ${'x' * 5000} */';
+      for (bool mysql in <bool>[false, true]) {
+        var (String out, List<Object?> params) = toPositionalParams(
+          long,
+          values,
+          _same,
+          mysql: mysql,
+        );
+        expect(out, startsWith('SELECT * FROM t WHERE a = ?'));
+        expect(params, <Object?>[1]);
+        toPositionalParams(short, values, _same, mysql: mysql);
+        expect(debugQuestionSqlCached(long, mysql), isFalse);
+        expect(debugQuestionSqlCached(short, mysql), isTrue);
+      }
+    });
+
+    test('sqlite kinds cache', () {
+      SqliteSchema schema = SqliteSchema();
+      String short = 'SELECT 1';
+      String long = 'SELECT 1 /* ${'x' * 5000} */';
+      expect(schema.kindsFor(long), isEmpty);
+      expect(schema.kindsFor(short), isEmpty);
+      expect(schema.debugCached(long), isFalse);
+      expect(schema.debugCached(short), isTrue);
     });
   });
 }
