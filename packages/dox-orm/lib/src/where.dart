@@ -809,12 +809,11 @@ mixin Where<T> implements SharedMixin<T> {
         "${helper.wrap(column)} ${not ? '<> ALL' : '= ANY'}($columnKey)",
       );
     }
-
     List<String> keys = <String>[];
-    for (int i = 0; i < values.length; i++) {
+    for (dynamic value in values) {
       String columnKey = helper.parseColumnKey(column);
       keys.add(columnKey);
-      addSubstitutionValues(columnKey, values[i]);
+      addSubstitutionValues(columnKey, value);
     }
     String operator = not ? 'NOT IN' : 'IN';
     return _rawQuery(
