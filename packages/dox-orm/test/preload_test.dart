@@ -410,7 +410,9 @@ void main() async {
           await QueryBuilder.table('writers')
               .insert(<String, dynamic>{'name': 'tmp'});
           Writer q = Writer();
-          void bad(QueryBuilder<dynamic> b) => b.where('nope_column', 1);
+          // Raw and unquoted: some SQLite builds read an unknown "quoted" name as a
+          // string, so a quoted column would not fail there.
+          void bad(QueryBuilder<dynamic> b) => b.whereRaw('nope_column = 1');
           if (failFirst) {
             q.preload('topics', bad).preload('articles.remarks');
           } else {
