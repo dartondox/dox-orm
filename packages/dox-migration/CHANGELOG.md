@@ -1,4 +1,4 @@
-## Unreleased
+## 3.2.2
 
 - Change: every `Logger` line starts with a dim `[migration]` tag, then the text in its color. `Logger.warn` was blue, now it is yellow like the other packages. The `migrate:status` table is the same.
 

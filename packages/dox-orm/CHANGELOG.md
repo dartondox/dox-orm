@@ -1,4 +1,4 @@
-## Unreleased
+## 3.2.2
 
 - Memory: the `@key` to `?` sql cache (MySQL and SQLite) and the SQLite column kinds cache hold up to 2000 queries each, whatever their size. Now a query text longer than 4 KB is not cached. Short queries keep their cache.
 - Faster: inside a transaction, the relations of one model (`preload` and `eager`) loaded one by one, with one wait for each. Now they load at the same time, like outside a transaction. Postgres and MySQL send them in one batch on the one connection of the transaction, and the server runs them in order. SQLite still runs them one by one. On Postgres, a failed query aborts the transaction, so the queries sent with it fail with `25P02` ("current transaction is aborted"). You still get the error that caused it, never the `25P02`, the same error as before. When more than one relation fails, the error of the first one in the preload list is thrown, also outside a transaction.
