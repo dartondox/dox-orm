@@ -86,7 +86,13 @@ class BoolCast extends Cast<bool> {
 /// null, and the ORM logs one warning for each table, column and value.
 /// A field that can not be null and has no [unknown] throws a
 /// [StateError] that names the column and the value. Saving the model
-/// does not overwrite the stored value, unless you set the field.
+/// does not overwrite the stored value. Setting the field back to the
+/// value it read (null, or [unknown]) does not change it either. To
+/// replace a bad stored value, set a real enum value.
+///
+/// This is only for rows from the database. A value that the app gives
+/// in `create()`, `firstOrNew()` or `updateOrCreate()` must be a name
+/// (or an index) of the enum, or it throws an [ArgumentError].
 ///
 /// ```
 /// @Column(cast: EnumCast(Status.values, unknown: Status.other))

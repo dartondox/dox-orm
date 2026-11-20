@@ -100,7 +100,7 @@ mixin Insert<T> implements SharedMixin<T> {
     };
     dynamic self = queryBuilder.self;
     if (self is Model) {
-      Model<dynamic> model = CastReads.read(self, row);
+      Model<dynamic> model = CastReads.read(self, row, input: row.keys);
       if (saved) model.originalMap = row;
       model.connection = connection;
       return model as T;

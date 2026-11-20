@@ -187,6 +187,111 @@ void main() async {
       expect(row?['level'].toString(), '1');
     });
 
+    test(
+      'setting the read value back does not clear the stored value',
+      () async {
+        dynamic id = await insert(<String, dynamic>{
+          'status': 'archived',
+          'fallback': 'gone',
+        });
+        await printed(() async {
+          EnumItem item = (await EnumItem().find(id))!;
+          item
+            ..status = null
+            ..fallback = Status.draft
+            ..title = 'x';
+          await item.save();
+        });
+        Map<String, dynamic>? row = await raw(id);
+        expect(row?['title'], 'x');
+        expect(row?['status'], 'archived');
+        expect(row?['fallback'], 'gone');
+      },
+    );
+
+    /// app input stays strict, like before: it throws, nothing is saved
+    Future<void> rejects(Future<void> Function() body, String column) async {
+      await expectLater(
+        body,
+        throwsA(
+          isA<ArgumentError>().having(
+            (ArgumentError e) => e.message.toString(),
+            'message',
+            contains('"$column"'),
+          ),
+        ),
+      );
+      expect(await QueryBuilder.table('enum_item').count(), 0);
+    }
+
+    test('create with a bad name throws', () async {
+      await rejects(
+        () => EnumItem().create(<String, dynamic>{'status': 'bogus'}),
+        'status',
+      );
+    });
+
+    test('create with a bad index throws', () async {
+      await rejects(
+        () => EnumItem().create(<String, dynamic>{'level': 7}),
+        'level',
+      );
+      await rejects(
+        () => EnumItem().create(<String, dynamic>{'level': 'high'}),
+        'level',
+      );
+    });
+
+    test('create with an enum object throws, like before', () async {
+      await rejects(
+        () => EnumItem().create(<String, dynamic>{'status': Status.live}),
+        'status',
+      );
+    });
+
+    test('create never saves the unknown: fallback for bad input', () async {
+      await rejects(
+        () => EnumItem().create(<String, dynamic>{'fallback': 'zzz'}),
+        'fallback',
+      );
+    });
+
+    test('create with a bad value for a non-nullable field throws', () async {
+      await rejects(
+        () => EnumItem().create(<String, dynamic>{'kind': 'zzz'}),
+        'kind',
+      );
+    });
+
+    test('firstOrNew and updateOrCreate check the input', () async {
+      await rejects(
+        () => EnumItem().firstOrNew(<String, dynamic>{'status': 'bogus'}),
+        'status',
+      );
+      dynamic id = await insert(<String, dynamic>{'title': 'a'});
+      await expectLater(
+        () => EnumItem().updateOrCreate(
+          <String, dynamic>{'title': 'a'},
+          <String, dynamic>{'status': 'bogus'},
+        ),
+        throwsA(isA<ArgumentError>()),
+      );
+      expect((await raw(id))?['status'], isNull);
+    });
+
+    test('create with good values works', () async {
+      EnumItem item = await EnumItem().create(<String, dynamic>{
+        'status': 'live',
+        'level': 1,
+        'fallback': 'live',
+        'kind': 'live',
+      });
+      Map<String, dynamic>? row = await raw(item.id);
+      expect(row?['status'], 'live');
+      expect(row?['level'].toString(), '1');
+      expect(row?['kind'], 'live');
+    });
+
     test('refresh keeps the unknown stored value on save', () async {
       dynamic id = await insert(<String, dynamic>{'status': 'archived'});
       await printed(() async {

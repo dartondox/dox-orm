@@ -1878,8 +1878,10 @@ class Model<T> extends QueryBuilder<T> {
     return row;
   }
 
-  /// a new model, not saved yet, made from [data]
-  Model<T> _newModel(Map<String, dynamic> data) {
+  /// a new model, not saved yet, made from [data]. [input] are the keys
+  /// that the app gave (all of [data] when null): a value there that a
+  /// cast does not know throws, see [CastReads.read].
+  Model<T> _newModel(Map<String, dynamic> data, [Iterable<String>? input]) {
     /// a column that is not in [data] takes the value of this new model,
     /// like `bool done = false`. fromMap() needs a value for a field
     /// that is not nullable.
@@ -1896,7 +1898,8 @@ class Model<T> extends QueryBuilder<T> {
     } else {
       row = _dateTimesToString(data);
     }
-    Model<T> model = CastReads.read(this, row) as Model<T>;
+    Model<T> model =
+        CastReads.read(this, row, input: input ?? data.keys) as Model<T>;
     model.debug(shouldDebug);
     model.connection = connection;
     return model;
@@ -1979,10 +1982,11 @@ class Model<T> extends QueryBuilder<T> {
 
     /// a model with the row and the new values, that knows the old row,
     /// so save() updates it and sends only what changed
+    Map<String, dynamic> fill = _onlyFillable(values);
     Model<T> model = _newModel(<String, dynamic>{
       ...old.originalMap,
-      ..._onlyFillable(values),
-    });
+      ...fill,
+    }, fill.keys);
     model.originalMap = old.originalMap;
     if (!await model.save()) return found;
     T row = await _readBack(model);

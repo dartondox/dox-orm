@@ -48,8 +48,15 @@ class CastReads {
     ));
   }
 
-  /// [self].fromMap([row]), with the unknown values handled
-  static Model<dynamic> read(Model<dynamic> self, Map<String, dynamic> row) {
+  /// [self].fromMap([row]), with the unknown values handled. A row from
+  /// the database is lenient. [input] are the keys of [row] that the app
+  /// gave (create, fill): an unknown value there throws an
+  /// [ArgumentError], so bad input is never saved. null: a database row.
+  static Model<dynamic> read(
+    Model<dynamic> self,
+    Map<String, dynamic> row, {
+    Iterable<String>? input,
+  }) {
     _seen = false;
     try {
       Model<dynamic> model = self.fromMap(row);
@@ -58,7 +65,7 @@ class CastReads {
       /// a field that can not be null got null for an unknown value
       if (!_seen) rethrow;
     }
-    return _readAgain(self, row);
+    return _readAgain(self, row, input?.toSet());
   }
 
   /// the columns of [model] that got a cast value for an unknown stored
@@ -76,6 +83,7 @@ class CastReads {
   static Model<dynamic> _readAgain(
     Model<dynamic> self,
     Map<String, dynamic> row,
+    Set<String>? input,
   ) {
     _KeyMap map = _KeyMap(row);
     List<_Unknown> found = <_Unknown>[];
@@ -86,6 +94,9 @@ class CastReads {
       model = self.fromMap(map);
     } on TypeError {
       _Unknown? last = found.isEmpty ? null : found.last;
+      if (last != null && input != null && input.contains(last.column)) {
+        throw _badInput(self, last);
+      }
 
       /// the cast of the last read column gave null for an unknown value,
       /// and the field can not be null
@@ -102,6 +113,11 @@ class CastReads {
       _map = null;
       _found = null;
     }
+    if (input != null) {
+      for (_Unknown u in found) {
+        if (input.contains(u.column)) throw _badInput(self, u);
+      }
+    }
     Map<String, dynamic> columns = model.columnsToMap();
     _unknownColumns[model] = <String, dynamic>{
       for (_Unknown u in found) u.column: columns[u.column],
@@ -111,6 +127,12 @@ class CastReads {
     }
     return model;
   }
+
+  /// a value that the app gave and the cast does not know
+  static ArgumentError _badInput(Model<dynamic> self, _Unknown u) =>
+      ArgumentError(
+        '${_where(self, u)}: "${u.value}" is not a ${u.type} value.',
+      );
 
   /// one warning for each table, column and value
   static void _warn(Model<dynamic> self, _Unknown u) {
