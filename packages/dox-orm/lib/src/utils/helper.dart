@@ -7,6 +7,7 @@ import '../get.dart' show selectSql;
 import '../limit.dart';
 import '../relationships/keys.dart';
 import '../select.dart' show dropSelectValues;
+import 'cast_reads.dart';
 
 final RegExp _notWord = RegExp(r'[^\w]');
 
@@ -252,7 +253,7 @@ class QueryBuilderHelper<T> {
     Object? pivot = manyToManyQuery[queryBuilder];
     bool onWrite = queryBuilder.usesWriteConnection;
     for (Map<String, dynamic> e in result) {
-      Model<dynamic> res = self.fromMap(e);
+      Model<dynamic> res = CastReads.read(self, e);
       res.originalMap = e;
       if (pivot != null) {
         manyToManyRow[res] = pivot;
