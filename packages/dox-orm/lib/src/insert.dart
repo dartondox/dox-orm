@@ -3,6 +3,7 @@ import 'package:dox_orm/dox_orm.dart';
 import 'shared_mixin.dart';
 import 'union.dart';
 import 'update.dart';
+import 'utils/cast_reads.dart';
 
 mixin Insert<T> implements SharedMixin<T> {
   /// create/insert a record and return it as it is in the table
@@ -99,7 +100,7 @@ mixin Insert<T> implements SharedMixin<T> {
     };
     dynamic self = queryBuilder.self;
     if (self is Model) {
-      Model<dynamic> model = self.fromMap(row);
+      Model<dynamic> model = CastReads.read(self, row);
       if (saved) model.originalMap = row;
       model.connection = connection;
       return model as T;

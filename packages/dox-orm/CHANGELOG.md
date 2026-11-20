@@ -1,3 +1,9 @@
+## Unreleased
+
+- Fix: one stored enum value that the enum does not have (like `"archived"`, or an index out of range with `byIndex: true`) made the whole query fail with an `ArgumentError` or a `RangeError`. Now a nullable enum field reads it as null, and the ORM logs one `[db]` warning for each table, column and value. A field that can not be null throws a `StateError` that names the column and the stored value.
+- New: `EnumCast(Status.values, unknown: Status.other)` gives that value for an unknown stored value, not null. It still logs the warning.
+- Fix: saving a model with an unknown enum value does not overwrite the stored value. Only a field that the app sets is saved, as before.
+
 ## 3.2.2
 
 - Memory: the `@key` to `?` sql cache (MySQL and SQLite) and the SQLite column kinds cache hold up to 2000 queries each, whatever their size. Now a query text longer than 4 KB is not cached. Short queries keep their cache.

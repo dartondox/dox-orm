@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import '../dox_orm.dart';
 import 'relationships/keys.dart';
 import 'types/orm_strict.dart' show StrictWatch;
+import 'utils/cast_reads.dart';
 import 'utils/helper.dart' show snakeCase, tableNameOfType;
 import 'utils/plural.dart';
 import 'union.dart';
@@ -457,8 +458,25 @@ class Model<T> extends QueryBuilder<T> {
           if (!_sameValue(e.value, saved[e.key])) e.key: e.value,
       };
       _savedValues = <String, dynamic>{...saved, ...values};
+
+      /// a column with an unknown stored value that the app set is now
+      /// saved, so it is a normal column again
+      CastReads.unknownColumns(this)
+          ?.removeWhere((String key, dynamic _) => values.containsKey(key));
     }
   }
+
+  /// true when [column] had a stored value that its cast did not know
+  /// (see `EnumCast`), and the field still has the value it got for it.
+  /// save() then keeps the stored value.
+  static bool _keepsUnknown(
+    Map<String, dynamic>? unknown,
+    String column,
+    dynamic value,
+  ) =>
+      unknown != null &&
+      unknown.containsKey(column) &&
+      _same(value, unknown[column]);
 
   /// the columns of a saved model that changed since it was read or
   /// saved, without the primary key and created_at, then the primary
@@ -476,9 +494,11 @@ class Model<T> extends QueryBuilder<T> {
         updatedAtColumn != null &&
         values[updatedAtColumn] != null &&
         !_sameTime(values[updatedAtColumn], saved[updatedAtColumn]);
+    Map<String, dynamic>? unknown = CastReads.unknownColumns(this);
     values.removeWhere((String key, dynamic value) {
       return (key == updatedAtColumn && !keepUpdatedAt) ||
-          _same(value, saved[key]);
+          _same(value, saved[key]) ||
+          _keepsUnknown(unknown, key, value);
     });
     return (values, id, keepUpdatedAt);
   }
@@ -1178,9 +1198,12 @@ class Model<T> extends QueryBuilder<T> {
   /// ```
   Map<String, dynamic> getDirty() {
     Map<String, dynamic> original = _original;
+    Map<String, dynamic>? unknown = CastReads.unknownColumns(this);
     return <String, dynamic>{
       for (MapEntry<String, dynamic> e in columnsToMap().entries)
-        if (!_sameValue(e.value, original[e.key])) e.key: e.value,
+        if (!_sameValue(e.value, original[e.key]) &&
+            !_keepsUnknown(unknown, e.key, e.value))
+          e.key: e.value,
     };
   }
 
@@ -1326,6 +1349,7 @@ class Model<T> extends QueryBuilder<T> {
     Map<String, dynamic> raw = row.originalMap;
     if (!$copyColumnsFrom(row)) _setFromRow(row);
     originalMap = raw;
+    CastReads.setUnknownColumns(this, CastReads.unknownColumns(row));
     _savedValues = null;
     _lastChanges = const <String, dynamic>{};
     await reload();
@@ -1872,7 +1896,7 @@ class Model<T> extends QueryBuilder<T> {
     } else {
       row = _dateTimesToString(data);
     }
-    Model<T> model = fromMap(row) as Model<T>;
+    Model<T> model = CastReads.read(this, row) as Model<T>;
     model.debug(shouldDebug);
     model.connection = connection;
     return model;

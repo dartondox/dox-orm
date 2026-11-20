@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'utils/cast_reads.dart' show CastReads;
+
 /// Changes a column value between the database and Dart.
 /// Use it with `@Column(cast: ...)`. The class needs a const constructor.
 ///
@@ -78,17 +80,47 @@ class BoolCast extends Cast<bool> {
 /// @Column(cast: EnumCast(Status.values, byIndex: true))
 /// Status? status;
 /// ```
+///
+/// A stored value that the enum does not have (an old name, or an index
+/// out of range) does not fail the query. The field gets [unknown], or
+/// null, and the ORM logs one warning for each table, column and value.
+/// A field that can not be null and has no [unknown] throws a
+/// [StateError] that names the column and the value. Saving the model
+/// does not overwrite the stored value, unless you set the field.
+///
+/// ```
+/// @Column(cast: EnumCast(Status.values, unknown: Status.other))
+/// Status? status;
+/// ```
 class EnumCast<E extends Enum> extends Cast<E> {
   final List<E> values;
   final bool byIndex;
 
-  const EnumCast(this.values, {this.byIndex = false});
+  /// the value for a stored value that the enum does not have
+  final E? unknown;
+
+  const EnumCast(this.values, {this.byIndex = false, this.unknown});
 
   @override
   E? get(dynamic value) {
     if (value == null) return null;
-    if (byIndex) return values[int.parse(value.toString())];
-    return values.byName(value.toString());
+    E? found = byIndex ? _byIndex(value) : _byName(value.toString());
+    if (found != null) return found;
+    CastReads.unknown(value as Object, unknown, '$E');
+    return unknown;
+  }
+
+  E? _byIndex(dynamic value) {
+    int? index = int.tryParse(value.toString());
+    if (index == null || index < 0 || index >= values.length) return null;
+    return values[index];
+  }
+
+  E? _byName(String name) {
+    for (E value in values) {
+      if (value.name == name) return value;
+    }
+    return null;
   }
 
   @override
