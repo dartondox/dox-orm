@@ -1,3 +1,7 @@
+## 3.2.3
+
+- No changes. The version goes up with dox_orm 3.2.3.
+
 ## 3.2.2
 
 - Faster writes. `add`, taking a lock, `increment`, `pull` and `touch` now run one statement on Postgres and SQLite (it was 2 to 6). On MySQL and MariaDB, `add`, taking a lock and `touch` run one statement, and `increment` runs 4 (it was 6). The results stay the same, also for expired rows.
