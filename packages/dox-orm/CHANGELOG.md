@@ -1,3 +1,7 @@
+## Unreleased
+
+- Faster: a model in a JSON response makes no `Map`. With the new dox_builder and dox_core, the generator gives each model a `writeJson()` method that writes the columns, relations and computed values directly into the bytes of the response. For a list of 40 rows with two dates each, the encode time goes from 44 µs to 8 µs. The JSON does not change. `Model.$jsonHidden` is new for that code: it gives the hidden keys, or null when the row needs the map of `toJson()` (`makeHidden`, `makeVisible`, `visibleFields`, a `with...()` aggregate or a `pivot` key). Run `dart run build_runner build` to get the new code. `toJson()` and `toMap()` do not change.
+
 ## 3.2.4
 
 - No changes. The version goes up with dox_migration 3.2.4.
