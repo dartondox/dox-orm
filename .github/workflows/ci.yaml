@@ -31,25 +31,46 @@ jobs:
         run: ci/publish-dry-run.sh
 
   # The entries are in ci/test-matrix.json. Each entry has:
+  # - job: the job below that runs it.
   # - packages: folders under packages/ to run `dart test` in.
   # - vars: env vars for `dart test`.
   # - files: optional, only these test files.
   # - locks: what the entry can not share with another entry at the same
   #   time, like one database. See ci/run-group.py.
+  # Each job has its own databases, so a job does not wait for a database
+  # that another job uses. The entries of one job run at the same time,
+  # but for those that share a lock.
   # The Postgres and MySQL drivers are native (dox_postgres_native and
-  # dox_mysql_native). Their build hooks download ready-built libraries.
-  # sqlite3 uses the SQLite of the runner (ci/system-sqlite.sh), so it
-  # downloads nothing.
+  # dox_mysql_native). sqlite3 uses the SQLite of the runner
+  # (ci/system-sqlite.sh), so it downloads nothing.
   # The migration tests run on postgres, mysql and sqlite in one run.
   # The dox_cache_database tests run on SQLite, Postgres, MariaDB and
   # MySQL 8.4 in one run.
-  test:
+  tests:
+    name: test (${{ matrix.job }})
     runs-on: ubuntu-latest
+    strategy:
+      # every job runs, also after one fails
+      fail-fast: false
+      matrix:
+        include:
+          - job: sqlite
+            services: ''
+          - job: postgres-mariadb
+            services: postgres mariadb
+          - job: mysql84
+            services: postgres mariadb mysql84
+    env:
+      JOB: ${{ matrix.job }}
+      SERVICES: ${{ matrix.services }}
     steps:
       - uses: actions/checkout@v4
       # Start the containers first. They boot while the next steps run.
       - name: Start services
-        run: ci/start-services.sh postgres mariadb mysql84
+        if: matrix.services != ''
+        run: |
+          # shellcheck disable=SC2086 # one word for each service
+          ci/start-services.sh $SERVICES
       - uses: dart-lang/setup-dart@v1
         with:
           sdk: stable
@@ -57,9 +78,29 @@ jobs:
       # branch with the same name as this PR), not pub.dev. On a tag it
       # does nothing. See the script.
       - run: ci/use-siblings.sh
+      # The native libraries are built one time for each state of the
+      # native repos, then kept. The key is made from their commits.
+      - name: Key of the native libraries
+        id: native
+        if: github.ref_type != 'tag'
+        run: |
+          key=$(for repo in dox-http-native dox-postgres-native dox-mysql-native; do
+            git -C "../$repo" rev-parse HEAD
+          done | sha256sum | cut -c1-16)
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+      - name: Native libraries from the cache
+        id: libs
+        if: github.ref_type != 'tag'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ../dox-http-native/packages/dox-http-native/native/target/release/libdox_http_native.so
+            ../dox-postgres-native/native/target/release/libdox_postgres_native.so
+            ../dox-mysql-native/native/target/release/libdox_mysql_native.so
+          key: native-libs-${{ runner.os }}-${{ runner.arch }}-${{ steps.native.outputs.key }}
       # Caches the Rust dependencies of the native packages.
       - uses: Swatinem/rust-cache@v2
-        if: github.ref_type != 'tag'
+        if: github.ref_type != 'tag' && steps.libs.outputs.cache-hit != 'true'
         with:
           workspaces: |
             ../dox-http-native/native -> target
@@ -68,10 +109,24 @@ jobs:
             ../dox-mysql-native/native -> target
       # Builds the native libraries of the clones, for this machine only.
       - run: ci/use-siblings.sh build
+        if: steps.libs.outputs.cache-hit != 'true'
       # CI only: the sqlite3 hook uses the runner's SQLite, no download.
       - run: ci/system-sqlite.sh pubspec.yaml
       - run: dart pub get
       - name: Wait for services
-        run: ci/wait-services.sh postgres mariadb mysql84
+        if: matrix.services != ''
+        run: |
+          # shellcheck disable=SC2086 # one word for each service
+          ci/wait-services.sh $SERVICES
       - name: Run tests
-        run: ENTRIES="$(cat ci/test-matrix.json)" ci/run-group.py
+        run: ENTRIES="$(jq -c --arg job "$JOB" '[.[] | select(.job == $job)]' ci/test-matrix.json)" ci/run-group.py
+
+  # one result for all the test jobs
+  test:
+    needs: tests
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          RESULT: ${{ needs.tests.result }}
+        run: test "$RESULT" = success
