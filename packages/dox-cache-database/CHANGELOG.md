@@ -1,3 +1,7 @@
+## 3.2.4
+
+- No changes. The version goes up with dox_migration 3.2.4.
+
 ## 3.2.3
 
 - No changes. The version goes up with dox_orm 3.2.3.

@@ -1,3 +1,7 @@
+## 3.2.4
+
+- No changes. The version goes up with dox_migration 3.2.4.
+
 ## 3.2.3
 
 - Fix: one stored enum value that the enum does not have (like `"archived"`, or an index out of range with `byIndex: true`) made the whole query fail with an `ArgumentError` or a `RangeError`. Now a nullable enum field reads it as null, and the ORM logs one `[db]` warning for each table, column and value. A field that can not be null throws a `StateError` that names the column and the stored value.

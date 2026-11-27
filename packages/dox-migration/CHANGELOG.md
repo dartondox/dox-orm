@@ -1,4 +1,4 @@
-## Unreleased
+## 3.2.4
 
 - Change: `Migrator.migrate()` does nothing in a Dox server isolate that runs in its own isolate group (`CoreFlags.isolateGroups` of dox_core). Such an isolate runs `main()` again, and the first isolate ran the migrations before it started the others. Before, each of these isolates opened a database connection to find that there was no migration to run.
 
