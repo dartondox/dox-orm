@@ -11,7 +11,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dart-lang/setup-dart@v1
         with:
           sdk: stable
@@ -64,7 +64,7 @@ jobs:
       JOB: ${{ matrix.job }}
       SERVICES: ${{ matrix.services }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Start the containers first. They boot while the next steps run.
       - name: Start services
         if: matrix.services != ''
