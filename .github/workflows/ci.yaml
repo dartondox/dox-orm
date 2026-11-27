@@ -88,15 +88,17 @@ jobs:
             git -C "../$repo" rev-parse HEAD
           done | sha256sum | cut -c1-16)
           echo "key=$key" >> "$GITHUB_OUTPUT"
+          # the cache action takes no `..` in a path
+          echo "dir=$(cd .. && pwd)" >> "$GITHUB_OUTPUT"
       - name: Native libraries from the cache
         id: libs
         if: github.ref_type != 'tag'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
-            ../dox-http-native/packages/dox-http-native/native/target/release/libdox_http_native.so
-            ../dox-postgres-native/native/target/release/libdox_postgres_native.so
-            ../dox-mysql-native/native/target/release/libdox_mysql_native.so
+            ${{ steps.native.outputs.dir }}/dox-http-native/packages/dox-http-native/native/target/release/libdox_http_native.so
+            ${{ steps.native.outputs.dir }}/dox-postgres-native/native/target/release/libdox_postgres_native.so
+            ${{ steps.native.outputs.dir }}/dox-mysql-native/native/target/release/libdox_mysql_native.so
           key: native-libs-${{ runner.os }}-${{ runner.arch }}-${{ steps.native.outputs.key }}
       # Caches the Rust dependencies of the native packages.
       - uses: Swatinem/rust-cache@v2
