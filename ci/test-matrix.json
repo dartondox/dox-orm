@@ -1,13 +1,13 @@
 [
-  {"name": "orm (sqlite)", "packages": "dox-orm", "vars": "DRIVER=sqlite"},
-  {"name": "orm (sqlite background)", "packages": "dox-orm", "vars": "DRIVER=sqlite SQLITE_BACKGROUND=true"},
-  {"name": "orm (postgres)", "packages": "dox-orm", "vars": "DRIVER=postgres DB_PORT=5432", "locks": "postgres"},
-  {"name": "orm (mariadb)", "packages": "dox-orm", "vars": "DRIVER=mysql DB_USER=dox DB_PORT=3306", "locks": "mariadb"},
-  {"name": "orm (mysql 8.4)", "packages": "dox-orm", "vars": "DRIVER=mysql DB_USER=dox DB_PORT=3307", "locks": "mysql84"},
-  {"name": "orm time zone (sqlite)", "packages": "dox-orm", "vars": "DRIVER=sqlite TZ=Asia/Yangon", "files": "test/where_date_time_zone_test.dart"},
-  {"name": "orm time zone (postgres)", "packages": "dox-orm", "vars": "DRIVER=postgres DB_PORT=5432 TZ=Asia/Yangon", "files": "test/where_date_time_zone_test.dart", "locks": "postgres"},
-  {"name": "orm time zone (mysql 8.4)", "packages": "dox-orm", "vars": "DRIVER=mysql DB_USER=dox DB_PORT=3307 TZ=Asia/Yangon", "files": "test/where_date_time_zone_test.dart", "locks": "mysql84"},
-  {"name": "migration (mariadb)", "packages": "dox-migration", "locks": "postgres mariadb"},
-  {"name": "migration (mysql 8.4)", "packages": "dox-migration", "vars": "MYSQL_PORT=3307", "locks": "postgres mysql84"},
-  {"name": "cache database", "packages": "dox-cache-database", "vars": "PG_PORT=5432 MARIADB_PORT=3306 MYSQL_PORT=3307", "locks": "postgres mariadb mysql84"}
+  {"name": "orm (sqlite)", "job": "sqlite", "packages": "dox-orm", "vars": "DRIVER=sqlite"},
+  {"name": "orm (sqlite background)", "job": "sqlite", "packages": "dox-orm", "vars": "DRIVER=sqlite SQLITE_BACKGROUND=true"},
+  {"name": "orm (postgres)", "job": "postgres-mariadb", "packages": "dox-orm", "vars": "DRIVER=postgres DB_PORT=5432", "locks": "postgres"},
+  {"name": "orm (mariadb)", "job": "postgres-mariadb", "packages": "dox-orm", "vars": "DRIVER=mysql DB_USER=dox DB_PORT=3306", "locks": "mariadb"},
+  {"name": "orm (mysql 8.4)", "job": "mysql84", "packages": "dox-orm", "vars": "DRIVER=mysql DB_USER=dox DB_PORT=3307", "locks": "mysql84"},
+  {"name": "orm time zone (sqlite)", "job": "sqlite", "packages": "dox-orm", "vars": "DRIVER=sqlite TZ=Asia/Yangon", "files": "test/where_date_time_zone_test.dart"},
+  {"name": "orm time zone (postgres)", "job": "postgres-mariadb", "packages": "dox-orm", "vars": "DRIVER=postgres DB_PORT=5432 TZ=Asia/Yangon", "files": "test/where_date_time_zone_test.dart", "locks": "postgres"},
+  {"name": "orm time zone (mysql 8.4)", "job": "mysql84", "packages": "dox-orm", "vars": "DRIVER=mysql DB_USER=dox DB_PORT=3307 TZ=Asia/Yangon", "files": "test/where_date_time_zone_test.dart", "locks": "mysql84"},
+  {"name": "migration (mariadb)", "job": "postgres-mariadb", "packages": "dox-migration", "locks": "postgres mariadb"},
+  {"name": "migration (mysql 8.4)", "job": "mysql84", "packages": "dox-migration", "vars": "MYSQL_PORT=3307", "locks": "postgres mysql84"},
+  {"name": "cache database", "job": "mysql84", "packages": "dox-cache-database", "vars": "PG_PORT=5432 MARIADB_PORT=3306 MYSQL_PORT=3307", "locks": "postgres mariadb mysql84"}
 ]
