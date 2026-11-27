@@ -186,6 +186,20 @@ class Model<T> extends QueryBuilder<T> {
     }
   }
 
+  /// For the `writeJson()` that the generator makes for a model. It
+  /// writes the JSON of a row with no map in between.
+  ///
+  /// It gives the keys that toJson() leaves out ([hidden]). It gives null
+  /// when the JSON of this row needs more than that: [makeHidden],
+  /// [makeVisible], [visibleFields], a `with...()` aggregate or a `pivot`
+  /// key. `writeJson()` then writes the map of toJson().
+  List<String>? get $jsonHidden {
+    if (_visibility != null || _aggregates != null) return null;
+    if (manyToManyRowMade && manyToManyRow[this] != null) return null;
+    if (visibleFields.isNotEmpty) return null;
+    return hidden;
+  }
+
   /// columns that create(), insert(), insertMultiple() and update() take
   /// from a map.
   ///
