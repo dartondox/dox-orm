@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:dox_orm/dox_orm.dart';
 
@@ -62,8 +63,24 @@ class Migrator {
     this.flags,
   });
 
-  /// run the migrations that did not run yet
-  Future<void> migrate() => _withDriver(_migrate);
+  /// run the migrations that did not run yet.
+  ///
+  /// In a Dox server isolate that runs in its own isolate group
+  /// (`CoreFlags.isolateGroups`) it does nothing. Such an isolate runs
+  /// `main()` of the app again, and the first isolate ran the migrations
+  /// before it started the others.
+  Future<void> migrate() async {
+    if (isGroupWorker(Isolate.current.debugName)) return;
+    await _withDriver(_migrate);
+  }
+
+  /// True when [debugName] is the name dox_core gives to a server
+  /// isolate with its own isolate group.
+  // ponytail: the name is the only link to dox_core, this package does
+  // not depend on it. Keep it the same as `GroupIdentity.prefix` there.
+  static bool isGroupWorker(String? debugName) {
+    return debugName != null && debugName.startsWith('dox-group-');
+  }
 
   /// undo the last batch, the last [step] migrations, or only the
   /// migrations of [batch], newest first. Give [step] or [batch], not
